@@ -19,8 +19,11 @@
 
 #include <sysutils/FrameworkListener.h>
 #include "NetdCommand.h"
+#include "TetherController.h"
 
 class CommandListener : public FrameworkListener {
+    static TetherController *sTetherCtrl;
+
 public:
     CommandListener();
     virtual ~CommandListener() {}

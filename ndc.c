@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
     if (argc < 2)
         usage(argv[0]);
 
-    if ((sock = socket_local_client("vold",
+    if ((sock = socket_local_client("netd",
                                      ANDROID_SOCKET_NAMESPACE_RESERVED,
                                      SOCK_STREAM)) < 0) {
         fprintf(stderr, "Error connecting (%s)\n", strerror(errno));
@@ -106,7 +106,7 @@ static int do_monitor(int sock, int stop_after_cmd) {
             memset(buffer, 0, 4096);
             if ((rc = read(sock, buffer, 4096)) <= 0) {
                 if (rc == 0)
-                    fprintf(stderr, "Lost connection to Vold - did it crash?\n");
+                    fprintf(stderr, "Lost connection to Netd - did it crash?\n");
                 else
                     fprintf(stderr, "Error reading data (%s)\n", strerror(errno));
                 free(buffer);

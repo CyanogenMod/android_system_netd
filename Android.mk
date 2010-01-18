@@ -15,7 +15,8 @@ LOCAL_SRC_FILES:=                                      \
                   NetdCommand.cpp                      \
                   NetlinkManager.cpp                   \
                   NetlinkHandler.cpp                   \
-                  logwrapper.c                         
+                  logwrapper.c                         \
+                  TetherController.cpp
 
 LOCAL_MODULE:= netd
 
