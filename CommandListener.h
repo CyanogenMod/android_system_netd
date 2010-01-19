@@ -18,11 +18,14 @@
 #define _COMMANDLISTENER_H__
 
 #include <sysutils/FrameworkListener.h>
+
 #include "NetdCommand.h"
 #include "TetherController.h"
+#include "NatController.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
+    static NatController *sNatCtrl;
 
 public:
     CommandListener();

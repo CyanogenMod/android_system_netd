@@ -31,6 +31,7 @@
 #include "ResponseCode.h"
 
 TetherController *CommandListener::sTetherCtrl = NULL;
+NatController *CommandListener::sNatCtrl = NULL;
 
 CommandListener::CommandListener() :
                  FrameworkListener("netd") {
@@ -41,6 +42,8 @@ CommandListener::CommandListener() :
 
     if (!sTetherCtrl)
         sTetherCtrl = new TetherController();
+    if (!sNatCtrl)
+        sNatCtrl = new NatController();
 }
 
 CommandListener::ListInterfacesCmd::ListInterfacesCmd() :
@@ -196,15 +199,10 @@ int CommandListener::NatCmd::runCommand(SocketClient *cli,
         return 0;
     }
 
-    if (!strcmp(argv[1], "binding")) {
-        if (!strcmp(argv[2], "add")) {
-            rc = 0;
-        } else if (!strcmp(argv[2], "remove")) {
-            rc = 0;
-        } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown nat binding cmd", false);
-            return 0;
-        }
+    if (!strcmp(argv[1], "enable")) {
+        rc = sNatCtrl->enableNat(argv[2], argv[3]);
+    } else if (!strcmp(argv[1], "disable")) {
+        rc = sNatCtrl->disableNat(argv[2], argv[3]);
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown nat cmd", false);
         return 0;
