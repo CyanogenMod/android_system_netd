@@ -32,6 +32,7 @@
 
 TetherController *CommandListener::sTetherCtrl = NULL;
 NatController *CommandListener::sNatCtrl = NULL;
+PppController *CommandListener::sPppCtrl = NULL;
 
 CommandListener::CommandListener() :
                  FrameworkListener("netd") {
@@ -39,11 +40,15 @@ CommandListener::CommandListener() :
     registerCmd(new IpFwdCmd());
     registerCmd(new TetherCmd());
     registerCmd(new NatCmd());
+    registerCmd(new ListTtysCmd());
+    registerCmd(new PppdCmd());
 
     if (!sTetherCtrl)
         sTetherCtrl = new TetherController();
     if (!sNatCtrl)
         sNatCtrl = new NatController();
+    if (!sPppCtrl)
+        sPppCtrl = new PppController();
 }
 
 CommandListener::ListInterfacesCmd::ListInterfacesCmd() :
@@ -54,6 +59,23 @@ int CommandListener::ListInterfacesCmd::runCommand(SocketClient *cli,
                                                       int argc, char **argv) {
     // XXX: Send a series of InterfaceListResults
     cli->sendMsg(ResponseCode::CommandOkay, "Interfaces listed.", false);
+    return 0;
+}
+
+CommandListener::ListTtysCmd::ListTtysCmd() :
+                 NetdCommand("list_ttys") {
+}
+
+int CommandListener::ListTtysCmd::runCommand(SocketClient *cli,
+                                             int argc, char **argv) {
+    TtyCollection *tlist = sPppCtrl->getTtyList();
+    TtyCollection::iterator it;
+
+    for (it = tlist->begin(); it != tlist->end(); ++it) {
+        cli->sendMsg(ResponseCode::TtyListResult, *it, false);
+    }
+
+    cli->sendMsg(ResponseCode::CommandOkay, "Ttys listed.", false);
     return 0;
 }
 
@@ -217,3 +239,43 @@ int CommandListener::NatCmd::runCommand(SocketClient *cli,
     return 0;
 }
 
+CommandListener::PppdCmd::PppdCmd() :
+                 NetdCommand("pppd") {
+}
+
+int CommandListener::PppdCmd::runCommand(SocketClient *cli,
+                                                      int argc, char **argv) {
+    int rc = 0;
+
+    if (argc < 3) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "attach")) {
+        struct in_addr l, r;
+
+        if (!inet_aton(argv[3], &l)) {
+            cli->sendMsg(ResponseCode::CommandParameterError, "Invalid local address", false);
+            return 0;
+        }
+        if (!inet_aton(argv[4], &r)) {
+            cli->sendMsg(ResponseCode::CommandParameterError, "Invalid remote address", false);
+            return 0;
+        }
+        rc = sPppCtrl->attachPppd(argv[2], l, r);
+    } else if (!strcmp(argv[1], "detach")) {
+        rc = sPppCtrl->detachPppd(argv[2]);
+    } else {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown pppd cmd", false);
+        return 0;
+    }
+
+    if (!rc) {
+        cli->sendMsg(ResponseCode::CommandOkay, "Pppd operation succeeded", false);
+    } else {
+        cli->sendMsg(ResponseCode::OperationFailed, "Pppd operation failed", true);
+    }
+
+    return 0;
+}

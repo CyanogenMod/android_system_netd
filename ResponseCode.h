@@ -25,6 +25,7 @@ public:
     static const int InterfaceListResult       = 110;
     static const int TetherInterfaceListResult = 111;
     static const int TetherDnsFwdTgtListResult = 112;
+    static const int TtyListResult             = 113;
 
 
     // 200 series - Requested action has been successfully completed
