@@ -33,7 +33,9 @@
 
 #include "PanController.h"
 
+#ifdef HAVE_BLUETOOTH
 extern "C" int bt_is_enabled();
+#endif
 
 PanController::PanController() {
     mPid = 0;
@@ -45,11 +47,17 @@ PanController::~PanController() {
 int PanController::startPan() {
     pid_t pid;
 
+#ifdef HAVE_BLUETOOTH
     if (!bt_is_enabled()) {
         LOGE("Cannot start PAN services - Bluetooth not running");
         errno = ENODEV;
         return -1;
     }
+#else
+    LOGE("Cannot start PAN services - No Bluetooth support");
+    errno = ENODEV;
+    return -1;
+#endif
 
     if (mPid) {
         LOGE("PAN already started");
