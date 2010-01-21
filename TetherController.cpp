@@ -16,9 +16,13 @@
 
 #include <stdlib.h>
 #include <errno.h>
+#include <fcntl.h>
+
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
@@ -152,9 +156,11 @@ int TetherController::stopTethering() {
     LOGD("Stopping tethering services");
 
     kill(mDaemonPid, SIGTERM);
+    waitpid(mDaemonPid, NULL, 0);
     mDaemonPid = 0;
     close(mDaemonFd);
     mDaemonFd = -1;
+    LOGD("Tethering services stopped");
     return 0;
 }
 
