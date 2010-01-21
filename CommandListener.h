@@ -23,11 +23,13 @@
 #include "TetherController.h"
 #include "NatController.h"
 #include "PppController.h"
+#include "PanController.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
     static NatController *sNatCtrl;
     static PppController *sPppCtrl;
+    static PanController *sPanCtrl;
 
 public:
     CommandListener();
@@ -74,6 +76,13 @@ private:
     public:
         PppdCmd();
         virtual ~PppdCmd() {}
+        int runCommand(SocketClient *c, int argc, char ** argv);
+    };
+
+    class PanCmd : public NetdCommand {
+    public:
+        PanCmd();
+        virtual ~PanCmd() {}
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
 };

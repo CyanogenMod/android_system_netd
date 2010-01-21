@@ -33,6 +33,7 @@
 TetherController *CommandListener::sTetherCtrl = NULL;
 NatController *CommandListener::sNatCtrl = NULL;
 PppController *CommandListener::sPppCtrl = NULL;
+PanController *CommandListener::sPanCtrl = NULL;
 
 CommandListener::CommandListener() :
                  FrameworkListener("netd") {
@@ -42,6 +43,7 @@ CommandListener::CommandListener() :
     registerCmd(new NatCmd());
     registerCmd(new ListTtysCmd());
     registerCmd(new PppdCmd());
+    registerCmd(new PanCmd());
 
     if (!sTetherCtrl)
         sTetherCtrl = new TetherController();
@@ -49,6 +51,8 @@ CommandListener::CommandListener() :
         sNatCtrl = new NatController();
     if (!sPppCtrl)
         sPppCtrl = new PppController();
+    if (!sPanCtrl)
+        sPanCtrl = new PanController();
 }
 
 CommandListener::ListInterfacesCmd::ListInterfacesCmd() :
@@ -275,6 +279,45 @@ int CommandListener::PppdCmd::runCommand(SocketClient *cli,
         cli->sendMsg(ResponseCode::CommandOkay, "Pppd operation succeeded", false);
     } else {
         cli->sendMsg(ResponseCode::OperationFailed, "Pppd operation failed", true);
+    }
+
+    return 0;
+}
+
+CommandListener::PanCmd::PanCmd() :
+                 NetdCommand("pan") {
+}
+
+int CommandListener::PanCmd::runCommand(SocketClient *cli,
+                                        int argc, char **argv) {
+    int rc = 0;
+
+    if (argc < 2) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "start")) {
+        rc = sPanCtrl->startPan();
+    } else if (!strcmp(argv[1], "stop")) {
+        rc = sPanCtrl->stopPan();
+    } else if (!strcmp(argv[1], "status")) {
+        char *tmp = NULL;
+
+        asprintf(&tmp, "Pan services %s",
+                 (sPanCtrl->isPanStarted() ? "started" : "stopped"));
+        cli->sendMsg(ResponseCode::PanStatusResult, tmp, false);
+        free(tmp);
+        return 0;
+    } else {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown pan cmd", false);
+        return 0;
+    }
+
+    if (!rc) {
+        cli->sendMsg(ResponseCode::CommandOkay, "Pan operation succeeded", false);
+    } else {
+        cli->sendMsg(ResponseCode::OperationFailed, "Pan operation failed", true);
     }
 
     return 0;

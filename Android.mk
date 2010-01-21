@@ -18,15 +18,18 @@ LOCAL_SRC_FILES:=                                      \
                   logwrapper.c                         \
                   TetherController.cpp                 \
                   NatController.cpp                    \
-                  PppController.cpp
+                  PppController.cpp                    \
+                  PanController.cpp
 
 LOCAL_MODULE:= netd
 
-LOCAL_C_INCLUDES := $(KERNEL_HEADERS) -I../../frameworks/base/include/
+LOCAL_C_INCLUDES := $(KERNEL_HEADERS) -I../../frameworks/base/include/ \
+                    $(LOCAL_PATH)/../bluetooth/bluedroid/include \
+                    $(LOCAL_PATH)/../bluetooth/bluez-clean-headers
 
 LOCAL_CFLAGS := 
 
-LOCAL_SHARED_LIBRARIES := libsysutils libcutils
+LOCAL_SHARED_LIBRARIES := libsysutils libcutils libbluedroid
 
 include $(BUILD_EXECUTABLE)
 
