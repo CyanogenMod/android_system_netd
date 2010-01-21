@@ -16,10 +16,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 
 #include <fcntl.h>
 #include <dirent.h>
@@ -32,6 +34,7 @@
 #include "NetlinkManager.h"
 
 static void coldboot(const char *path);
+static void sigchld_handler(int sig);
 
 int main() {
 
@@ -39,6 +42,8 @@ int main() {
     NetlinkManager *nm;
 
     LOGI("Netd 1.0 starting");
+
+    signal(SIGCHLD, sigchld_handler);
 
     if (!(nm = NetlinkManager::Instance())) {
         LOGE("Unable to create NetlinkManager");
@@ -114,4 +119,9 @@ static void coldboot(const char *path)
         do_coldboot(d, 0);
         closedir(d);
     }
+}
+
+static void sigchld_handler(int sig) {
+    pid_t pid = wait(NULL);
+    LOGD("Child process %d exited", pid);
 }

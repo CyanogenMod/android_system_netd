@@ -37,10 +37,10 @@ public:
 
 private:
 
-    class ListInterfacesCmd : public NetdCommand {
+    class InterfaceCmd : public NetdCommand {
     public:
-        ListInterfacesCmd();
-        virtual ~ListInterfacesCmd() {}
+        InterfaceCmd();
+        virtual ~InterfaceCmd() {}
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
 

@@ -22,6 +22,8 @@
 #include <dirent.h>
 #include <errno.h>
 
+#include <linux/if.h>
+
 #define LOG_TAG "CommandListener"
 #include <cutils/log.h>
 
@@ -30,6 +32,14 @@
 #include "CommandListener.h"
 #include "ResponseCode.h"
 
+extern "C" int ifc_init(void);
+extern "C" int ifc_get_hwaddr(const char *name, void *ptr);
+extern "C" int ifc_get_info(const char *name, in_addr_t *addr, in_addr_t *mask, unsigned *flags);
+extern "C" int ifc_set_addr(const char *name, in_addr_t addr);
+extern "C" int ifc_set_mask(const char *name, in_addr_t mask);
+extern "C" int ifc_up(const char *name);
+extern "C" int ifc_down(const char *name);
+
 TetherController *CommandListener::sTetherCtrl = NULL;
 NatController *CommandListener::sNatCtrl = NULL;
 PppController *CommandListener::sPppCtrl = NULL;
@@ -37,7 +47,7 @@ PanController *CommandListener::sPanCtrl = NULL;
 
 CommandListener::CommandListener() :
                  FrameworkListener("netd") {
-    registerCmd(new ListInterfacesCmd());
+    registerCmd(new InterfaceCmd());
     registerCmd(new IpFwdCmd());
     registerCmd(new TetherCmd());
     registerCmd(new NatCmd());
@@ -55,14 +65,142 @@ CommandListener::CommandListener() :
         sPanCtrl = new PanController();
 }
 
-CommandListener::ListInterfacesCmd::ListInterfacesCmd() :
-                 NetdCommand("list_interfaces") {
+CommandListener::InterfaceCmd::InterfaceCmd() :
+                 NetdCommand("interface") {
 }
 
-int CommandListener::ListInterfacesCmd::runCommand(SocketClient *cli,
+int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                                                       int argc, char **argv) {
-    // XXX: Send a series of InterfaceListResults
-    cli->sendMsg(ResponseCode::CommandOkay, "Interfaces listed.", false);
+    if (argc < 2) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "list")) {
+        DIR *d;
+        struct dirent *de;
+
+        if (!(d = opendir("/sys/class/net"))) {
+            cli->sendMsg(ResponseCode::OperationFailed, "Failed to open sysfs dir", true);
+            return 0;
+        }
+
+        while((de = readdir(d))) {
+            if (de->d_name[0] == '.')
+                continue;
+            cli->sendMsg(ResponseCode::InterfaceListResult, de->d_name, false);
+        }
+        closedir(d);
+        cli->sendMsg(ResponseCode::CommandOkay, "Interface list completed", false);
+        return 0;
+    } else {
+        /*
+         * These commands take a minimum of 3 arguments
+         */
+        if (argc < 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+            return 0;
+        }
+        if (!strcmp(argv[1], "getcfg")) {
+            struct in_addr addr, mask;
+            unsigned char hwaddr[6];
+            unsigned flags = 0;
+
+            ifc_init();
+            memset(hwaddr, 0, sizeof(hwaddr));
+
+            if (ifc_get_info(argv[2], &addr.s_addr, &mask.s_addr, &flags)) {
+                cli->sendMsg(ResponseCode::OperationFailed, "Interface not found", true);
+                return 0;
+            }
+
+            if (ifc_get_hwaddr(argv[2], (void *) hwaddr)) {
+                LOGW("Failed to retrieve HW addr for %s (%s)", argv[2], strerror(errno));
+            }
+
+            char *addr_s = strdup(inet_ntoa(addr));
+            char *mask_s = strdup(inet_ntoa(mask));
+            const char *updown, *brdcst, *loopbk, *ppp, *running, *multi;
+
+            updown =  (flags & IFF_UP)           ? "up" : "down";
+            brdcst =  (flags & IFF_BROADCAST)    ? " broadcast" : "";
+            loopbk =  (flags & IFF_LOOPBACK)     ? " loopback" : "";
+            ppp =     (flags & IFF_POINTOPOINT)  ? " point-to-point" : "";
+            running = (flags & IFF_RUNNING)      ? " running" : "";
+            multi =   (flags & IFF_MULTICAST)    ? " multicast" : "";
+
+            char *flag_s;
+
+            asprintf(&flag_s, "[%s%s%s%s%s%s]\n", updown, brdcst, loopbk, ppp, running, multi);
+
+            char *msg = NULL;
+            asprintf(&msg, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x %s %s %s",
+                     hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3], hwaddr[4], hwaddr[5],
+                     addr_s, mask_s, flag_s);
+
+            cli->sendMsg(ResponseCode::InterfaceGetInfoResult, msg, false);
+
+            free(addr_s);
+            free(mask_s);
+            free(flag_s);
+            free(msg);
+            return 0;
+        } else if (!strcmp(argv[1], "setcfg")) {
+            if (argc < 5) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                return 0;
+            }
+
+            struct in_addr addr, mask;
+            unsigned flags = 0;
+
+            if (!inet_aton(argv[3], &addr)) {
+                cli->sendMsg(ResponseCode::CommandParameterError, "Invalid address", false);
+                return 0;
+            }
+
+            if (!inet_aton(argv[4], &mask)) {
+                cli->sendMsg(ResponseCode::CommandParameterError, "Invalid netmask", false);
+                return 0;
+            }
+
+            ifc_init();
+            if (ifc_set_addr(argv[2], addr.s_addr)) {
+                cli->sendMsg(ResponseCode::OperationFailed, "Failed to set address", true);
+                return 0;
+            }
+
+            if (ifc_set_mask(argv[2], mask.s_addr)) {
+                cli->sendMsg(ResponseCode::OperationFailed, "Failed to set netmask", true);
+                return 0;
+            }
+
+            /* Process flags */
+            for (int i = 5; i < argc; i++) {
+                if (!strcmp(argv[i], "up")) {
+                    if (ifc_up(argv[2])) {
+                        LOGE("Error upping interface");
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to up interface", true);
+                        return 0;
+                    }
+                } else if (!strcmp(argv[i], "down")) {
+                    if (ifc_down(argv[2])) {
+                        LOGE("Error downing interface");
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to down interface", true);
+                        return 0;
+                    }
+                } else {
+                    cli->sendMsg(ResponseCode::CommandParameterError, "Flag unsupported", false);
+                    return 0;
+                }
+            }
+            cli->sendMsg(ResponseCode::CommandOkay, "Interface configuration set", false);
+            return 0;
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown interface cmd", false);
+            return 0;
+        }
+    }
     return 0;
 }
 
