@@ -16,9 +16,15 @@
 
 #include <stdlib.h>
 #include <errno.h>
+#include <fcntl.h>
+
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
+#include <dirent.h>
+
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
@@ -28,8 +34,6 @@
 #include "PppController.h"
 
 extern "C" int logwrap(int argc, const char **argv, int background);
-
-static char IPTABLES_PATH[] = "/system/bin/iptables";
 
 PppController::PppController() {
     mTtys = new TtyCollection();
@@ -55,6 +59,18 @@ int PppController::attachPppd(const char *tty, struct in_addr local,
         return -1;
     }
 
+    TtyCollection::iterator it;
+    for (it = mTtys->begin(); it != mTtys->end(); ++it) {
+        if (!strcmp(tty, *it)) {
+            break;
+        }
+    }
+    if (it == mTtys->end()) {
+        LOGE("Invalid tty '%s' specified", tty);
+        errno = -EINVAL;
+        return -1;
+    }
+
     if ((pid = fork()) < 0) {
         LOGE("fork failed (%s)", strerror(errno));
         return -1;
@@ -68,7 +84,7 @@ int PppController::attachPppd(const char *tty, struct in_addr local,
 
         asprintf(&lr, "%s:%s", l, r);
 
-        snprintf(dev, sizeof(dev), "/dev/%s", tty); // TODO: STOPSHIP Validate this
+        snprintf(dev, sizeof(dev), "/dev/%s", tty);
 
         // TODO: Deal with pppd bailing out after 99999 seconds of being started
         // but not getting a connection
@@ -92,13 +108,41 @@ int PppController::detachPppd(const char *tty) {
     }
 
     LOGD("Stopping PPPD services on port %s", tty);
-
     kill(mPid, SIGTERM);
+    waitpid(mPid, NULL, 0);
     mPid = 0;
+    LOGD("PPPD services on port %s stopped", tty);
     return 0;
 }
 
 TtyCollection *PppController::getTtyList() {
+    updateTtyList();
     return mTtys;
+}
+
+int PppController::updateTtyList() {
+    TtyCollection::iterator it;
+
+    for (it = mTtys->begin(); it != mTtys->end(); ++it) {
+        free(*it);
+    }
+    mTtys->clear();
+
+    DIR *d = opendir("/sys/class/tty");
+    if (!d) {
+        LOGE("Error opening /sys/class/tty (%s)", strerror(errno));
+        return -1;
+    }
+
+    struct dirent *de;
+    while ((de = readdir(d))) {
+        if (de->d_name[0] == '.')
+            continue;
+        if ((!strncmp(de->d_name, "tty", 3)) && (strlen(de->d_name) > 3)) {
+            mTtys->push_back(strdup(de->d_name));
+        }
+    }
+    closedir(d);
+    return 0;
 }
 

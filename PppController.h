@@ -37,6 +37,7 @@ public:
     TtyCollection *getTtyList();
 
 private:
+    int updateTtyList();
 };
 
 #endif
