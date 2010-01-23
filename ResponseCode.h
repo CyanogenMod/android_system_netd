@@ -33,7 +33,7 @@ public:
     static const int TetherStatusResult       = 210;
     static const int IpFwdStatusResult        = 211;
     static const int PanStatusResult          = 212;
-    static const int InterfaceGetInfoResult   = 213;
+    static const int InterfaceGetCfgResult    = 213;
 
     // 400 series - The command was accepted but the requested action
     // did not take place.

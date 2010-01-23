@@ -138,7 +138,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                      hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3], hwaddr[4], hwaddr[5],
                      addr_s, mask_s, flag_s);
 
-            cli->sendMsg(ResponseCode::InterfaceGetInfoResult, msg, false);
+            cli->sendMsg(ResponseCode::InterfaceGetCfgResult, msg, false);
 
             free(addr_s);
             free(mask_s);
