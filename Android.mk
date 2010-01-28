@@ -30,7 +30,7 @@ LOCAL_C_INCLUDES := $(KERNEL_HEADERS) -I../../frameworks/base/include/ \
 LOCAL_CFLAGS := 
 LOCAL_SHARED_LIBRARIES := libsysutils libcutils libnetutils
 
-ifeq ($(BOARD_HdAVE_BLUETOOTH),true)
+ifeq ($(BOARD_HAVE_BLUETOOTH),true)
   LOCAL_SHARED_LIBRARIES := $(LOCAL_SHARED_LIBRARIES) libbluedroid
   LOCAL_CFLAGS := $(LOCAL_CFLAGS) -DHAVE_BLUETOOTH
 endif

@@ -43,7 +43,7 @@ int main() {
 
     LOGI("Netd 1.0 starting");
 
-    signal(SIGCHLD, sigchld_handler);
+//    signal(SIGCHLD, sigchld_handler);
 
     if (!(nm = NetlinkManager::Instance())) {
         LOGE("Unable to create NetlinkManager");
