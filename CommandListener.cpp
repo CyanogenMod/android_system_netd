@@ -395,7 +395,10 @@ int CommandListener::PppdCmd::runCommand(SocketClient *cli,
     }
 
     if (!strcmp(argv[1], "attach")) {
-        struct in_addr l, r;
+        struct in_addr l, r, dns1, dns2;
+
+        memset(&dns1, sizeof(struct in_addr), 0);
+        memset(&dns2, sizeof(struct in_addr), 0);
 
         if (!inet_aton(argv[3], &l)) {
             cli->sendMsg(ResponseCode::CommandParameterError, "Invalid local address", false);
@@ -405,7 +408,15 @@ int CommandListener::PppdCmd::runCommand(SocketClient *cli,
             cli->sendMsg(ResponseCode::CommandParameterError, "Invalid remote address", false);
             return 0;
         }
-        rc = sPppCtrl->attachPppd(argv[2], l, r);
+        if ((argc > 3) && (!inet_aton(argv[5], &dns1))) {
+            cli->sendMsg(ResponseCode::CommandParameterError, "Invalid dns1 address", false);
+            return 0;
+        }
+        if ((argc > 4) && (!inet_aton(argv[6], &dns2))) {
+            cli->sendMsg(ResponseCode::CommandParameterError, "Invalid dns2 address", false);
+            return 0;
+        }
+        rc = sPppCtrl->attachPppd(argv[2], l, r, dns1, dns2);
     } else if (!strcmp(argv[1], "detach")) {
         rc = sPppCtrl->detachPppd(argv[2]);
     } else {

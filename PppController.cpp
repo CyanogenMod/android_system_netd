@@ -50,7 +50,8 @@ PppController::~PppController() {
 }
 
 int PppController::attachPppd(const char *tty, struct in_addr local,
-                              struct in_addr remote) {
+                              struct in_addr remote, struct in_addr dns1,
+                              struct in_addr dns2) {
     pid_t pid;
 
     if (mPid) {
@@ -79,6 +80,8 @@ int PppController::attachPppd(const char *tty, struct in_addr local,
     if (!pid) {
         char *l = strdup(inet_ntoa(local));
         char *r = strdup(inet_ntoa(remote));
+        char *d1 = strdup(inet_ntoa(dns1));
+        char *d2 = strdup(inet_ntoa(dns2));
         char dev[32];
         char *lr;
 
@@ -88,8 +91,8 @@ int PppController::attachPppd(const char *tty, struct in_addr local,
 
         // TODO: Deal with pppd bailing out after 99999 seconds of being started
         // but not getting a connection
-        if (execl("/system/bin/pppd", "/system/bin/pppd", "-detach", dev,
-                  "115200", lr, "debug", "lcp-max-configure", "99999", (char *) NULL)) {
+        if (execl("/system/bin/pppd", "/system/bin/pppd", "-detach", dev, "115200",
+                  lr, "ms-dns", d1, "ms-dns", d2, "debug", "lcp-max-configure", "99999", (char *) NULL)) {
             LOGE("execl failed (%s)", strerror(errno));
         }
         LOGE("Should never get here!");
@@ -145,4 +148,3 @@ int PppController::updateTtyList() {
     closedir(d);
     return 0;
 }
-

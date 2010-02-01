@@ -32,7 +32,8 @@ public:
     virtual ~PppController();
 
     int attachPppd(const char *tty, struct in_addr local,
-                   struct in_addr remote);
+                   struct in_addr remote, struct in_addr dns1,
+                   struct in_addr dns2);
     int detachPppd(const char *tty);
     TtyCollection *getTtyList();
 
