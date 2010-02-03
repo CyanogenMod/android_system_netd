@@ -52,7 +52,5 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
     } else if (!strcmp(subsys, "switch")) {
     } else if (!strcmp(subsys, "battery")) {
     } else if (!strcmp(subsys, "power_supply")) {
-    } else {
-        LOGE("Dropping %s netlink event", subsys);
     }
 }
