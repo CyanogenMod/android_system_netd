@@ -92,7 +92,7 @@ int PppController::attachPppd(const char *tty, struct in_addr local,
         // TODO: Deal with pppd bailing out after 99999 seconds of being started
         // but not getting a connection
         if (execl("/system/bin/pppd", "/system/bin/pppd", "-detach", dev, "115200",
-                  lr, "ms-dns", d1, "ms-dns", d2, "debug", "lcp-max-configure", "99999", (char *) NULL)) {
+                  lr, "ms-dns", d1, "ms-dns", d2, "lcp-max-configure", "99999", (char *) NULL)) {
             LOGE("execl failed (%s)", strerror(errno));
         }
         LOGE("Should never get here!");
