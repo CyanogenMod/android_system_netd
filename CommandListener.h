@@ -24,18 +24,27 @@
 #include "NatController.h"
 #include "PppController.h"
 #include "PanController.h"
+#include "SoftapController.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
     static NatController *sNatCtrl;
     static PppController *sPppCtrl;
     static PanController *sPanCtrl;
+    static SoftapController *sSoftapCtrl;
 
 public:
     CommandListener();
     virtual ~CommandListener() {}
 
 private:
+
+    class SoftapCmd : public NetdCommand {
+    public:
+        SoftapCmd();
+        virtual ~SoftapCmd() {}
+        int runCommand(SocketClient *c, int argc, char ** argv);
+    };
 
     class InterfaceCmd : public NetdCommand {
     public:

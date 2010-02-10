@@ -11,7 +11,7 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:=                                      \
                   main.cpp                             \
-		  CommandListener.cpp                  \
+                  CommandListener.cpp                  \
                   NetdCommand.cpp                      \
                   NetlinkManager.cpp                   \
                   NetlinkHandler.cpp                   \
@@ -19,7 +19,8 @@ LOCAL_SRC_FILES:=                                      \
                   TetherController.cpp                 \
                   NatController.cpp                    \
                   PppController.cpp                    \
-                  PanController.cpp
+                  PanController.cpp                    \
+                  SoftapController.cpp
 
 LOCAL_MODULE:= netd
 
