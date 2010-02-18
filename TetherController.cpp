@@ -168,11 +168,14 @@ bool TetherController::isTetheringStarted() {
     return (mDaemonPid == 0 ? false : true);
 }
 
+#define MAX_CMD_SIZE 1024
+
 int TetherController::setDnsForwarders(char **servers, int numServers) {
     int i;
-    char daemonCmd[1024];
+    char daemonCmd[MAX_CMD_SIZE];
 
     strcpy(daemonCmd, "update_dns");
+    int cmdLen = strlen(daemonCmd);
 
     mDnsForwarders->clear();
     for (i = 0; i < numServers; i++) {
@@ -185,6 +188,13 @@ int TetherController::setDnsForwarders(char **servers, int numServers) {
             mDnsForwarders->clear();
             return -1;
         }
+
+        cmdLen += strlen(servers[i]);
+        if (cmdLen + 2 >= MAX_CMD_SIZE) {
+            LOGD("Too many DNS servers listed");
+            break;
+        }
+
         strcat(daemonCmd, ":");
         strcat(daemonCmd, servers[i]);
         mDnsForwarders->push_back(a);
