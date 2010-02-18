@@ -45,6 +45,7 @@ NatController *CommandListener::sNatCtrl = NULL;
 PppController *CommandListener::sPppCtrl = NULL;
 PanController *CommandListener::sPanCtrl = NULL;
 SoftapController *CommandListener::sSoftapCtrl = NULL;
+UsbController *CommandListener::sUsbCtrl = NULL;
 
 CommandListener::CommandListener() :
                  FrameworkListener("netd") {
@@ -56,6 +57,7 @@ CommandListener::CommandListener() :
     registerCmd(new PppdCmd());
     registerCmd(new PanCmd());
     registerCmd(new SoftapCmd());
+    registerCmd(new UsbCmd());
 
     if (!sTetherCtrl)
         sTetherCtrl = new TetherController();
@@ -67,6 +69,8 @@ CommandListener::CommandListener() :
         sPanCtrl = new PanController();
     if (!sSoftapCtrl)
         sSoftapCtrl = new SoftapController();
+    if (!sUsbCtrl)
+        sUsbCtrl = new UsbController();
 }
 
 CommandListener::InterfaceCmd::InterfaceCmd() :
@@ -510,6 +514,44 @@ int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
 
     if (!rc) {
         cli->sendMsg(ResponseCode::CommandOkay, "Softap operation succeeded", false);
+    } else {
+        cli->sendMsg(ResponseCode::OperationFailed, "Softap operation failed", true);
+    }
+
+    return 0;
+}
+
+CommandListener::UsbCmd::UsbCmd() :
+                 NetdCommand("usb") {
+}
+
+int CommandListener::UsbCmd::runCommand(SocketClient *cli, int argc, char **argv) {
+    int rc = 0;
+
+    if (argc < 2) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Usb Missing argument", false);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "startrndis")) {
+        rc = sUsbCtrl->startRNDIS();
+    } else if (!strcmp(argv[1], "stoprndis")) {
+        rc = sUsbCtrl->stopRNDIS();
+    } else if (!strcmp(argv[1], "rndisstatus")) {
+        char *tmp = NULL;
+
+        asprintf(&tmp, "Usb RNDIS %s",
+                (sUsbCtrl->isRNDISStarted() ? "started" : "stopped"));
+        cli->sendMsg(ResponseCode::UsbRNDISStatusResult, tmp, false);
+        free(tmp);
+        return 0;
+    } else {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Usb Unknown cmd", false);
+        return 0;
+    }
+
+    if (!rc) {
+        cli->sendMsg(ResponseCode::CommandOkay, "Usb operation succeeded", false);
     } else {
         cli->sendMsg(ResponseCode::OperationFailed, "Softap operation failed", true);
     }

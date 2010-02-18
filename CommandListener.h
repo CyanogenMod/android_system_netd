@@ -25,6 +25,7 @@
 #include "PppController.h"
 #include "PanController.h"
 #include "SoftapController.h"
+#include "UsbController.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
@@ -32,12 +33,20 @@ class CommandListener : public FrameworkListener {
     static PppController *sPppCtrl;
     static PanController *sPanCtrl;
     static SoftapController *sSoftapCtrl;
+    static UsbController *sUsbCtrl;
 
 public:
     CommandListener();
     virtual ~CommandListener() {}
 
 private:
+
+    class UsbCmd : public NetdCommand {
+    public:
+        UsbCmd();
+        virtual ~UsbCmd() {}
+        int runCommand(SocketClient *c, int argc, char ** argv);
+    };
 
     class SoftapCmd : public NetdCommand {
     public:

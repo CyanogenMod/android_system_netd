@@ -20,7 +20,8 @@ LOCAL_SRC_FILES:=                                      \
                   NatController.cpp                    \
                   PppController.cpp                    \
                   PanController.cpp                    \
-                  SoftapController.cpp
+                  SoftapController.cpp                 \
+                  UsbController.cpp
 
 LOCAL_MODULE:= netd
 
