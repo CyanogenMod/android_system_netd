@@ -35,6 +35,7 @@ public:
     static const int PanStatusResult          = 212;
     static const int InterfaceGetCfgResult    = 213;
     static const int SoftapStatusResult       = 214;
+    static const int UsbRNDISStatusResult     = 215;
 
     // 400 series - The command was accepted but the requested action
     // did not take place.
@@ -46,5 +47,6 @@ public:
     static const int CommandParameterError = 501;
 
     // 600 series - Unsolicited broadcasts
+    static const int InterfaceChange        = 600;
 };
 #endif

@@ -18,11 +18,13 @@
 #define _NETLINKHANDLER_H
 
 #include <sysutils/NetlinkListener.h>
+#include "NetlinkManager.h"
 
 class NetlinkHandler: public NetlinkListener {
+    NetlinkManager *mNm;
 
 public:
-    NetlinkHandler(int listenerSocket);
+    NetlinkHandler(NetlinkManager *nm, int listenerSocket);
     virtual ~NetlinkHandler();
 
     int start(void);
@@ -30,5 +32,9 @@ public:
 
 protected:
     virtual void onEvent(NetlinkEvent *evt);
+
+    void notifyInterfaceAdded(const char *name);
+    void notifyInterfaceRemoved(const char *name);
+    void notifyInterfaceChanged(const char *name, bool isUp);
 };
 #endif

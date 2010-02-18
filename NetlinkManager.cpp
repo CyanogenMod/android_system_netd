@@ -72,7 +72,7 @@ int NetlinkManager::start() {
         return -1;
     }
 
-    mHandler = new NetlinkHandler(mSock);
+    mHandler = new NetlinkHandler(this, mSock);
     if (mHandler->start()) {
         LOGE("Unable to start NetlinkHandler: %s", strerror(errno));
         return -1;
