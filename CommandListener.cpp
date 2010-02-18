@@ -139,7 +139,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
 
             char *flag_s;
 
-            asprintf(&flag_s, "[%s%s%s%s%s%s]\n", updown, brdcst, loopbk, ppp, running, multi);
+            asprintf(&flag_s, "[%s%s%s%s%s%s]", updown, brdcst, loopbk, ppp, running, multi);
 
             char *msg = NULL;
             asprintf(&msg, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x %s %s %s",
@@ -154,10 +154,12 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             free(msg);
             return 0;
         } else if (!strcmp(argv[1], "setcfg")) {
+            // arglist: iface addr mask [flags]
             if (argc < 5) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                 return 0;
             }
+            LOGD("Setting iface cfg");
 
             struct in_addr addr, mask;
             unsigned flags = 0;
@@ -184,19 +186,41 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             }
 
             /* Process flags */
+            /* read from "[XX" arg to "YY]" arg */
+            bool bStarted = false;
             for (int i = 5; i < argc; i++) {
-                if (!strcmp(argv[i], "up")) {
+                char *flag = argv[i];
+                if (!bStarted) {
+                    if (*flag == '[') {
+                        flag++;
+                        bStarted = true;
+                    } else {
+                        continue;
+                    }
+                }
+                int len = strlen(flag);
+                if (flag[len-1] == ']') {
+                    i = argc;  // stop after this loop
+                    flag[len-1] = 0;
+                }
+                if (!strcmp(flag, "up")) {
+                    LOGD("Trying to bring up %s", argv[2]);
                     if (ifc_up(argv[2])) {
                         LOGE("Error upping interface");
                         cli->sendMsg(ResponseCode::OperationFailed, "Failed to up interface", true);
                         return 0;
                     }
-                } else if (!strcmp(argv[i], "down")) {
+                } else if (!strcmp(flag, "down")) {
+                    LOGD("Trying to bring down %s", argv[2]);
                     if (ifc_down(argv[2])) {
                         LOGE("Error downing interface");
                         cli->sendMsg(ResponseCode::OperationFailed, "Failed to down interface", true);
                         return 0;
                     }
+                } else if (!strcmp(flag, "broadcast")) {
+                    LOGD("broadcast flag ignored");
+                } else if (!strcmp(flag, "multicast")) {
+                    LOGD("multicast flag ignored");
                 } else {
                     cli->sendMsg(ResponseCode::CommandParameterError, "Flag unsupported", false);
                     return 0;
