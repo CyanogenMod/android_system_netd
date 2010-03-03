@@ -56,5 +56,5 @@ bool UsbController::isRNDISStarted() {
     char value=0;
     int fd = open("/sys/class/usb_composite/rndis/enable", O_RDWR);
     read(fd, &value, 1);
-    return (value == 1 ? true : false);
+    return (value == '1' ? true : false);
 }
