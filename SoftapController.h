@@ -18,12 +18,18 @@
 #define _SOFTAP_CONTROLLER_H
 
 #include <linux/in.h>
-
+#include <net/if.h>
 #include <utils/List.h>
 
-class SoftapController {
-    pid_t mPid;
+#define SOFTAP_MAX_BUFFER_SIZE	4096
 
+class SoftapController {
+    char mBuf[SOFTAP_MAX_BUFFER_SIZE];
+    char mIface[IFNAMSIZ];
+    pid_t mPid;
+    int mSock;
+
+    int getPrivFuncNum(char *iface, const char *fname);
 public:
     SoftapController();
     virtual ~SoftapController();
