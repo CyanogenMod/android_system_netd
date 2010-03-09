@@ -30,6 +30,7 @@ class SoftapController {
     int mSock;
 
     int getPrivFuncNum(char *iface, const char *fname);
+    int addParam(int pos, const char *cmd, const char *arg);
 public:
     SoftapController();
     virtual ~SoftapController();

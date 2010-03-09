@@ -60,11 +60,6 @@ int SoftapController::getPrivFuncNum(char *iface, const char *fname) {
         return ret;
     }
     priv_ptr = (struct iw_priv_args *)wrq.u.data.pointer;
-#if 0
-    for(i=0;(i < wrq.u.data.length);i++) {
-        LOGE("%s: [%x] %s\n", __func__, priv_ptr[i].cmd, priv_ptr[i].name);
-    }
-#endif
     for(i=0;(i < wrq.u.data.length);i++) {
         if (strcmp(priv_ptr[i].name, fname) == 0)
             return priv_ptr[i].cmd;
@@ -98,7 +93,6 @@ int SoftapController::startSoftap() {
         /* start hostapd */
         return ret;
     } else {
-        LOGD("Softap Started: %s", mIface);
         fnum = getPrivFuncNum(mIface, "AP_BSS_START");
         if (fnum < 0) {
             LOGE("Softap start - function not supported");
@@ -125,13 +119,12 @@ int SoftapController::stopSoftap() {
     struct iwreq wrq;
     int fnum, ret;
 
-    LOGD("Softap stop");
     if (mPid == 0) {
         LOGE("Softap already stopped");
         return 0;
     }
     if (mSock < 0) {
-        LOGE("Failed to open socket");
+        LOGE("Softap stop - failed to open socket");
         return -1;
     }
     fnum = getPrivFuncNum(mIface, "WL_AP_STOP");
@@ -158,23 +151,39 @@ bool SoftapController::isSoftapStarted() {
     return (mPid != 0 ? true : false);
 }
 
+int SoftapController::addParam(int pos, const char *cmd, const char *arg)
+{
+    if (pos < 0)
+        return pos;
+    if ((unsigned)(pos + strlen(cmd) + strlen(arg) + 1) >= sizeof(mBuf)) {
+        LOGE("Command line is too big");
+        return -1;
+    }
+    pos += sprintf(&mBuf[pos], "%s=%s,", cmd, arg);
+    return pos;
+}
+
 /*
  * Arguments:
  *      argv[2] - wlan interface
  *      argv[3] - softap interface
- *      argv[4] - command line
+ *      argv[4] - SSID
+ *	argv[5] - Security
+ *	argv[6] - Key
+ *	argv[7] - Channel
+ *	argv[8] - Preamble
+ *	argv[9] - Max SCB
  */
 int SoftapController::setSoftap(int argc, char *argv[]) {
     struct iwreq wrq;
-    int fnum, ret;
+    int fnum, ret, i = 0;
 
-    LOGD("Softap set");
     if (mSock < 0) {
-        LOGE("Failed to open socket");
+        LOGE("Softap set - failed to open socket");
         return -1;
     }
     if (argc < 4) {
-        LOGE("Missing arguments");
+        LOGE("Softap set - missing arguments");
         return -1;
     }
 
@@ -186,9 +195,44 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
 
     strncpy(mIface, argv[3], sizeof(mIface));
     strncpy(wrq.ifr_name, argv[2], sizeof(wrq.ifr_name));
-    if (argc >= 4) {
-        strncpy(mBuf, argv[4], sizeof(mBuf));
+
+    /* Create command line */
+    i = addParam(i, "ASCII_CMD", "AP_CFG");
+    if (argc > 4) {
+        i = addParam(i, "SSID", argv[4]);
+    } else {
+        i = addParam(i, "SSID", "AndroidAP");
     }
+    if (argc > 5) {
+        i = addParam(i, "SEC", argv[5]);
+    } else {
+        i = addParam(i, "SEC", "open");
+    }
+    if (argc > 6) {
+        i = addParam(i, "KEY", argv[6]);
+    } else {
+        i = addParam(i, "KEY", "12345678");
+    }
+    if (argc > 7) {
+        i = addParam(i, "CHANNEL", argv[7]);
+    } else {
+        i = addParam(i, "CHANNEL", "6");
+    }
+    if (argc > 8) {
+        i = addParam(i, "PREAMBLE", argv[8]);
+    } else {
+        i = addParam(i, "PREAMBLE", "0");
+    }
+    if (argc > 9) {
+        i = addParam(i, "MAX_SCB", argv[9]);
+    } else {
+        i = addParam(i, "MAX_SCB", "8");
+    }
+    if ((i < 0) || ((unsigned)(i + 4) >= sizeof(mBuf))) {
+        LOGE("Softap set - command is too big");
+        return i;
+    }
+    sprintf(&mBuf[i], "END");
 
     wrq.u.data.length = strlen(mBuf) + 1;
     wrq.u.data.pointer = mBuf;
