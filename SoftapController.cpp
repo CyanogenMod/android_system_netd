@@ -32,6 +32,7 @@
 #include <cutils/log.h>
 
 #include "SoftapController.h"
+#include "sha1.h"
 
 SoftapController::SoftapController() {
     mPid = 0;
@@ -175,8 +176,11 @@ int SoftapController::addParam(int pos, const char *cmd, const char *arg)
  *	argv[9] - Max SCB
  */
 int SoftapController::setSoftap(int argc, char *argv[]) {
+    unsigned char psk[MAX_SHA1_LEN];
+    char psk_str[2*MAX_SHA1_LEN+1];
     struct iwreq wrq;
     int fnum, ret, i = 0;
+    char *ssid;
 
     if (mSock < 0) {
         LOGE("Softap set - failed to open socket");
@@ -199,17 +203,24 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
     /* Create command line */
     i = addParam(i, "ASCII_CMD", "AP_CFG");
     if (argc > 4) {
-        i = addParam(i, "SSID", argv[4]);
+        ssid = argv[4];
     } else {
-        i = addParam(i, "SSID", "AndroidAP");
+        ssid = (char *)"AndroidAP";
     }
+    i = addParam(i, "SSID", ssid);
     if (argc > 5) {
         i = addParam(i, "SEC", argv[5]);
     } else {
         i = addParam(i, "SEC", "open");
     }
     if (argc > 6) {
-        i = addParam(i, "KEY", argv[6]);
+        int j;
+        pbkdf2_sha1(argv[6], ssid, strlen(ssid), 4096, psk, MAX_SHA1_LEN);
+        for(j=0;(j < MAX_SHA1_LEN);j++) {
+            sprintf(&psk_str[j<<1], "%02x", psk[j]);
+        }
+        psk_str[j<<1] = '\0';
+        i = addParam(i, "KEY", psk_str);
     } else {
         i = addParam(i, "KEY", "12345678");
     }

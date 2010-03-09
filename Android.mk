@@ -21,7 +21,8 @@ LOCAL_SRC_FILES:=                                      \
                   PppController.cpp                    \
                   PanController.cpp                    \
                   SoftapController.cpp                 \
-                  UsbController.cpp
+                  UsbController.cpp                    \
+                  sha1.c
 
 LOCAL_MODULE:= netd
 
@@ -29,7 +30,7 @@ LOCAL_C_INCLUDES := $(KERNEL_HEADERS) -I../../frameworks/base/include/ \
                     $(LOCAL_PATH)/../bluetooth/bluedroid/include \
                     $(LOCAL_PATH)/../bluetooth/bluez-clean-headers
 
-LOCAL_CFLAGS := 
+LOCAL_CFLAGS := -DINTERNAL_SHA1 -DCONFIG_CRYPTO_INTERNAL -DCONFIG_NO_T_PRF -DCONFIG_NO_TLS_PRF
 LOCAL_SHARED_LIBRARIES := libsysutils libcutils libnetutils
 
 ifeq ($(BOARD_HAVE_BLUETOOTH),true)
