@@ -35,6 +35,8 @@ public:
     SoftapController();
     virtual ~SoftapController();
 
+    int startDriver(char *iface);
+    int stopDriver(char *iface);
     int startSoftap();
     int stopSoftap();
     bool isSoftapStarted();

@@ -68,19 +68,70 @@ int SoftapController::getPrivFuncNum(char *iface, const char *fname) {
     return -1;
 }
 
+int SoftapController::startDriver(char *iface) {
+    struct iwreq wrq;
+    int fnum, ret;
+
+    if (mSock < 0) {
+        LOGE("Softap start - failed to open socket");
+        return -1;
+    }
+    if (!iface || (iface[0] == '\0')) {
+        LOGD("Softap start - wrong interface");
+        iface = mIface;
+    }
+    fnum = getPrivFuncNum(iface, "START");
+    if (fnum < 0) {
+        LOGE("Softap start - function not supported");
+        return -1;
+    }
+    strncpy(wrq.ifr_name, iface, sizeof(wrq.ifr_name));
+    wrq.u.data.length = 0;
+    wrq.u.data.pointer = mBuf;
+    wrq.u.data.flags = 0;
+    ret = ioctl(mSock, fnum, &wrq);
+    LOGD("Softap start: %d", ret);
+    return ret;
+}
+
+int SoftapController::stopDriver(char *iface) {
+    struct iwreq wrq;
+    int fnum, ret;
+
+    if (mSock < 0) {
+        LOGE("Softap stop - failed to open socket");
+        return -1;
+    }
+    if (!iface || (iface[0] == '\0')) {
+        LOGD("Softap start - wrong interface");
+        iface = mIface;
+    }
+    fnum = getPrivFuncNum(iface, "STOP");
+    if (fnum < 0) {
+        LOGE("Softap stop - function not supported");
+        return -1;
+    }
+    strncpy(wrq.ifr_name, iface, sizeof(wrq.ifr_name));
+    wrq.u.data.length = 0;
+    wrq.u.data.pointer = mBuf;
+    wrq.u.data.flags = 0;
+    ret = ioctl(mSock, fnum, &wrq);
+    LOGD("Softap stop: %d", ret);
+    return ret;
+}
+
 int SoftapController::startSoftap() {
     struct iwreq wrq;
     pid_t pid = 1;
     int fnum, ret = 0;
 
-    LOGD("Softap start");
     if (mPid) {
         LOGE("Softap already started");
         errno = EBUSY;
         return -1;
     }
     if (mSock < 0) {
-        LOGE("Failed to open socket");
+        LOGE("Softap startap - failed to open socket");
         return -1;
     }
 #if 0
@@ -96,7 +147,7 @@ int SoftapController::startSoftap() {
     } else {
         fnum = getPrivFuncNum(mIface, "AP_BSS_START");
         if (fnum < 0) {
-            LOGE("Softap start - function not supported");
+            LOGE("Softap startap - function not supported");
             return -1;
         }
         strncpy(wrq.ifr_name, mIface, sizeof(wrq.ifr_name));
@@ -105,11 +156,11 @@ int SoftapController::startSoftap() {
         wrq.u.data.flags = 0;
         ret = ioctl(mSock, fnum, &wrq);
         if (ret) {
-            LOGE("Softap start - failed: %d", ret);
+            LOGE("Softap startap - failed: %d", ret);
         }
         else {
            mPid = pid;
-           LOGD("Softap start - Ok");
+           LOGD("Softap startap - Ok");
         }
     }
     return ret;
@@ -125,12 +176,12 @@ int SoftapController::stopSoftap() {
         return 0;
     }
     if (mSock < 0) {
-        LOGE("Softap stop - failed to open socket");
+        LOGE("Softap stopap - failed to open socket");
         return -1;
     }
     fnum = getPrivFuncNum(mIface, "AP_BSS_STOP");
     if (fnum < 0) {
-        LOGE("Softap stop - function not supported");
+        LOGE("Softap stopap - function not supported");
         return -1;
     }
     strncpy(wrq.ifr_name, mIface, sizeof(wrq.ifr_name));
