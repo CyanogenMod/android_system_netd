@@ -258,3 +258,53 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
     }
     return ret;
 }
+
+/*
+ * Arguments:
+ *	argv[2] - interface name
+ *	argv[3] - AP or STA
+ */
+int SoftapController::fwReloadSoftap(int argc, char *argv[])
+{
+    struct iwreq wrq;
+    int fnum, ret, i = 0;
+    char *iface;
+
+    if (mSock < 0) {
+        LOGE("Softap fwrealod - failed to open socket");
+        return -1;
+    }
+    if (argc < 4) {
+        LOGE("Softap fwreload - missing arguments");
+        return -1;
+    }
+
+    iface = argv[2];
+    fnum = getPrivFuncNum(iface, "WL_FW_RELOAD");
+    if (fnum < 0) {
+        LOGE("Softap fwReload - function not supported");
+        return -1;
+    }
+
+    if (strcmp(argv[3], "AP") == 0) {
+#ifdef WIFI_DRIVER_FW_AP_PATH
+        sprintf(mBuf, "FW_PATH=%s", WIFI_DRIVER_FW_AP_PATH);
+#endif
+    } else {
+#ifdef WIFI_DRIVER_FW_STA_PATH
+        sprintf(mBuf, "FW_PATH=%s", WIFI_DRIVER_FW_STA_PATH);
+#endif
+    }
+    strncpy(wrq.ifr_name, iface, sizeof(wrq.ifr_name));
+    wrq.u.data.length = strlen(mBuf) + 1;
+    wrq.u.data.pointer = mBuf;
+    wrq.u.data.flags = 0;
+    ret = ioctl(mSock, fnum, &wrq);
+    if (ret) {
+        LOGE("Softap fwReload - failed: %d", ret);
+    }
+    else {
+        LOGD("Softap fwReload - Ok");
+    }
+    return ret;
+}

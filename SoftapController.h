@@ -39,6 +39,7 @@ public:
     int stopSoftap();
     bool isSoftapStarted();
     int setSoftap(int argc, char *argv[]);
+    int fwReloadSoftap(int argc, char *argv[]);
 };
 
 #endif

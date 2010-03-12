@@ -510,7 +510,7 @@ CommandListener::SoftapCmd::SoftapCmd() :
 
 int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
                                         int argc, char **argv) {
-    int rc = 0;
+    int rc = 0, flag = 0;
 
     if (argc < 2) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Softap Missing argument", false);
@@ -521,6 +521,8 @@ int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
         rc = sSoftapCtrl->startSoftap();
     } else if (!strcmp(argv[1], "stop")) {
         rc = sSoftapCtrl->stopSoftap();
+    } else if (!strcmp(argv[1], "fwreload")) {
+        rc = sSoftapCtrl->fwReloadSoftap(argc, argv);
     } else if (!strcmp(argv[1], "status")) {
         char *tmp = NULL;
 
