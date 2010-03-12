@@ -128,7 +128,7 @@ int SoftapController::stopSoftap() {
         LOGE("Softap stop - failed to open socket");
         return -1;
     }
-    fnum = getPrivFuncNum(mIface, "WL_AP_STOP");
+    fnum = getPrivFuncNum(mIface, "AP_BSS_STOP");
     if (fnum < 0) {
         LOGE("Softap stop - function not supported");
         return -1;
@@ -191,7 +191,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         return -1;
     }
 
-    fnum = getPrivFuncNum(argv[2], "WL_AP_CFG");
+    fnum = getPrivFuncNum(argv[2], "AP_SET_CFG");
     if (fnum < 0) {
         LOGE("Softap set - function not supported");
         return -1;
