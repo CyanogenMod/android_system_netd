@@ -28,11 +28,13 @@
 
 #include <linux/wireless.h>
 
+#include <openssl/evp.h>
+#include <openssl/sha.h>
+
 #define LOG_TAG "SoftapController"
 #include <cutils/log.h>
 
 #include "SoftapController.h"
-#include "sha1.h"
 
 SoftapController::SoftapController() {
     mPid = 0;
@@ -227,8 +229,8 @@ int SoftapController::addParam(int pos, const char *cmd, const char *arg)
  *	argv[9] - Max SCB
  */
 int SoftapController::setSoftap(int argc, char *argv[]) {
-    unsigned char psk[MAX_SHA1_LEN];
-    char psk_str[2*MAX_SHA1_LEN+1];
+    unsigned char psk[SHA256_DIGEST_LENGTH];
+    char psk_str[2*SHA256_DIGEST_LENGTH+1];
     struct iwreq wrq;
     int fnum, ret, i = 0;
     char *ssid;
@@ -266,8 +268,11 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
     }
     if (argc > 6) {
         int j;
-        pbkdf2_sha1(argv[6], ssid, strlen(ssid), 4096, psk, MAX_SHA1_LEN);
-        for(j=0;(j < MAX_SHA1_LEN);j++) {
+        // Use the PKCS#5 PBKDF2 with 4096 iterations
+        PKCS5_PBKDF2_HMAC_SHA1(argv[6], strlen(argv[6]),
+                reinterpret_cast<const unsigned char *>(ssid), strlen(ssid),
+                4096, SHA256_DIGEST_LENGTH, psk);
+        for (j=0; j < SHA256_DIGEST_LENGTH; j++) {
             sprintf(&psk_str[j<<1], "%02x", psk[j]);
         }
         psk_str[j<<1] = '\0';

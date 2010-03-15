@@ -21,16 +21,16 @@ LOCAL_SRC_FILES:=                                      \
                   PppController.cpp                    \
                   PanController.cpp                    \
                   SoftapController.cpp                 \
-                  UsbController.cpp                    \
-                  sha1.c
+                  UsbController.cpp
 
 LOCAL_MODULE:= netd
 
-LOCAL_C_INCLUDES := $(KERNEL_HEADERS) -I../../frameworks/base/include/ \
+LOCAL_C_INCLUDES := $(KERNEL_HEADERS) \
                     $(LOCAL_PATH)/../bluetooth/bluedroid/include \
-                    $(LOCAL_PATH)/../bluetooth/bluez-clean-headers
+                    $(LOCAL_PATH)/../bluetooth/bluez-clean-headers \
+                    external/openssl/include
 
-LOCAL_CFLAGS := -DINTERNAL_SHA1 -DCONFIG_CRYPTO_INTERNAL -DCONFIG_NO_T_PRF -DCONFIG_NO_TLS_PRF
+LOCAL_CFLAGS :=
 ifdef WIFI_DRIVER_FW_STA_PATH
 LOCAL_CFLAGS += -DWIFI_DRIVER_FW_STA_PATH=\"$(WIFI_DRIVER_FW_STA_PATH)\"
 endif
@@ -38,7 +38,7 @@ ifdef WIFI_DRIVER_FW_AP_PATH
 LOCAL_CFLAGS += -DWIFI_DRIVER_FW_AP_PATH=\"$(WIFI_DRIVER_FW_AP_PATH)\"
 endif
 
-LOCAL_SHARED_LIBRARIES := libsysutils libcutils libnetutils
+LOCAL_SHARED_LIBRARIES := libsysutils libcutils libnetutils libcrypto
 
 ifeq ($(BOARD_HAVE_BLUETOOTH),true)
   LOCAL_SHARED_LIBRARIES := $(LOCAL_SHARED_LIBRARIES) libbluedroid
