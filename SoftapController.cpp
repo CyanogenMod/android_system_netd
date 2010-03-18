@@ -163,6 +163,7 @@ int SoftapController::startSoftap() {
         else {
            mPid = pid;
            LOGD("Softap startap - Ok");
+           usleep(AP_BSS_START_DELAY);
         }
     }
     return ret;
@@ -198,6 +199,7 @@ int SoftapController::stopSoftap() {
 #endif
     mPid = 0;
     LOGD("Softap service stopped: %d", ret);
+    usleep(AP_BSS_STOP_DELAY);
     return ret;
 }
 
@@ -311,6 +313,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
     }
     else {
         LOGD("Softap set - Ok");
+        usleep(AP_SET_CFG_DELAY);
     }
     return ret;
 }
