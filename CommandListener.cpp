@@ -324,17 +324,24 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
         }
 
         if (!strcmp(argv[1], "start")) {
-            struct in_addr s, e;
+            if (argc % 2 == 1) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError, "Bad number of arguments", false);
+                return 0;
+            }
 
-            if (!inet_aton(argv[2], &s)) {
-                cli->sendMsg(ResponseCode::CommandParameterError, "Invalid start address", false);
-                return 0;
+            int num_addrs = argc - 2;
+            int arg_index = 2;
+            int array_index = 0;
+            in_addr *addrs = (in_addr *)malloc(sizeof(in_addr) * num_addrs);
+            while (array_index < num_addrs) {
+                if (!inet_aton(argv[arg_index++], &(addrs[array_index++]))) {
+                    cli->sendMsg(ResponseCode::CommandParameterError, "Invalid address", false);
+                    free(addrs);
+                    return 0;
+                }
             }
-            if (!inet_aton(argv[3], &e)) {
-                cli->sendMsg(ResponseCode::CommandParameterError, "Invalid end address", false);
-                return 0;
-            }
-            rc = sTetherCtrl->startTethering(s, e);
+            rc = sTetherCtrl->startTethering(num_addrs, addrs);
+            free(addrs);
         } else if (!strcmp(argv[1], "interface")) {
             if (!strcmp(argv[2], "add")) {
                 rc = sTetherCtrl->tetherInterface(argv[3]);

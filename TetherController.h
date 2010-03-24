@@ -37,7 +37,8 @@ public:
     int setIpFwdEnabled(bool enable);
     bool getIpFwdEnabled();
 
-    int startTethering(struct in_addr dhcpStart, struct in_addr dhcpEnd);
+    int startTethering(int num_addrs, struct in_addr* addrs);
+
     int stopTethering();
     bool isTetheringStarted();
 

@@ -86,8 +86,7 @@ bool TetherController::getIpFwdEnabled() {
     return (enabled  == '1' ? true : false);
 }
 
-int TetherController::startTethering(struct in_addr dhcpStart, struct in_addr dhcpEnd) {
-
+int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
     if (mDaemonPid != 0) {
         LOGE("Tethering already started");
         errno = EBUSY;
@@ -124,17 +123,27 @@ int TetherController::startTethering(struct in_addr dhcpStart, struct in_addr dh
             }
             close(pipefd[0]);
         }
-        char *start = strdup(inet_ntoa(dhcpStart));
-        char *end = strdup(inet_ntoa(dhcpEnd));
-        char *range;
 
-        asprintf(&range, "--dhcp-range=%s,%s,1h", start, end);
+        int num_processed_args = 4 + (num_addrs/2) + 1; // 1 null for termination
+        char **args = (char **)malloc(sizeof(char *) * num_processed_args);
+        args[num_processed_args - 1] = NULL;
+        args[0] = (char *)"/system/bin/dnsmasq";
+        args[1] = (char *)"--no-daemon";
+        args[2] = (char *)"--no-resolv";
+        args[3] = (char *)"--no-poll";
 
-        if (execl("/system/bin/dnsmasq", "/system/bin/dnsmasq", "--no-daemon", "--no-resolv",
-                  "--no-poll", "--no-hosts", range, (char *) NULL)) {
+        int nextArg = 4;
+        for (int addrIndex=0; addrIndex < num_addrs;) {
+            char *start = strdup(inet_ntoa(addrs[addrIndex++]));
+            char *end = strdup(inet_ntoa(addrs[addrIndex++]));
+            asprintf(&(args[nextArg++]),"--dhcp-range=%s,%s,1h", start, end);
+        }
+
+        if (execv(args[0], args)) {
             LOGE("execl failed (%s)", strerror(errno));
         }
         LOGE("Should never get here!");
+        free(args);
         return 0;
     } else {
         close(pipefd[0]);
@@ -237,4 +246,3 @@ int TetherController::untetherInterface(const char *interface) {
 InterfaceCollection *TetherController::getTetheredInterfaceList() {
     return mInterfaces;
 }
-
