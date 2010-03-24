@@ -31,9 +31,12 @@ public:
     int disableNat(const char *intIface, const char *extIface);
 
 private:
+    int natCount;
+
     int setDefaults();
     int runIptablesCmd(const char *cmd);
     bool interfaceExists(const char *iface);
+    int doNatCommands(const char *intIface, const char *extIface, bool add);
 };
 
 #endif

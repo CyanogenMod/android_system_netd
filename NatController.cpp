@@ -32,6 +32,7 @@ extern "C" int logwrap(int argc, const char **argv, int background);
 static char IPTABLES_PATH[] = "/system/bin/iptables";
 
 NatController::NatController() {
+    natCount = 0;
 }
 
 NatController::~NatController() {
@@ -87,8 +88,7 @@ bool NatController::interfaceExists(const char *iface) {
     return true;
 }
 
-// TODO: Make this work for multiple masqueraded networks
-int NatController::enableNat(const char *intIface, const char *extIface) {
+int NatController::doNatCommands(const char *intIface, const char *extIface, bool add) {
     char cmd[255];
 
     if (!interfaceExists(intIface) || !interfaceExists (extIface)) {
@@ -98,26 +98,50 @@ int NatController::enableNat(const char *intIface, const char *extIface) {
     }
 
     snprintf(cmd, sizeof(cmd),
-             "-A FORWARD -i %s -o %s -m state --state ESTABLISHED,RELATED -j ACCEPT",
+             "-%s FORWARD -i %s -o %s -m state --state ESTABLISHED,RELATED -j ACCEPT",
+             (add ? "A" : "D"),
              extIface, intIface);
     if (runIptablesCmd(cmd)) {
         return -1;
     }
 
-    snprintf(cmd, sizeof(cmd), "-A FORWARD -i %s -o %s -j ACCEPT", intIface, extIface);
+    snprintf(cmd, sizeof(cmd), "-%s FORWARD -i %s -o %s -j ACCEPT", (add ? "A" : "D"),
+            intIface, extIface);
     if (runIptablesCmd(cmd)) {
         return -1;
     }
 
-    snprintf(cmd, sizeof(cmd), "-t nat -A POSTROUTING -o %s -j MASQUERADE", extIface);
-    if (runIptablesCmd(cmd)) {
-        return -1;
+    if (add && natCount == 0) {
+        snprintf(cmd, sizeof(cmd), "-t nat -A POSTROUTING -o %s -j MASQUERADE", extIface);
+        if (runIptablesCmd(cmd)) {
+            return -1;
+        }
+    } else if (!add) {
+        snprintf(cmd, sizeof(cmd), "-t nat -D POSTROUTING -o %s -j MASQUERADE", extIface);
+        if (runIptablesCmd(cmd)) {
+            return -1;
+        }
     }
 
     return 0;
 }
 
-// TODO: Make this work for multiple masqueraded networks
+int NatController::enableNat(const char *intIface, const char *extIface) {
+    natCount++;
+    return doNatCommands(intIface, extIface, true);
+    natCount++;
+}
+
 int NatController::disableNat(const char *intIface, const char *extIface) {
-    return setDefaults();
+    if (natCount > 0) {
+        if (natCount == 1) {
+            return setDefaults();
+        } else {
+            return doNatCommands(intIface, extIface, false);
+        }
+        natCount--;
+    } else {
+        LOGE("Trying to disableNat with none enabled!");
+        return setDefaults();
+    }
 }
