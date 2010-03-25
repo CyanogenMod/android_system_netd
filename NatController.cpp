@@ -91,6 +91,17 @@ bool NatController::interfaceExists(const char *iface) {
 int NatController::doNatCommands(const char *intIface, const char *extIface, bool add) {
     char cmd[255];
 
+    // handle decrement to 0 case (do reset to defaults) and erroneous dec below 0
+    if (add == false) {
+        if (natCount <= 1) {
+            int ret = setDefaults();
+            if (ret == 0) {
+                natCount=0;
+            }
+            return ret;
+        }
+    }
+
     if (!interfaceExists(intIface) || !interfaceExists (extIface)) {
         LOGE("Invalid interface specified");
         errno = ENODEV;
@@ -108,40 +119,36 @@ int NatController::doNatCommands(const char *intIface, const char *extIface, boo
     snprintf(cmd, sizeof(cmd), "-%s FORWARD -i %s -o %s -j ACCEPT", (add ? "A" : "D"),
             intIface, extIface);
     if (runIptablesCmd(cmd)) {
+        // unwind what's been done, but don't care about success - what more could we do?
+        snprintf(cmd, sizeof(cmd),
+                 "-%s FORWARD -i %s -o %s -m state --state ESTABLISHED,RELATED -j ACCEPT",
+                 (!add ? "A" : "D"),
+                 extIface, intIface);
         return -1;
     }
 
+    // add this if we are the first added nat
     if (add && natCount == 0) {
         snprintf(cmd, sizeof(cmd), "-t nat -A POSTROUTING -o %s -j MASQUERADE", extIface);
         if (runIptablesCmd(cmd)) {
-            return -1;
-        }
-    } else if (!add) {
-        snprintf(cmd, sizeof(cmd), "-t nat -D POSTROUTING -o %s -j MASQUERADE", extIface);
-        if (runIptablesCmd(cmd)) {
+            // unwind what's been done, but don't care about success - what more could we do?
+            setDefaults();;
             return -1;
         }
     }
 
+    if (add) {
+        natCount++;
+    } else {
+        natCount--;
+    }
     return 0;
 }
 
 int NatController::enableNat(const char *intIface, const char *extIface) {
-    natCount++;
     return doNatCommands(intIface, extIface, true);
-    natCount++;
 }
 
 int NatController::disableNat(const char *intIface, const char *extIface) {
-    if (natCount > 0) {
-        if (natCount == 1) {
-            return setDefaults();
-        } else {
-            return doNatCommands(intIface, extIface, false);
-        }
-        natCount--;
-    } else {
-        LOGE("Trying to disableNat with none enabled!");
-        return setDefaults();
-    }
+    return doNatCommands(intIface, extIface, false);
 }
