@@ -41,6 +41,8 @@ public:
 
 private:
 
+    static int readInterfaceCounters(const char *iface, unsigned long *rx, unsigned long *tx);
+
     class UsbCmd : public NetdCommand {
     public:
         UsbCmd();

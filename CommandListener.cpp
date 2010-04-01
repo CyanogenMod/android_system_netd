@@ -101,6 +101,59 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
         closedir(d);
         cli->sendMsg(ResponseCode::CommandOkay, "Interface list completed", false);
         return 0;
+    } else if (!strcmp(argv[1], "readrxcounter")) {
+        if (argc != 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Usage: interface readrxcounter <interface>", false);
+            return 0;
+        }
+        unsigned long rx = 0, tx = 0;
+        if (readInterfaceCounters(argv[2], &rx, &tx)) {
+            cli->sendMsg(ResponseCode::OperationFailed, "Failed to read counters", true);
+            return 0;
+        }
+
+        char *msg;
+        asprintf(&msg, "%lu", rx);
+        cli->sendMsg(ResponseCode::InterfaceRxCounterResult, msg, false);
+        free(msg);
+
+        return 0;
+    } else if (!strcmp(argv[1], "readtxcounter")) {
+        if (argc != 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Usage: interface readtxcounter <interface>", false);
+            return 0;
+        }
+        unsigned long rx = 0, tx = 0;
+        if (readInterfaceCounters(argv[2], &rx, &tx)) {
+            cli->sendMsg(ResponseCode::OperationFailed, "Failed to read counters", true);
+            return 0;
+        }
+
+        char *msg = NULL;
+        asprintf(&msg, "%lu", tx);
+        cli->sendMsg(ResponseCode::InterfaceTxCounterResult, msg, false);
+        free(msg);
+        return 0;
+    } else if (!strcmp(argv[1], "getthrottle")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Usage: interface getthrottle <interface> <rx|tx>", false);
+            return 0;
+        }
+        errno = ENOSYS;
+        cli->sendMsg(ResponseCode::OperationFailed, "Not Implemented", true);
+        return 0;
+    } else if (!strcmp(argv[1], "setthrottle")) {
+        if (argc != 5) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Usage: interface getthrottle <interface> <rx|tx> <kbps>", false);
+            return 0;
+        }
+        errno = ENOSYS;
+        cli->sendMsg(ResponseCode::OperationFailed, "Not Implemented", true);
+        return 0;
     } else {
         /*
          * These commands take a minimum of 3 arguments
@@ -594,4 +647,36 @@ int CommandListener::UsbCmd::runCommand(SocketClient *cli, int argc, char **argv
     }
 
     return 0;
+}
+
+int CommandListener::readInterfaceCounters(const char *iface, unsigned long *rx, unsigned long *tx) {
+    FILE *fp = fopen("/proc/net/dev", "r");
+    if (!fp) {
+        LOGE("Failed to open /proc/net/dev (%s)", strerror(errno));
+        return -1;
+    }
+
+    char buffer[512];
+
+    fgets(buffer, sizeof(buffer), fp); // Header 1
+    fgets(buffer, sizeof(buffer), fp); // Header 2
+    while(fgets(buffer, sizeof(buffer), fp)) {
+        buffer[strlen(buffer)-1] = '\0';
+
+        char name[8];
+        unsigned long d;
+        sscanf(buffer, "%6s %8lu %7lu %4lu %4lu %4lu %5lu %10lu %9lu %8lu",
+                name, rx, &d, &d, &d, &d, &d, &d, &d, tx);
+        name[strlen(name)-1] = '\0';
+
+        if (strcmp(name, iface)) {
+            continue;
+        }
+        fclose(fp);
+        return 0;
+    }
+
+    fclose(fp);
+    errno = ENOENT;
+    return -1;
 }
