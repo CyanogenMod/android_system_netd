@@ -665,7 +665,7 @@ int CommandListener::readInterfaceCounters(const char *iface, unsigned long *rx,
 
         char name[8];
         unsigned long d;
-        sscanf(buffer, "%6s %8lu %7lu %4lu %4lu %4lu %5lu %10lu %9lu %8lu",
+        sscanf(buffer, "%7s %8lu %7lu %4lu %4lu %4lu %5lu %10lu %9lu %8lu",
                 name, rx, &d, &d, &d, &d, &d, &d, &d, tx);
         name[strlen(name)-1] = '\0';
 
