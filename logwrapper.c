@@ -72,8 +72,10 @@ int parent(const char *tag, int parent_read) {
     status = 0xAAAA;
     if (wait(&status) != -1) {  // Wait for child
         if (WIFEXITED(status)) {
-            LOG(LOG_INFO, "logwrapper", "%s terminated by exit(%d)", tag,
-                    WEXITSTATUS(status));
+            if (WEXITSTATUS(status) != 0) {
+                LOG(LOG_INFO, "logwrapper", "%s terminated by exit(%d)", tag,
+                        WEXITSTATUS(status));
+            }
             return WEXITSTATUS(status);
         } else if (WIFSIGNALED(status))
             LOG(LOG_INFO, "logwrapper", "%s terminated by signal %d", tag,
