@@ -699,6 +699,7 @@ int CommandListener::readInterfaceCounters(const char *iface, unsigned long *rx,
     }
 
     fclose(fp);
-    errno = ENOENT;
-    return -1;
+    *rx = 0;
+    *tx = 0;
+    return 0;
 }
