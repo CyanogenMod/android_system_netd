@@ -685,12 +685,20 @@ int CommandListener::readInterfaceCounters(const char *iface, unsigned long *rx,
     while(fgets(buffer, sizeof(buffer), fp)) {
         buffer[strlen(buffer)-1] = '\0';
 
-        char name[8];
+        char name[31];
         unsigned long d;
-        sscanf(buffer, "%7s %8lu %7lu %4lu %4lu %4lu %5lu %10lu %9lu %8lu",
+        sscanf(buffer, "%30s %lu %lu %lu %lu %lu %lu %lu %lu %lu",
                 name, rx, &d, &d, &d, &d, &d, &d, &d, tx);
-        name[strlen(name)-1] = '\0';
-
+        char *rxString = strchr(name, ':');
+        *rxString = '\0';
+        rxString++;
+        // when the rx count gets too big it changes from "name: 999" to "name:1000"
+        // and the sscanf munge the two together.  Detect that and fix
+        // note that all the %lu will be off by one and the real tx value will be in d
+        if (*rxString != '\0') {
+            *tx = d;
+            sscanf(rxString, "%20lu", rx);
+        }
         if (strcmp(name, iface)) {
             continue;
         }
