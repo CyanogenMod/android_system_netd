@@ -75,16 +75,16 @@ int SoftapController::startDriver(char *iface) {
     int fnum, ret;
 
     if (mSock < 0) {
-        LOGE("Softap start - failed to open socket");
+        LOGE("Softap driver start - failed to open socket");
         return -1;
     }
     if (!iface || (iface[0] == '\0')) {
-        LOGD("Softap start - wrong interface");
+        LOGD("Softap driver start - wrong interface");
         iface = mIface;
     }
     fnum = getPrivFuncNum(iface, "START");
     if (fnum < 0) {
-        LOGE("Softap start - function not supported");
+        LOGE("Softap driver start - function not supported");
         return -1;
     }
     strncpy(wrq.ifr_name, iface, sizeof(wrq.ifr_name));
@@ -92,7 +92,8 @@ int SoftapController::startDriver(char *iface) {
     wrq.u.data.pointer = mBuf;
     wrq.u.data.flags = 0;
     ret = ioctl(mSock, fnum, &wrq);
-    LOGD("Softap start: %d", ret);
+    usleep(AP_DRIVER_START_DELAY);
+    LOGD("Softap driver start: %d", ret);
     return ret;
 }
 
@@ -101,16 +102,16 @@ int SoftapController::stopDriver(char *iface) {
     int fnum, ret;
 
     if (mSock < 0) {
-        LOGE("Softap stop - failed to open socket");
+        LOGE("Softap driver stop - failed to open socket");
         return -1;
     }
     if (!iface || (iface[0] == '\0')) {
-        LOGD("Softap start - wrong interface");
+        LOGD("Softap driver stop - wrong interface");
         iface = mIface;
     }
     fnum = getPrivFuncNum(iface, "STOP");
     if (fnum < 0) {
-        LOGE("Softap stop - function not supported");
+        LOGE("Softap driver stop - function not supported");
         return -1;
     }
     strncpy(wrq.ifr_name, iface, sizeof(wrq.ifr_name));
@@ -118,7 +119,7 @@ int SoftapController::stopDriver(char *iface) {
     wrq.u.data.pointer = mBuf;
     wrq.u.data.flags = 0;
     ret = ioctl(mSock, fnum, &wrq);
-    LOGD("Softap stop: %d", ret);
+    LOGD("Softap driver stop: %d", ret);
     return ret;
 }
 
@@ -129,8 +130,7 @@ int SoftapController::startSoftap() {
 
     if (mPid) {
         LOGE("Softap already started");
-        errno = EBUSY;
-        return -1;
+        return 0;
     }
     if (mSock < 0) {
         LOGE("Softap startap - failed to open socket");
