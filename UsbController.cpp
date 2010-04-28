@@ -49,6 +49,7 @@ int UsbController::enableRNDIS(bool enable) {
     int fd = open("/sys/class/usb_composite/rndis/enable", O_RDWR);
     int count = snprintf(value, sizeof(value), "%d\n", (enable ? 1 : 0));
     write(fd, value, count);
+    close(fd);
     return 0;
 }
 
@@ -56,5 +57,6 @@ bool UsbController::isRNDISStarted() {
     char value=0;
     int fd = open("/sys/class/usb_composite/rndis/enable", O_RDWR);
     read(fd, &value, 1);
+    close(fd);
     return (value == '1' ? true : false);
 }

@@ -61,6 +61,7 @@ int TetherController::setIpFwdEnabled(bool enable) {
 
     if (write(fd, (enable ? "1" : "0"), 1) != 1) {
         LOGE("Failed to write ip_forward (%s)", strerror(errno));
+        close(fd);
         return -1;
     }
     close(fd);
@@ -78,11 +79,11 @@ bool TetherController::getIpFwdEnabled() {
     char enabled;
     if (read(fd, &enabled, 1) != 1) {
         LOGE("Failed to read ip_forward (%s)", strerror(errno));
+        close(fd);
         return -1;
     }
 
     close(fd);
-
     return (enabled  == '1' ? true : false);
 }
 
