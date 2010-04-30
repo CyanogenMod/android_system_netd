@@ -87,7 +87,7 @@ int ThrottleController::setInterfaceThrottle(const char *iface, int rxKbps, int 
     /*
      * Add root qdisc for the interface
      */
-    sprintf(cmd, "qdisc add dev %s root handle 1: cbq avpkt 1000 bandwidth 10mbit",ifn);
+    sprintf(cmd, "qdisc add dev %s root handle 1: htb default 1 r2q 1000", ifn);
     if (runTcCmd(cmd)) {
         LOGE("Failed to add root qdisc (%s)", strerror(errno));
         goto fail;
@@ -96,20 +96,9 @@ int ThrottleController::setInterfaceThrottle(const char *iface, int rxKbps, int 
     /*
      * Add our egress throttling class
      */
-    sprintf(cmd, "class add dev %s parent 1: classid 1:1 cbq rate %dkbit allot 1500 "
-            "prio 5 bounded isolated", ifn, txKbps);
+    sprintf(cmd, "class add dev %s parent 1: classid 1:1 htb rate %dkbit", ifn, txKbps);
     if (runTcCmd(cmd)) {
         LOGE("Failed to add egress throttling class (%s)", strerror(errno));
-        goto fail;
-    }
-
-    /*
-     * Add filter for egress matching
-     */
-    sprintf(cmd, "filter add dev %s parent 1: protocol ip prio 16 u32 match "
-            "ip dst 0.0.0.0/0 flowid 1:1", ifn);
-    if (runTcCmd(cmd)) {
-        LOGE("Failed to add egress throttling filter (%s)", strerror(errno));
         goto fail;
     }
 
@@ -119,6 +108,24 @@ int ThrottleController::setInterfaceThrottle(const char *iface, int rxKbps, int 
     ifc_init();
     if (ifc_up("ifb0")) {
         LOGE("Failed to up ifb0 (%s)", strerror(errno));
+        goto fail;
+    }
+
+    /*
+     * Add root qdisc for IFD
+     */
+    sprintf(cmd, "qdisc add dev ifb0 root handle 1: htb default 1 r2q 1000");
+    if (runTcCmd(cmd)) {
+        LOGE("Failed to add root ifb qdisc (%s)", strerror(errno));
+        goto fail;
+    }
+
+    /*
+     * Add our ingress throttling class
+     */
+    sprintf(cmd, "class add dev ifb0 parent 1: classid 1:1 htb rate %dkbit", rxKbps);
+    if (runTcCmd(cmd)) {
+        LOGE("Failed to add ingress throttling class (%s)", strerror(errno));
         goto fail;
     }
 
@@ -134,45 +141,10 @@ int ThrottleController::setInterfaceThrottle(const char *iface, int rxKbps, int 
     /*
      * Add filter to link <ifn> -> ifb0
      */
-    sprintf(cmd, "filter add dev %s parent 1: protocol ip prio 10 u32 match "
+    sprintf(cmd, "filter add dev %s parent ffff: protocol ip prio 10 u32 match "
             "u32 0 0 flowid 1:1 action mirred egress redirect dev ifb0", ifn);
     if (runTcCmd(cmd)) {
         LOGE("Failed to add ifb filter (%s)", strerror(errno));
-        goto fail;
-    }
-
-    /*
-     *
-     * IFD configuration
-     *
-     */
-
-    /*
-     * Add root qdisc for the interface
-     */
-    sprintf(cmd, "qdisc add dev ifb0 root handle 1: cbq avpkt 1000 bandwidth 10mbit");
-    if (runTcCmd(cmd)) {
-        LOGE("Failed to add root ifb qdisc (%s)", strerror(errno));
-        goto fail;
-    }
-
-    /*
-     * Add our ingress throttling class
-     */
-    sprintf(cmd, "class add dev ifb0 parent 1: classid 1:1 cbq rate %dkbit allot 1500 "
-            "prio 5 bounded isolated", rxKbps);
-    if (runTcCmd(cmd)) {
-        LOGE("Failed to add ingress throttling class (%s)", strerror(errno));
-        goto fail;
-    }
-
-    /*
-     * Add filter for ingress matching
-     */
-    sprintf(cmd, "filter add dev ifb0 parent 1: protocol ip prio 16 u32 match "
-            "ip dst 0.0.0.0/0 flowid 1:1");
-    if (runTcCmd(cmd)) {
-        LOGE("Failed to add ingress throttling filter (%s)", strerror(errno));
         goto fail;
     }
 
