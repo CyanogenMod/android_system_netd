@@ -46,8 +46,13 @@ int UsbController::stopRNDIS() {
 
 int UsbController::enableRNDIS(bool enable) {
     char value[20];
+#ifdef USE_HTC_USB_FUNCTION_SWITCH
+    int fd = open("/sys/devices/platform/msm_hsusb/usb_function_switch", O_RDWR);
+    int count = snprintf(value, sizeof(value), "%d\n", (enable ? 4 : 3));
+#else
     int fd = open("/sys/class/usb_composite/rndis/enable", O_RDWR);
     int count = snprintf(value, sizeof(value), "%d\n", (enable ? 1 : 0));
+#endif
     write(fd, value, count);
     close(fd);
     return 0;
@@ -55,8 +60,16 @@ int UsbController::enableRNDIS(bool enable) {
 
 bool UsbController::isRNDISStarted() {
     char value=0;
+#ifdef USE_HTC_USB_FUNCTION_SWITCH
+    int fd = open("/sys/devices/platform/msm_hsusb/usb_function_switch", O_RDWR);
+#else
     int fd = open("/sys/class/usb_composite/rndis/enable", O_RDWR);
+#endif
     read(fd, &value, 1);
     close(fd);
+#ifdef USE_HTC_USB_FUNCTION_SWITCH
+    return (value == '4' ? true : false);
+#else
     return (value == '1' ? true : false);
+#endif
 }
