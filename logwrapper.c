@@ -99,8 +99,8 @@ void child(int argc, const char**argv) {
     if (execv(argv_child[0], argv_child)) {
         LOG(LOG_ERROR, "logwrapper",
             "executing %s failed: %s", argv_child[0], strerror(errno));
-        exit(-1);
     }
+    _exit(1);
 }
 
 int logwrap(int argc, const char* argv[], int background)
@@ -109,7 +109,7 @@ int logwrap(int argc, const char* argv[], int background)
 
     int parent_ptty;
     int child_ptty;
-    char *child_devname = NULL;
+    char child_devname[64];  // same size as libc/unistd/ptsname_r.c
 
     /* Use ptty instead of socketpair so that STDOUT is not buffered */
     parent_ptty = open("/dev/ptmx", O_RDWR);
@@ -119,7 +119,7 @@ int logwrap(int argc, const char* argv[], int background)
     }
 
     if (grantpt(parent_ptty) || unlockpt(parent_ptty) ||
-            ((child_devname = (char*)ptsname(parent_ptty)) == 0)) {
+            ptsname_r(parent_ptty, child_devname, sizeof(child_devname))) {
         close(parent_ptty);
 	LOG(LOG_ERROR, "logwrapper", "Problem with /dev/ptmx");
 	return -1;
@@ -138,7 +138,7 @@ int logwrap(int argc, const char* argv[], int background)
         if (child_ptty < 0) {
             close(parent_ptty);
 	    LOG(LOG_ERROR, "logwrapper", "Problem with child ptty");
-            return -errno;
+            _exit(errno < 128 ? errno : 1);  // XXX lame
         }
 
         // redirect stdout and stderr
@@ -155,7 +155,6 @@ int logwrap(int argc, const char* argv[], int background)
                 if (write(fd, text, strlen(text)) < 0) {
                     LOG(LOG_WARN, "logwrapper",
                         "Unable to background process (%s)", strerror(errno));
-                    close(fd);
                 }
                 close(fd);
             } else {
