@@ -131,12 +131,16 @@ int logwrap(int argc, const char* argv[], int background)
 	LOG(LOG_ERROR, "logwrapper", "Failed to fork");
         return -errno;
     } else if (pid == 0) {
+        /*
+         * Child
+         */
         child_ptty = open(child_devname, O_RDWR);
         if (child_ptty < 0) {
             close(parent_ptty);
 	    LOG(LOG_ERROR, "logwrapper", "Problem with child ptty");
             return -errno;
         }
+
         // redirect stdout and stderr
         close(parent_ptty);
         dup2(child_ptty, 1);
@@ -145,10 +149,8 @@ int logwrap(int argc, const char* argv[], int background)
 
         if (background) {
             int fd = open("/dev/cpuctl/bg_non_interactive/tasks", O_WRONLY);
-      
-            if (fd >=0 ) {
+            if (fd >= 0) {
                 char text[64];
-
                 sprintf(text, "%d", getpid());
                 if (write(fd, text, strlen(text)) < 0) {
                     LOG(LOG_WARN, "logwrapper",
@@ -161,11 +163,15 @@ int logwrap(int argc, const char* argv[], int background)
                     "Unable to background process (%s)", strerror(errno));
             }
         }
+
         child(argc, argv);
     } else {
-        int retValue = parent(argv[0], parent_ptty);
+        /*
+         * Parent
+         */
+        int rc = parent(argv[0], parent_ptty);
         close(parent_ptty);
-        return retValue;
+        return rc;
     }
 
     return 0;
