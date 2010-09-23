@@ -35,6 +35,7 @@ class SoftapController {
 
     int getPrivFuncNum(char *iface, const char *fname);
     int addParam(int pos, const char *cmd, const char *arg);
+    int setCommand(char *iface, const char *fname);
 public:
     SoftapController();
     virtual ~SoftapController();
