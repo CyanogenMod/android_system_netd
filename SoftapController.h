@@ -33,7 +33,6 @@ class SoftapController {
     pid_t mPid;
     int mSock;
 
-    int getPrivFuncNum(char *iface, const char *fname);
     int addParam(int pos, const char *cmd, const char *arg);
     int setCommand(char *iface, const char *fname);
 public:

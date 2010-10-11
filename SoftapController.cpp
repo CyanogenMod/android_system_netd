@@ -49,11 +49,12 @@ SoftapController::~SoftapController() {
         close(mSock);
 }
 
-int SoftapController::getPrivFuncNum(char *iface, const char *fname) {
+int SoftapController::setCommand(char *iface, const char *fname) {
     char tBuf[SOFTAP_MAX_BUFFER_SIZE];
     struct iwreq wrq;
     struct iw_priv_args *priv_ptr;
-    int i, ret;
+    int i, j, ret;
+    int cmd = 0, sub_cmd = 0;
 
     strncpy(wrq.ifr_name, iface, sizeof(wrq.ifr_name));
     wrq.u.data.pointer = tBuf;
@@ -63,23 +64,33 @@ int SoftapController::getPrivFuncNum(char *iface, const char *fname) {
         LOGE("SIOCGIPRIV failed: %d", ret);
         return ret;
     }
+
     priv_ptr = (struct iw_priv_args *)wrq.u.data.pointer;
-    for(i=0;(i < wrq.u.data.length);i++) {
-        if (strcmp(priv_ptr[i].name, fname) == 0)
-            return priv_ptr[i].cmd;
+    for(i=0; i < wrq.u.data.length;i++) {
+        if (strcmp(priv_ptr[i].name, fname) == 0) {
+            cmd = priv_ptr[i].cmd;
+            break;
+        }
     }
-    return -1;
-}
 
-int SoftapController::setCommand(char *iface, const char *fname)
-{
-    struct iwreq wrq;
-    int fnum, ret;
-
-    fnum = getPrivFuncNum(iface, fname);
-    if (fnum < 0) {
-        LOGE("Softap %s - function not supported", fname);
+    if (i == wrq.u.data.length) {
+        LOGE("iface:%s, fname: %s - function not supported", iface, fname);
         return -1;
+    }
+
+    if (cmd < SIOCDEVPRIVATE) {
+        for(j=0; j < i; j++) {
+            if ((priv_ptr[j].set_args == priv_ptr[i].set_args) &&
+                (priv_ptr[j].get_args == priv_ptr[i].get_args) &&
+                (priv_ptr[j].name[0] == '\0'))
+                break;
+        }
+        if (j == i) {
+            LOGE("iface:%s, fname: %s - invalid private ioctl", iface, fname);
+            return -1;
+        }
+        sub_cmd = cmd;
+        cmd = priv_ptr[j].cmd;
     }
 
     strncpy(wrq.ifr_name, iface, sizeof(wrq.ifr_name));
@@ -88,8 +99,8 @@ int SoftapController::setCommand(char *iface, const char *fname)
     else
         wrq.u.data.length = 0;
     wrq.u.data.pointer = mBuf;
-    wrq.u.data.flags = 0;
-    ret = ioctl(mSock, fnum, &wrq);
+    wrq.u.data.flags = sub_cmd;
+    ret = ioctl(mSock, cmd, &wrq);
     return ret;
 }
 
