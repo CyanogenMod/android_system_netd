@@ -84,7 +84,7 @@ int NatController::setDefaults() {
 }
 
 bool NatController::interfaceExists(const char *iface) {
-    // XXX: STOPSHIP - Implement this
+    // XXX: Implement this
     return true;
 }
 
