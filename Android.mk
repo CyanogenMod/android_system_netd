@@ -12,6 +12,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES:=                                      \
                   main.cpp                             \
                   CommandListener.cpp                  \
+                  DnsProxyListener.cpp                 \
                   NetdCommand.cpp                      \
                   NetlinkManager.cpp                   \
                   NetlinkHandler.cpp                   \
