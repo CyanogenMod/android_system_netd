@@ -71,7 +71,7 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
 
     struct addrinfo* result = NULL;
     int rv = getaddrinfo(mHost, mService, mHints, &result);
-    bool success = mClient->sendData(&rv, sizeof(rv));
+    bool success = (mClient->sendData(&rv, sizeof(rv)) == 0);
     if (rv == 0) {
         struct addrinfo* ai = result;
         while (ai && success) {
