@@ -26,7 +26,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#ifdef HAVE_BLUETOOTH
 #include <bluedroid/bluetooth.h>
+#endif
 
 #define LOG_TAG "PanController"
 #include <cutils/log.h>
