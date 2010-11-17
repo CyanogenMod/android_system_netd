@@ -21,6 +21,7 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
+#include <string.h>
 
 #include <linux/if.h>
 

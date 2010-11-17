@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <string.h>
 
 #define LOG_TAG "NatController"
 #include <cutils/log.h>

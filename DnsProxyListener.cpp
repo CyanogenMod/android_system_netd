@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <string.h>
 
 #define LOG_TAG "DnsProxyListener"
 #define DBG 0
