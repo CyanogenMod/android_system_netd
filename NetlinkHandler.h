@@ -24,7 +24,7 @@ class NetlinkHandler: public NetlinkListener {
     NetlinkManager *mNm;
 
 public:
-    NetlinkHandler(NetlinkManager *nm, int listenerSocket, int format);
+    NetlinkHandler(NetlinkManager *nm, int listenerSocket);
     virtual ~NetlinkHandler();
 
     int start(void);
@@ -36,6 +36,5 @@ protected:
     void notifyInterfaceAdded(const char *name);
     void notifyInterfaceRemoved(const char *name);
     void notifyInterfaceChanged(const char *name, bool isUp);
-    void notifyInterfaceLinkChanged(const char *name, bool isUp);
 };
 #endif
