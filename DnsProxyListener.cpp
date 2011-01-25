@@ -60,7 +60,8 @@ void* DnsProxyListener::GetAddrInfoHandler::threadStart(void* obj) {
 // Returns true on success.
 static bool sendLenAndData(SocketClient *c, const int len, const void* data) {
     uint32_t len_be = htonl(len);
-    return c->sendData(&len_be, 4) == 0 && c->sendData(data, len) == 0;
+    return c->sendData(&len_be, 4) == 0 &&
+        (len == 0 || c->sendData(data, len) == 0);
 }
 
 void DnsProxyListener::GetAddrInfoHandler::run() {
