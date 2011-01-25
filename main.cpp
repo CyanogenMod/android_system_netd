@@ -32,6 +32,7 @@
 
 #include "CommandListener.h"
 #include "NetlinkManager.h"
+#include "DnsProxyListener.h"
 
 static void coldboot(const char *path);
 static void sigchld_handler(int sig);
@@ -40,6 +41,7 @@ int main() {
 
     CommandListener *cl;
     NetlinkManager *nm;
+    DnsProxyListener *dpl;
 
     LOGI("Netd 1.0 starting");
 
@@ -56,6 +58,15 @@ int main() {
 
     if (nm->start()) {
         LOGE("Unable to start NetlinkManager (%s)", strerror(errno));
+        exit(1);
+    }
+
+    // Set local DNS mode, to prevent bionic from proxying
+    // back to this service, recursively.
+    setenv("ANDROID_DNS_MODE", "local", 1);
+    dpl = new DnsProxyListener();
+    if (dpl->startListener()) {
+        LOGE("Unable to start DnsProxyListener (%s)", strerror(errno));
         exit(1);
     }
 
