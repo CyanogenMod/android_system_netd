@@ -71,12 +71,19 @@ LOCAL_CFLAGS += -D__BYTE_ORDER_LITTLE_ENDIAN
 LOCAL_STATIC_LIBRARIES := libhostapdcli
 LOCAL_C_INCLUDES += $(WILINK_INCLUDES)
 LOCAL_SRC_FILES += SoftapControllerTI.cpp
+else ifeq ($(WIFI_DRIVER_MODULE_NAME),ar6000)
+LOCAL_C_INCLUDES += external/wpa_supplicant external/hostapd
+LOCAL_SRC_FILES += SoftapControllerATH.cpp
 else
 LOCAL_SRC_FILES += SoftapController.cpp
 endif
 #endif
 
 LOCAL_SHARED_LIBRARIES := libsysutils libcutils libnetutils libcrypto libhardware_legacy
+
+ifeq ($(WIFI_DRIVER_MODULE_NAME),ar6000)
+LOCAL_SHARED_LIBRARIES := $(LOCAL_SHARED_LIBRARIES) libwpa_client
+endif
 
 ifeq ($(BOARD_HAVE_BLUETOOTH),true)
   LOCAL_SHARED_LIBRARIES := $(LOCAL_SHARED_LIBRARIES) libbluedroid
