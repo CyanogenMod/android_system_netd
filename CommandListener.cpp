@@ -37,9 +37,9 @@
 
 extern "C" int ifc_init(void);
 extern "C" int ifc_get_hwaddr(const char *name, void *ptr);
-extern "C" int ifc_get_info(const char *name, in_addr_t *addr, in_addr_t *mask, unsigned *flags);
+extern "C" int ifc_get_info(const char *name, in_addr_t *addr, int *prefixLength, unsigned *flags);
 extern "C" int ifc_set_addr(const char *name, in_addr_t addr);
-extern "C" int ifc_set_mask(const char *name, in_addr_t mask);
+extern "C" int ifc_set_prefixLength(const char *name, int prefixLength);
 extern "C" int ifc_up(const char *name);
 extern "C" int ifc_down(const char *name);
 
@@ -186,14 +186,15 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             return 0;
         }
         if (!strcmp(argv[1], "getcfg")) {
-            struct in_addr addr, mask;
+            struct in_addr addr;
+            int prefixLength;
             unsigned char hwaddr[6];
             unsigned flags = 0;
 
             ifc_init();
             memset(hwaddr, 0, sizeof(hwaddr));
 
-            if (ifc_get_info(argv[2], &addr.s_addr, &mask.s_addr, &flags)) {
+            if (ifc_get_info(argv[2], &addr.s_addr, &prefixLength, &flags)) {
                 cli->sendMsg(ResponseCode::OperationFailed, "Interface not found", true);
                 return 0;
             }
@@ -203,7 +204,6 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             }
 
             char *addr_s = strdup(inet_ntoa(addr));
-            char *mask_s = strdup(inet_ntoa(mask));
             const char *updown, *brdcst, *loopbk, *ppp, *running, *multi;
 
             updown =  (flags & IFF_UP)           ? "up" : "down";
@@ -218,35 +218,29 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             asprintf(&flag_s, "[%s%s%s%s%s%s]", updown, brdcst, loopbk, ppp, running, multi);
 
             char *msg = NULL;
-            asprintf(&msg, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x %s %s %s",
+            asprintf(&msg, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x %s %d %s",
                      hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3], hwaddr[4], hwaddr[5],
-                     addr_s, mask_s, flag_s);
+                     addr_s, prefixLength, flag_s);
 
             cli->sendMsg(ResponseCode::InterfaceGetCfgResult, msg, false);
 
             free(addr_s);
-            free(mask_s);
             free(flag_s);
             free(msg);
             return 0;
         } else if (!strcmp(argv[1], "setcfg")) {
-            // arglist: iface addr mask [flags]
+            // arglist: iface addr prefixLength [flags]
             if (argc < 5) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                 return 0;
             }
             LOGD("Setting iface cfg");
 
-            struct in_addr addr, mask;
+            struct in_addr addr;
             unsigned flags = 0;
 
             if (!inet_aton(argv[3], &addr)) {
                 cli->sendMsg(ResponseCode::CommandParameterError, "Invalid address", false);
-                return 0;
-            }
-
-            if (!inet_aton(argv[4], &mask)) {
-                cli->sendMsg(ResponseCode::CommandParameterError, "Invalid netmask", false);
                 return 0;
             }
 
@@ -256,8 +250,8 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 return 0;
             }
 
-            if (ifc_set_mask(argv[2], mask.s_addr)) {
-                cli->sendMsg(ResponseCode::OperationFailed, "Failed to set netmask", true);
+            if (ifc_set_prefixLength(argv[2], atoi(argv[4]))) {
+                cli->sendMsg(ResponseCode::OperationFailed, "Failed to set prefixLength", true);
                 return 0;
             }
 
