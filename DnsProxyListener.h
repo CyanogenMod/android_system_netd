@@ -59,6 +59,38 @@ private:
         char* mService; // owned
         struct addrinfo* mHints;  // owned
     };
+
+    /* ------ gethostbyaddr ------*/
+    class GetHostByAddrCmd : public NetdCommand {
+    public:
+        GetHostByAddrCmd();
+        virtual ~GetHostByAddrCmd() {}
+        int runCommand(SocketClient *c, int argc, char** argv);
+    };
+
+    class GetHostByAddrHandler {
+    public:
+        GetHostByAddrHandler(SocketClient *c,
+                            char* address,
+                            int   addressLen,
+                            int   addressFamily)
+            : mClient(c),
+              mAddress(address),
+              mAddressLen(addressLen),
+              mAddressFamily(addressFamily) {}
+        ~GetHostByAddrHandler();
+
+        static void* threadStart(void* handler);
+        void start();
+
+    private:
+        void run();
+        pthread_t mThread;
+        SocketClient* mClient;  // not owned
+        char* mAddress;    // address to lookup
+        int   mAddressLen; // length of address to look up
+        int   mAddressFamily;  // address family
+    };
 };
 
 #endif
