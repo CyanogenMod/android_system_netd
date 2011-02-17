@@ -35,6 +35,7 @@
 DnsProxyListener::DnsProxyListener() :
                  FrameworkListener("dnsproxyd") {
     registerCmd(new GetAddrInfoCmd());
+    registerCmd(new GetHostByAddrCmd());
 }
 
 DnsProxyListener::GetAddrInfoHandler::~GetAddrInfoHandler() {
@@ -143,4 +144,80 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
 
 
     return 0;
+}
+
+/*******************************************************
+ *                  GetHostByAddr                       *
+ *******************************************************/
+DnsProxyListener::GetHostByAddrCmd::GetHostByAddrCmd() :
+        NetdCommand("gethostbyaddr") {
+}
+
+int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
+                                            int argc, char **argv) {
+    if (argc != 4) {
+        LOGW("Invalid number of arguments to gethostbyaddr");
+        return 0;
+    }
+
+    char* addr = argv[1];
+    addr = strdup(addr);
+
+    int addrLen = atoi(argv[2]);
+    int addrFamily = atoi(argv[3]);
+
+    DnsProxyListener::GetHostByAddrHandler* handler =
+            new DnsProxyListener::GetHostByAddrHandler(cli, addr, addrLen, addrFamily);
+    handler->start();
+
+    return 0;
+}
+
+DnsProxyListener::GetHostByAddrHandler::~GetHostByAddrHandler() {
+    free(mAddress);
+}
+
+void DnsProxyListener::GetHostByAddrHandler::start() {
+    pthread_create(&mThread, NULL,
+                   DnsProxyListener::GetHostByAddrHandler::threadStart, this);
+}
+
+void* DnsProxyListener::GetHostByAddrHandler::threadStart(void* obj) {
+    GetHostByAddrHandler* handler = reinterpret_cast<GetHostByAddrHandler*>(obj);
+    handler->run();
+    delete handler;
+    pthread_exit(NULL);
+    return NULL;
+}
+
+void DnsProxyListener::GetHostByAddrHandler::run() {
+    if (DBG) {
+        LOGD("DnsProxyListener::GetHostByAddrHandler::run\n");
+        if (mAddress) {
+            LOGD("mAdress %u.%u.%u.%u mAdressLen %d, mAddressFamily %d",
+                    mAddress[0], mAddress[1], mAddress[2], mAddress[3],
+                    mAddressLen, mAddressFamily);
+        }
+        else {
+            LOGD("mAddress = NULL");
+        }
+    }
+
+    struct hostent* hp;
+
+    hp = gethostbyaddr(mAddress, mAddressLen, mAddressFamily);
+
+    if (DBG) {
+        LOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %d\n",
+                hp ? "success" : strerror(errno),
+                (hp && hp->h_name) ? hp->h_name: "null",
+                (hp && hp->h_name) ? strlen(hp->h_name)+ 1 : 0);
+    }
+
+    bool success = sendLenAndData(mClient, (hp && hp->h_name) ? strlen(hp->h_name)+ 1 : 0,
+            (hp && hp->h_name) ? hp->h_name : "");
+
+    if (!success) {
+        LOGW("GetHostByAddrHandler: Error writing DNS result to client\n");
+    }
 }
