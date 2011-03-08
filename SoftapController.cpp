@@ -51,7 +51,7 @@ SoftapController::~SoftapController() {
         close(mSock);
 }
 
-int SoftapController::setCommand(char *iface, const char *fname) {
+int SoftapController::setCommand(char *iface, const char *fname, unsigned buflen) {
     char tBuf[SOFTAP_MAX_BUFFER_SIZE];
     struct iwreq wrq;
     struct iw_priv_args *priv_ptr;
@@ -96,10 +96,10 @@ int SoftapController::setCommand(char *iface, const char *fname) {
     }
 
     strncpy(wrq.ifr_name, iface, sizeof(wrq.ifr_name));
-    if (*mBuf != 0)
+    if ((buflen == 0) && (*mBuf != 0))
         wrq.u.data.length = strlen(mBuf) + 1;
     else
-        wrq.u.data.length = 0;
+        wrq.u.data.length = buflen;
     wrq.u.data.pointer = mBuf;
     wrq.u.data.flags = sub_cmd;
     ret = ioctl(mSock, cmd, &wrq);
@@ -345,6 +345,25 @@ int SoftapController::fwReloadSoftap(int argc, char *argv[])
     }
     else {
         LOGD("Softap fwReload - Ok");
+    }
+    return ret;
+}
+
+int SoftapController::clientsSoftap(char **retbuf)
+{
+    int ret;
+
+    if (mSock < 0) {
+        LOGE("Softap clients - failed to open socket");
+        return -1;
+    }
+    *mBuf = 0;
+    ret = setCommand(mIface, "AP_GET_STA_LIST", SOFTAP_MAX_BUFFER_SIZE);
+    if (ret) {
+        LOGE("Softap clients - failed: %d", ret);
+    } else {
+        asprintf(retbuf, "Softap clients:%s", mBuf);
+        LOGD("Softap clients:%s", mBuf);
     }
     return ret;
 }
