@@ -54,7 +54,7 @@ private:
     private:
         void run();
         pthread_t mThread;
-        SocketClient* mClient;  // not owned
+        SocketClient* mClient;  // ref counted
         char* mHost;    // owned
         char* mService; // owned
         struct addrinfo* mHints;  // owned
@@ -86,8 +86,8 @@ private:
     private:
         void run();
         pthread_t mThread;
-        SocketClient* mClient;  // not owned
-        char* mAddress;    // address to lookup
+        SocketClient* mClient;  // ref counted
+        char* mAddress;    // address to lookup; owned
         int   mAddressLen; // length of address to look up
         int   mAddressFamily;  // address family
     };

@@ -92,6 +92,7 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     if (!success) {
         LOGW("Error writing DNS result to client");
     }
+    mClient->decRef();
 }
 
 DnsProxyListener::GetAddrInfoCmd::GetAddrInfoCmd() :
@@ -139,10 +140,10 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
              service ? service : "[nullservice]");
     }
 
+    cli->incRef();
     DnsProxyListener::GetAddrInfoHandler* handler =
         new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints);
     handler->start();
-
 
     return 0;
 }
@@ -167,6 +168,7 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
     int addrLen = atoi(argv[2]);
     int addrFamily = atoi(argv[3]);
 
+    cli->incRef();
     DnsProxyListener::GetHostByAddrHandler* handler =
             new DnsProxyListener::GetHostByAddrHandler(cli, addr, addrLen, addrFamily);
     handler->start();
@@ -221,4 +223,5 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     if (!success) {
         LOGW("GetHostByAddrHandler: Error writing DNS result to client\n");
     }
+    mClient->decRef();
 }
