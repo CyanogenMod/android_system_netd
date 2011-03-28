@@ -72,6 +72,9 @@ LOCAL_STATIC_LIBRARIES := libhostapdcli
 LOCAL_C_INCLUDES += $(WILINK_INCLUDES)
 LOCAL_SRC_FILES += SoftapControllerTI.cpp
 else ifeq ($(WIFI_DRIVER_MODULE_NAME),ar6000)
+  ifneq ($(WIFI_DRIVER_MODULE_PATH),rfkill)
+    LOCAL_CFLAGS += -DWIFI_MODULE_PATH=\"$(WIFI_DRIVER_MODULE_PATH)\"
+  endif
 LOCAL_C_INCLUDES += external/wpa_supplicant external/hostapd
 LOCAL_SRC_FILES += SoftapControllerATH.cpp
 else

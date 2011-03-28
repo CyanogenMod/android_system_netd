@@ -364,14 +364,46 @@ int wifi_load_profile(bool started)
     if ((started) && (mProfileValid)) {
         if (ctrl_conn == NULL) {
             return -1;
-        } else {
-            //return hostapd_reload_config(ifname);
         }
     }
     return 0;
 }
 
+static int insmod(const char *filename, const char *args)
+{
+	void *module;
+	unsigned int size;
+	int ret;
 
+	module = load_file(filename, &size);
+	if (!module)
+		return -1;
+
+	ret = init_module(module, size, args);
+
+	free(module);
+
+	return ret;
+}
+
+static int rmmod(const char *modname)
+{
+	int ret = -1;
+	int maxtry = 10;
+
+	while (maxtry-- > 0) {
+		ret = delete_module(modname, O_NONBLOCK | O_EXCL);
+		if (ret < 0 && errno == EAGAIN)
+			usleep(500000);
+		else
+			break;
+	}
+
+	if (ret != 0)
+		LOGD("Unable to unload driver module \"%s\": %s\n",
+				modname, strerror(errno));
+	return ret;
+}
 
 SoftapController::SoftapController() {
     mPid = 0;
@@ -423,6 +455,10 @@ int SoftapController::startDriver(char *iface) {
 	}
 
 
+#ifdef WIFI_MODULE_PATH
+	ret = insmod(WIFI_MODULE_PATH, "ifname=athap0");
+	usleep(1000000);
+#else
 	set_wifi_power(0);
 	{
 		int fd = -1;
@@ -450,6 +486,7 @@ int SoftapController::startDriver(char *iface) {
 		}
 		close(fd);
 	}
+#endif
 
 	if (ret) {
 		return -1;
@@ -481,6 +518,9 @@ int SoftapController::stopDriver(char *iface) {
 		iface = mIface;
 	}
 	ret = 0;
+#ifdef WIFI_MODULE_PATH
+	ret = rmmod("ar6000");
+#else
 	ret = set_wifi_power(0);
 	if (!ret) {
 		int fd = -1;
@@ -508,6 +548,7 @@ int SoftapController::stopDriver(char *iface) {
 		}
 		close(fd);
 	}
+#endif
 
 	LOGD("Softap driver stop: %d", ret);
 	return ret;
@@ -545,10 +586,12 @@ int SoftapController::startSoftap() {
         ret = wifi_start_hostapd();
         if (ret < 0) {
             LOGE("Softap startap - starting hostapd fails");
+	    stopDriver("athap0");
             return -1;
         }
 
         sched_yield();
+	usleep(100000);
 
         ret = wifi_connect_to_hostapd();
         if (ret < 0) {
@@ -593,6 +636,7 @@ int SoftapController::stopSoftap() {
     mPid = 0;
     LOGD("Softap service stopped: %d", ret);
 
+#ifndef WIFI_MODULE_PATH
     set_wifi_power(0);
     {
         int fd = -1;
@@ -620,6 +664,7 @@ int SoftapController::stopSoftap() {
         }
         close(fd);
     }
+#endif
     usleep(AP_BSS_STOP_DELAY);
     return ret;
 }
