@@ -132,7 +132,11 @@ int SoftapController::startDriver(char *iface) {
     }
 
     *mBuf = 0;
+#ifdef LGE_SOFTAP
+    ret = setCommand(iface, "START-SOFTAP");
+#else
     ret = setCommand(iface, "START");
+#endif
     if (ret < 0) {
         ALOGE("Softap driver start: %d", ret);
         return ret;
@@ -167,7 +171,11 @@ int SoftapController::stopDriver(char *iface) {
         ALOGE("Softap %s down: %d", iface, ret);
     }
 #endif
+#ifdef LGE_SOFTAP
+    ret = setCommand(iface, "STOP-SOFTAP");
+#else
     ret = setCommand(iface, "STOP");
+#endif
     ALOGD("Softap driver stop: %d", ret);
     return ret;
 }
@@ -296,14 +304,9 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         ssid = (char *)"AndroidAP";
     }
 
-<<<<<<< HEAD
-    asprintf(&wbuf, "interface=%s\ndriver=nl80211\nctrl_interface="
+    asprintf(&wbuf, "interface=%s\ndriver=" HOSTAPD_DRIVER_NAME "\nctrl_interface="
             "/data/misc/wifi/hostapd\nssid=%s\nchannel=6\nieee80211n=1\n",
             iface, ssid);
-=======
-    asprintf(&wbuf, "interface=%s\ndriver=" HOSTAPD_DRIVER_NAME "\nctrl_interface="
-            "/data/misc/wifi/hostapd\nssid=%s\nchannel=6\n", iface, ssid);
->>>>>>> Allow hostapd driver configuration
 
     if (argc > 5) {
         if (!strcmp(argv[5], "wpa-psk")) {
