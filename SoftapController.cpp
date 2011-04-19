@@ -132,7 +132,11 @@ int SoftapController::startDriver(char *iface) {
     }
 
     *mBuf = 0;
+#ifdef LGE_SOFTAP
+    ret = setCommand(iface, "START-SOFTAP");
+#else
     ret = setCommand(iface, "START");
+#endif
     if (ret < 0) {
         LOGE("Softap driver start: %d", ret);
         return ret;
@@ -167,7 +171,11 @@ int SoftapController::stopDriver(char *iface) {
         LOGE("Softap %s down: %d", iface, ret);
     }
 #endif
+#ifdef LGE_SOFTAP
+    ret = setCommand(iface, "STOP-SOFTAP");
+#else
     ret = setCommand(iface, "STOP");
+#endif
     LOGD("Softap driver stop: %d", ret);
     return ret;
 }
