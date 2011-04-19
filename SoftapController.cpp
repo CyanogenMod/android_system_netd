@@ -82,7 +82,11 @@ int SoftapController::startDriver(char *iface) {
         LOGD("Softap driver start - wrong interface");
         iface = mIface;
     }
+#ifdef LGE_SOFTAP
+    fnum = getPrivFuncNum(iface, "START-SOFTAP");
+#else
     fnum = getPrivFuncNum(iface, "START");
+#endif
     if (fnum < 0) {
         LOGE("Softap driver start - function not supported");
         return -1;
@@ -109,7 +113,11 @@ int SoftapController::stopDriver(char *iface) {
         LOGD("Softap driver stop - wrong interface");
         iface = mIface;
     }
+#ifdef LGE_SOFTAP
+    fnum = getPrivFuncNum(iface, "STOP-SOFTAP");
+#else
     fnum = getPrivFuncNum(iface, "STOP");
+#endif
     if (fnum < 0) {
         LOGE("Softap driver stop - function not supported");
         return -1;
