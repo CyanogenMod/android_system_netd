@@ -71,7 +71,7 @@ private:
     class GetHostByAddrHandler {
     public:
         GetHostByAddrHandler(SocketClient *c,
-                            char* address,
+                            void* address,
                             int   addressLen,
                             int   addressFamily)
             : mClient(c),
@@ -87,7 +87,7 @@ private:
         void run();
         pthread_t mThread;
         SocketClient* mClient;  // ref counted
-        char* mAddress;    // address to lookup; owned
+        void* mAddress;    // address to lookup; owned
         int   mAddressLen; // length of address to look up
         int   mAddressFamily;  // address family
     };
