@@ -99,9 +99,15 @@ DnsProxyListener::GetAddrInfoCmd::GetAddrInfoCmd() :
 
 int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
                                             int argc, char **argv) {
+    if (DBG) {
+        for (int i = 0; i < argc; i++) {
+            LOGD("argv[%i]=%s", i, argv[i]);
+        }
+    }
     if (argc != 7) {
-        LOGW("Invalid number of arguments to getaddrinfo");
-        return 0;
+        LOGW("Invalid number of arguments to getaddrinfo: %i", argc);
+        sendLenAndData(cli, 0, NULL);
+        return -1;
     }
 
     char* name = argv[1];
@@ -155,16 +161,30 @@ DnsProxyListener::GetHostByAddrCmd::GetHostByAddrCmd() :
 
 int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
                                             int argc, char **argv) {
+    if (DBG) {
+        for (int i = 0; i < argc; i++) {
+            LOGD("argv[%i]=%s", i, argv[i]);
+        }
+    }
     if (argc != 4) {
-        LOGW("Invalid number of arguments to gethostbyaddr");
-        return 0;
+        LOGW("Invalid number of arguments to gethostbyaddr: %i", argc);
+        sendLenAndData(cli, 0, NULL);
+        return -1;
     }
 
-    char* addr = argv[1];
-    addr = strdup(addr);
-
+    char* addrStr = argv[1];
     int addrLen = atoi(argv[2]);
     int addrFamily = atoi(argv[3]);
+
+    void* addr = malloc(sizeof(struct in6_addr));
+    errno = 0;
+    int result = inet_pton(addrFamily, addrStr, addr);
+    if (result <= 0) {
+        LOGW("inet_pton(\"%s\") failed %s", addrStr, strerror(errno));
+        free(addr);
+        sendLenAndData(cli, 0, NULL);
+        return -1;
+    }
 
     DnsProxyListener::GetHostByAddrHandler* handler =
             new DnsProxyListener::GetHostByAddrHandler(cli, addr, addrLen, addrFamily);
@@ -193,19 +213,12 @@ void* DnsProxyListener::GetHostByAddrHandler::threadStart(void* obj) {
 void DnsProxyListener::GetHostByAddrHandler::run() {
     if (DBG) {
         LOGD("DnsProxyListener::GetHostByAddrHandler::run\n");
-        if (mAddress) {
-            LOGD("mAdress %u.%u.%u.%u mAdressLen %d, mAddressFamily %d",
-                    mAddress[0], mAddress[1], mAddress[2], mAddress[3],
-                    mAddressLen, mAddressFamily);
-        }
-        else {
-            LOGD("mAddress = NULL");
-        }
     }
 
     struct hostent* hp;
 
-    hp = gethostbyaddr(mAddress, mAddressLen, mAddressFamily);
+    // NOTE gethostbyaddr should take a void* but bionic thinks it should be char*
+    hp = gethostbyaddr((char*)mAddress, mAddressLen, mAddressFamily);
 
     if (DBG) {
         LOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %d\n",
