@@ -42,6 +42,8 @@ extern "C" int ifc_set_addr(const char *name, in_addr_t addr);
 extern "C" int ifc_set_prefixLength(const char *name, int prefixLength);
 extern "C" int ifc_up(const char *name);
 extern "C" int ifc_down(const char *name);
+extern "C" int ifc_add_route(const char *name, const char *dst, int prefix_length, const char *gw);
+extern "C" int ifc_remove_route(const char *name, const char *dst, int p_length, const char *gw);
 
 TetherController *CommandListener::sTetherCtrl = NULL;
 NatController *CommandListener::sNatCtrl = NULL;
@@ -185,6 +187,35 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
             return 0;
         }
+
+        if (!strcmp(argv[1], "route")) {
+            int prefix_length = 0;
+            if (argc < 7) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                return 0;
+            }
+            if (sscanf(argv[5], "%d", &prefix_length) != 1) {
+                cli->sendMsg(ResponseCode::CommandParameterError, "Invalid route prefix", false);
+                return 0;
+            }
+            if (!strcmp(argv[2], "add")) {
+                if (ifc_add_route(argv[3], argv[4], prefix_length, argv[6])) {
+                    cli->sendMsg(ResponseCode::OperationFailed, "Failed to add route", true);
+                } else {
+                    cli->sendMsg(ResponseCode::CommandOkay, "Route added", false);
+                }
+            } else if (!strcmp(argv[2], "remove")) {
+                if (ifc_remove_route(argv[3], argv[4], prefix_length, argv[6])) {
+                    cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove route", true);
+                } else {
+                    cli->sendMsg(ResponseCode::CommandOkay, "Route removed", false);
+                }
+            } else {
+                cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown interface cmd", false);
+            }
+            return 0;
+        }
+
         if (!strcmp(argv[1], "getcfg")) {
             struct in_addr addr;
             int prefixLength;
