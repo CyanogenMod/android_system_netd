@@ -25,7 +25,6 @@
 #include "PppController.h"
 #include "PanController.h"
 #include "SoftapController.h"
-#include "UsbController.h"
 #include "BandwidthController.h"
 
 class CommandListener : public FrameworkListener {
@@ -34,7 +33,6 @@ class CommandListener : public FrameworkListener {
     static PppController *sPppCtrl;
     static PanController *sPanCtrl;
     static SoftapController *sSoftapCtrl;
-    static UsbController *sUsbCtrl;
     static BandwidthController *sBandwidthCtrl;
 
 public:
@@ -44,13 +42,6 @@ public:
 private:
 
     static int readInterfaceCounters(const char *iface, unsigned long *rx, unsigned long *tx);
-
-    class UsbCmd : public NetdCommand {
-    public:
-        UsbCmd();
-        virtual ~UsbCmd() {}
-        int runCommand(SocketClient *c, int argc, char ** argv);
-    };
 
     class SoftapCmd : public NetdCommand {
     public:
