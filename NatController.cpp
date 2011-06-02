@@ -22,6 +22,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <string.h>
+#include <cutils/properties.h>
 
 #define LOG_TAG "NatController"
 #include <cutils/log.h>
@@ -92,14 +93,18 @@ bool NatController::interfaceExists(const char *iface) {
 int NatController::doNatCommands(const char *intIface, const char *extIface, bool add) {
     char cmd[255];
 
-    // handle decrement to 0 case (do reset to defaults) and erroneous dec below 0
-    if (add == false) {
-        if (natCount <= 1) {
-            int ret = setDefaults();
-            if (ret == 0) {
-                natCount=0;
+    char bootmode[PROPERTY_VALUE_MAX] = {0};
+    property_get("ro.bootmode", bootmode, "unknown");
+    if (0 != strcmp("bp-tools", bootmode)) {
+        // handle decrement to 0 case (do reset to defaults) and erroneous dec below 0
+        if (add == false) {
+            if (natCount <= 1) {
+                int ret = setDefaults();
+                if (ret == 0) {
+                    natCount=0;
+                }
+                return ret;
             }
-            return ret;
         }
     }
 
@@ -132,8 +137,10 @@ int NatController::doNatCommands(const char *intIface, const char *extIface, boo
     if (add && natCount == 0) {
         snprintf(cmd, sizeof(cmd), "-t nat -A POSTROUTING -o %s -j MASQUERADE", extIface);
         if (runIptablesCmd(cmd)) {
-            // unwind what's been done, but don't care about success - what more could we do?
-            setDefaults();;
+            if (0 != strcmp("bp-tools", bootmode)) {
+                // unwind what's been done, but don't care about success - what more could we do?
+                setDefaults();;
+            }
             return -1;
         }
     }
