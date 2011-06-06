@@ -96,6 +96,10 @@ int PppController::attachPppd(const char *tty, struct in_addr local,
             LOGE("execl failed (%s)", strerror(errno));
         }
         LOGE("Should never get here!");
+        free(l);
+        free(r);
+        free(d1);
+        free(d2);
         return 0;
     } else {
         mPid = pid;
