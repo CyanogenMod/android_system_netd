@@ -37,8 +37,10 @@
 
 
 extern "C" int ifc_init(void);
+extern "C" int ifc_close(void);
 extern "C" int ifc_get_hwaddr(const char *name, void *ptr);
 extern "C" int ifc_get_info(const char *name, in_addr_t *addr, int *prefixLength, unsigned *flags);
+extern "C" int ifc_get_addr(const char *name, in_addr_t *addr);
 extern "C" int ifc_set_addr(const char *name, in_addr_t addr);
 extern "C" int ifc_set_prefixLength(const char *name, int prefixLength);
 extern "C" int ifc_up(const char *name);
@@ -232,6 +234,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
 
             if (ifc_get_info(argv[2], &addr.s_addr, &prefixLength, &flags)) {
                 cli->sendMsg(ResponseCode::OperationFailed, "Interface not found", true);
+                ifc_close();
                 return 0;
             }
 
@@ -263,6 +266,8 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             free(addr_s);
             free(flag_s);
             free(msg);
+
+            ifc_close();
             return 0;
         } else if (!strcmp(argv[1], "setcfg")) {
             // arglist: iface addr prefixLength [flags]
@@ -283,11 +288,13 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             ifc_init();
             if (ifc_set_addr(argv[2], addr.s_addr)) {
                 cli->sendMsg(ResponseCode::OperationFailed, "Failed to set address", true);
+                ifc_close();
                 return 0;
             }
 
             if (ifc_set_prefixLength(argv[2], atoi(argv[4]))) {
                 cli->sendMsg(ResponseCode::OperationFailed, "Failed to set prefixLength", true);
+                ifc_close();
                 return 0;
             }
 
@@ -314,6 +321,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                     if (ifc_up(argv[2])) {
                         LOGE("Error upping interface");
                         cli->sendMsg(ResponseCode::OperationFailed, "Failed to up interface", true);
+                        ifc_close();
                         return 0;
                     }
                 } else if (!strcmp(flag, "down")) {
@@ -321,6 +329,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                     if (ifc_down(argv[2])) {
                         LOGE("Error downing interface");
                         cli->sendMsg(ResponseCode::OperationFailed, "Failed to down interface", true);
+                        ifc_close();
                         return 0;
                     }
                 } else if (!strcmp(flag, "broadcast")) {
@@ -329,10 +338,30 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                     LOGD("multicast flag ignored");
                 } else {
                     cli->sendMsg(ResponseCode::CommandParameterError, "Flag unsupported", false);
+                    ifc_close();
                     return 0;
                 }
             }
+
             cli->sendMsg(ResponseCode::CommandOkay, "Interface configuration set", false);
+            ifc_close();
+            return 0;
+        } else if (!strcmp(argv[1], "clearaddrs")) {
+            // arglist: iface
+            unsigned count, addr;
+
+            //IPv4 only right now
+            LOGD("Clearing all IP addresses on %s", argv[2]);
+
+            ifc_init();
+            for (count=0, addr=1;((addr != 0) && (count < 255)); count++) {
+                if (ifc_get_addr(argv[2], &addr) < 0)
+                    break;
+                if (addr)
+                    ifc_set_addr(argv[2], 0);
+            }
+            ifc_close();
+            cli->sendMsg(ResponseCode::CommandOkay, "Interface IP addresses cleared", false);
             return 0;
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown interface cmd", false);
