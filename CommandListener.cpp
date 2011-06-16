@@ -33,6 +33,7 @@
 #include "CommandListener.h"
 #include "ResponseCode.h"
 #include "ThrottleController.h"
+#include "BandwidthController.h"
 
 
 extern "C" int ifc_init(void);
@@ -51,6 +52,7 @@ PppController *CommandListener::sPppCtrl = NULL;
 PanController *CommandListener::sPanCtrl = NULL;
 SoftapController *CommandListener::sSoftapCtrl = NULL;
 UsbController *CommandListener::sUsbCtrl = NULL;
+BandwidthController * CommandListener::sBandwidthCtrl = NULL;
 
 CommandListener::CommandListener() :
                  FrameworkListener("netd") {
@@ -63,6 +65,7 @@ CommandListener::CommandListener() :
     registerCmd(new PanCmd());
     registerCmd(new SoftapCmd());
     registerCmd(new UsbCmd());
+    registerCmd(new BandwidthControlCmd());
 
     if (!sTetherCtrl)
         sTetherCtrl = new TetherController();
@@ -76,6 +79,8 @@ CommandListener::CommandListener() :
         sSoftapCtrl = new SoftapController();
     if (!sUsbCtrl)
         sUsbCtrl = new UsbController();
+    if (!sBandwidthCtrl)
+        sBandwidthCtrl = new BandwidthController();
 }
 
 CommandListener::InterfaceCmd::InterfaceCmd() :
@@ -336,6 +341,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
     }
     return 0;
 }
+
 
 CommandListener::ListTtysCmd::ListTtysCmd() :
                  NetdCommand("list_ttys") {
@@ -697,7 +703,7 @@ int CommandListener::UsbCmd::runCommand(SocketClient *cli, int argc, char **argv
     if (!rc) {
         cli->sendMsg(ResponseCode::CommandOkay, "Usb operation succeeded", false);
     } else {
-        cli->sendMsg(ResponseCode::OperationFailed, "Softap operation failed", true);
+        cli->sendMsg(ResponseCode::OperationFailed, "Usb operation failed", true);
     }
 
     return 0;
@@ -741,5 +747,41 @@ int CommandListener::readInterfaceCounters(const char *iface, unsigned long *rx,
     fclose(fp);
     *rx = 0;
     *tx = 0;
+    return 0;
+}
+
+CommandListener::BandwidthControlCmd::BandwidthControlCmd() :
+	NetdCommand("bandwidth") {
+}
+
+int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli,
+                                                     int argc, char **argv) {
+    int rc = 0;
+    if (argc < 2) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "enable")) {
+        rc = sBandwidthCtrl->enableBandwidthControl();
+    } else if (!strcmp(argv[1], "disable")) {
+        rc = sBandwidthCtrl->disableBandwidthControl();
+    } else if (!strcmp(argv[1], "setquota")) {
+            if (argc != 4) {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError,
+                                 "Usage: bandwidth setquota <interface> <bytes>", false);
+                    return 0;
+            }
+            rc = sBandwidthCtrl->setInterfaceQuota(argv[2], atoll(argv[3]));
+    } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown bandwidth cmd", false);
+            return 0;
+    }
+
+    if (!rc) {
+        cli->sendMsg(ResponseCode::CommandOkay, "Bandwidth command succeeeded", false);
+    } else {
+        cli->sendMsg(ResponseCode::OperationFailed, "Bandwidth command failed", true);
+    }
     return 0;
 }

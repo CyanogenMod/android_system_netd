@@ -26,6 +26,7 @@
 #include "PanController.h"
 #include "SoftapController.h"
 #include "UsbController.h"
+#include "BandwidthController.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
@@ -34,6 +35,7 @@ class CommandListener : public FrameworkListener {
     static PanController *sPanCtrl;
     static SoftapController *sSoftapCtrl;
     static UsbController *sUsbCtrl;
+    static BandwidthController *sBandwidthCtrl;
 
 public:
     CommandListener();
@@ -103,6 +105,13 @@ private:
     public:
         PanCmd();
         virtual ~PanCmd() {}
+        int runCommand(SocketClient *c, int argc, char ** argv);
+    };
+
+    class BandwidthControlCmd : public NetdCommand {
+    public:
+        BandwidthControlCmd();
+        virtual ~BandwidthControlCmd() {}
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
 };

@@ -10,27 +10,32 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:=                                      \
-                  main.cpp                             \
+                  BandwidthController.cpp              \
                   CommandListener.cpp                  \
                   DnsProxyListener.cpp                 \
-                  NetdCommand.cpp                      \
-                  NetlinkManager.cpp                   \
-                  NetlinkHandler.cpp                   \
-                  logwrapper.c                         \
-                  TetherController.cpp                 \
                   NatController.cpp                    \
-                  PppController.cpp                    \
+                  NetdCommand.cpp                      \
+                  NetlinkHandler.cpp                   \
+                  NetlinkManager.cpp                   \
                   PanController.cpp                    \
+                  PppController.cpp                    \
                   SoftapController.cpp                 \
+                  TetherController.cpp                 \
+                  ThrottleController.cpp               \
                   UsbController.cpp                    \
-                  ThrottleController.cpp
+                  logwrapper.c                         \
+                  main.cpp                             \
+
+
 
 LOCAL_MODULE:= netd
 
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) \
                     $(LOCAL_PATH)/../bluetooth/bluedroid/include \
                     $(LOCAL_PATH)/../bluetooth/bluez-clean-headers \
-                    external/openssl/include
+                    external/openssl/include \
+                    external/stlport/stlport \
+                    bionic
 
 LOCAL_CFLAGS :=
 ifdef WIFI_DRIVER_FW_STA_PATH
@@ -40,7 +45,7 @@ ifdef WIFI_DRIVER_FW_AP_PATH
 LOCAL_CFLAGS += -DWIFI_DRIVER_FW_AP_PATH=\"$(WIFI_DRIVER_FW_AP_PATH)\"
 endif
 
-LOCAL_SHARED_LIBRARIES := libsysutils libcutils libnetutils libcrypto
+LOCAL_SHARED_LIBRARIES := libstlport libsysutils libcutils libnetutils libcrypto
 
 ifeq ($(BOARD_HAVE_BLUETOOTH),true)
   LOCAL_SHARED_LIBRARIES := $(LOCAL_SHARED_LIBRARIES) libbluedroid
