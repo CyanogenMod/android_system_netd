@@ -738,14 +738,14 @@ int CommandListener::readInterfaceCounters(const char *iface, unsigned long *rx,
 }
 
 CommandListener::BandwidthControlCmd::BandwidthControlCmd() :
-	NetdCommand("bandwidth") {
+    NetdCommand("b") {
 }
 
-int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli,
-                                                     int argc, char **argv) {
+int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc, char **argv) {
     int rc = 0;
+    LOGD("bwctrlcmd: argc=%d argv[0]=%s", argc, argv[0]);
     if (argc < 2) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
         return 0;
     }
 
@@ -753,16 +753,50 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli,
         rc = sBandwidthCtrl->enableBandwidthControl();
     } else if (!strcmp(argv[1], "disable")) {
         rc = sBandwidthCtrl->disableBandwidthControl();
-    } else if (!strcmp(argv[1], "setquota")) {
-            if (argc != 4) {
-                    cli->sendMsg(ResponseCode::CommandSyntaxError,
-                                 "Usage: bandwidth setquota <interface> <bytes>", false);
-                    return 0;
-            }
-            rc = sBandwidthCtrl->setInterfaceQuota(argv[2], atoll(argv[3]));
-    } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown bandwidth cmd", false);
+    } else if (!strcmp(argv[1], "removequota") || !strcmp(argv[1], "rq")) {
+        if (argc != 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth removequota <interface>", false);
             return 0;
+        }
+        rc = sBandwidthCtrl->removeInterfaceSharedQuota(argv[2]);
+
+    } else if (!strcmp(argv[1], "setquota") || !strcmp(argv[1], "sq")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth setquota <interface> <bytes>", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->setInterfaceSharedQuota(atoll(argv[3]), argv[2]);
+
+    } else if (!strcmp(argv[1], "setquotas") || !strcmp(argv[1], "sqs")) {
+        if (argc < 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth setquotas <bytes> <interface> ...", false);
+            return 0;
+        }
+        /* TODO: rc = sBandwidthCtrl->setInterfaceQuotas(argv[2], argc - 3, argv + 3)); */
+        rc = -1;
+
+    } else if (!strcmp(argv[1], "addnaughtyapps") || !strcmp(argv[1], "ana")) {
+        if (argc < 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth addnaughtyapps <appUid> ...", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->addNaughtyApps(argc - 2, argv + 2);
+
+    } else if (!strcmp(argv[1], "removenaughtyapps") || !strcmp(argv[1], "rna")) {
+        if (argc < 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth remnaughtyapps <appUid> ...", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->removeNaughtyApps(argc - 2, argv + 2);
+
+    } else {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown bandwidth cmd", false);
+        return 0;
     }
 
     if (!rc) {
