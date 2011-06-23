@@ -98,7 +98,7 @@ void NetlinkHandler::notifyInterfaceChanged(const char *name, bool isUp) {
 
 void NetlinkHandler::notifyInterfaceLinkChanged(const char *name, bool isUp) {
     char msg[255];
-    snprintf(msg, sizeof(msg), "Iface linkstatus %s %s", name,
+    snprintf(msg, sizeof(msg), "Iface linkstate %s %s", name,
              (isUp ? "up" : "down"));
 
     mNm->getBroadcaster()->sendBroadcast(ResponseCode::InterfaceChange,
