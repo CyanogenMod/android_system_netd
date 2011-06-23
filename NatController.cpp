@@ -70,11 +70,7 @@ int NatController::setDefaults() {
 
     if (runIptablesCmd("-P INPUT ACCEPT"))
         return -1;
-    if (runIptablesCmd("-F INPUT"))
-        return -1;
     if (runIptablesCmd("-P OUTPUT ACCEPT"))
-        return -1;
-    if (runIptablesCmd("-F OUTPUT"))
         return -1;
     if (runIptablesCmd("-P FORWARD DROP"))
         return -1;
