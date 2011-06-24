@@ -738,7 +738,7 @@ int CommandListener::readInterfaceCounters(const char *iface, unsigned long *rx,
 }
 
 CommandListener::BandwidthControlCmd::BandwidthControlCmd() :
-    NetdCommand("b") {
+    NetdCommand("bandwidth") {
 }
 
 int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc, char **argv) {
@@ -753,6 +753,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         rc = sBandwidthCtrl->enableBandwidthControl();
     } else if (!strcmp(argv[1], "disable")) {
         rc = sBandwidthCtrl->disableBandwidthControl();
+
     } else if (!strcmp(argv[1], "removequota") || !strcmp(argv[1], "rq")) {
         if (argc != 3) {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
@@ -767,7 +768,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
                          "Usage: bandwidth setquota <interface> <bytes>", false);
             return 0;
         }
-        rc = sBandwidthCtrl->setInterfaceSharedQuota(atoll(argv[3]), argv[2]);
+        rc = sBandwidthCtrl->setInterfaceSharedQuota(argv[2], atoll(argv[3]));
 
     } else if (!strcmp(argv[1], "setquotas") || !strcmp(argv[1], "sqs")) {
         if (argc < 4) {
@@ -775,8 +776,51 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
                          "Usage: bandwidth setquotas <bytes> <interface> ...", false);
             return 0;
         }
-        /* TODO: rc = sBandwidthCtrl->setInterfaceQuotas(argv[2], argc - 3, argv + 3)); */
-        rc = -1;
+        for (int q=3; argc >= 4; q++, argc--) {
+            rc = sBandwidthCtrl->setInterfaceSharedQuota(argv[q], atoll(argv[2]));
+            if (rc) {
+                char *msg;
+                asprintf(&msg, "bandwidth setquotas %s %s failed", argv[2], argv[q]);
+                cli->sendMsg(ResponseCode::OperationFailed,
+                             msg, false);
+                free(msg);
+                break;
+            }
+        }
+
+    } else if (!strcmp(argv[1], "removequotas") || !strcmp(argv[1], "rqs")) {
+        if (argc < 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth removequotas <interface> ...", false);
+            return 0;
+        }
+        for (int q=2; argc >= 3; q++, argc--) {
+            rc = sBandwidthCtrl->removeInterfaceSharedQuota(argv[q]);
+            if (rc) {
+                char *msg;
+                asprintf(&msg, "bandwidth removequotas %s failed", argv[q]);
+                cli->sendMsg(ResponseCode::OperationFailed,
+                             msg, false);
+                free(msg);
+                break;
+            }
+        }
+
+    } else if (!strcmp(argv[1], "removeiquota") || !strcmp(argv[1], "riq")) {
+        if (argc != 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth removeiquota <interface>", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->removeInterfaceQuota(argv[2]);
+
+    } else if (!strcmp(argv[1], "setiquota") || !strcmp(argv[1], "siq")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth setiquota <interface> <bytes>", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->setInterfaceQuota(argv[2], atoll(argv[3]));
 
     } else if (!strcmp(argv[1], "addnaughtyapps") || !strcmp(argv[1], "ana")) {
         if (argc < 3) {

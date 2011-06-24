@@ -25,23 +25,39 @@ public:
     int enableBandwidthControl(void);
     int disableBandwidthControl(void);
 
-    int setInterfaceSharedQuota(int64_t bytes, const char *iface);
+    int setInterfaceSharedQuota(const char *iface, int64_t bytes);
     int removeInterfaceSharedQuota(const char *iface);
+
+    int setInterfaceQuota(const char *iface, int64_t bytes);
+    int removeInterfaceQuota(const char *iface);
 
     int addNaughtyApps(int numUids, char *appUids[]);
     int removeNaughtyApps(int numUids, char *appUids[]);
 
+
 protected:
-    int runCommands(int numCommands, const char *commands[],
-            bool allowFailure = false, bool isIpv6 = false);
     typedef std::pair<std::string /*ifaceName*/, int64_t /*quota*/> QuotaInfo;
     enum IptOp {IptOpInsert, IptOpReplace, IptOpDelete};
+
     int64_t sharedQuotaBytes;
-    std::list<QuotaInfo> ifaceRules;
+    std::list<std::string> sharedQuotaIfaces;
+
+    std::list<QuotaInfo> quotaIfaces;
+
     std::list<int /*appUid*/> naughtyAppUids;
-    std::string makeIptablesNaughtyCmd(IptOp op, int uid, bool isIp6);
-    std::string makeIptablesQuotaCmd(IptOp op, char *costName, int64_t quota, bool isIp6);
     int maninpulateNaughtyApps(int numUids, char *appStrUids[], bool doAdd);
+
+    int prepCostlyIface(const char *ifn, bool isShared);
+    int cleanupCostlyIface(const char *ifn, bool isShared);
+
+    std::string makeIptablesNaughtyCmd(IptOp op, int uid);
+    std::string makeIptablesQuotaCmd(IptOp op, char *costName, int64_t quota);
+
+    /* Runs for both ipv4 and ipv6 iptables */
+    int runCommands(int numCommands, const char *commands[], bool allowFailure);
+    /* Runs for both ipv4 and ipv6 iptables, appends -j REJECT --reject-with ...  */
+    static int runIpxtablesCmd(const char *cmd, bool appendReject);
+    static int runIptablesCmd(const char *cmd, bool appendReject, bool isIp6);
 
 private:
     static const char *cleanupCommands[];
@@ -53,7 +69,6 @@ private:
     static const char IPTABLES_PATH[];
     static const char IP6TABLES_PATH[];
 
-    static int runIptablesCmd(const char *cmd, bool isIp6 = false);
 };
 
 #endif
