@@ -29,7 +29,7 @@
 
 #define LOG_TAG "TetherController"
 #include <cutils/log.h>
-
+#include <cutils/properties.h>
 
 #include "TetherController.h"
 
@@ -54,6 +54,14 @@ TetherController::~TetherController() {
 int TetherController::setIpFwdEnabled(bool enable) {
 
     LOGD("Setting IP forward enable = %d", enable);
+
+    // In BP tools mode, do not disable IP forwarding
+    char bootmode[PROPERTY_VALUE_MAX] = {0};
+    property_get("ro.bootmode", bootmode, "unknown");
+    if ((enable == false) && (0 == strcmp("bp-tools", bootmode))) {
+        return 0;
+    }
+
     int fd = open("/proc/sys/net/ipv4/ip_forward", O_WRONLY);
     if (fd < 0) {
         LOGE("Failed to open ip_forward (%s)", strerror(errno));
