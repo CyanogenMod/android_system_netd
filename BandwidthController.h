@@ -37,7 +37,12 @@ public:
 
 protected:
     typedef std::pair<std::string /*ifaceName*/, int64_t /*quota*/> QuotaInfo;
-    enum IptOp {IptOpInsert, IptOpReplace, IptOpDelete};
+    enum IptIpVer { IptIpV4, IptIpV6 };
+    enum IptOp { IptOpInsert, IptOpReplace, IptOpDelete };
+    enum IptRejectOp { IptRejectAdd, IptRejectNoAdd };
+    enum NaughtyAppOp { NaughtyAppOpAdd, NaughtyAppOpRemove };
+    enum QuotaType { QuotaUnique, QuotaShared };
+    enum RunCmdErrHandling { RunCmdFailureBad, RunCmdFailureOk };
 
     int64_t sharedQuotaBytes;
     std::list<std::string> sharedQuotaIfaces;
@@ -45,19 +50,22 @@ protected:
     std::list<QuotaInfo> quotaIfaces;
 
     std::list<int /*appUid*/> naughtyAppUids;
-    int maninpulateNaughtyApps(int numUids, char *appStrUids[], bool doAdd);
+    int maninpulateNaughtyApps(int numUids, char *appStrUids[], NaughtyAppOp appOp);
 
-    int prepCostlyIface(const char *ifn, bool isShared);
-    int cleanupCostlyIface(const char *ifn, bool isShared);
+    int prepCostlyIface(const char *ifn, QuotaType quotaType);
+    int cleanupCostlyIface(const char *ifn, QuotaType quotaType);
 
     std::string makeIptablesNaughtyCmd(IptOp op, int uid);
-    std::string makeIptablesQuotaCmd(IptOp op, char *costName, int64_t quota);
+    std::string makeIptablesQuotaCmd(IptOp op, const char *costName, int64_t quota);
 
     /* Runs for both ipv4 and ipv6 iptables */
-    int runCommands(int numCommands, const char *commands[], bool allowFailure);
+    int runCommands(int numCommands, const char *commands[], RunCmdErrHandling cmdErrHandling);
     /* Runs for both ipv4 and ipv6 iptables, appends -j REJECT --reject-with ...  */
-    static int runIpxtablesCmd(const char *cmd, bool appendReject);
-    static int runIptablesCmd(const char *cmd, bool appendReject, bool isIp6);
+    static int runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling);
+    static int runIptablesCmd(const char *cmd, IptRejectOp rejectHandling, IptIpVer iptIpVer);
+
+    // Provides strncpy() + check overflow.
+    static int StrncpyAndCheck(char *buffer, const char *src, size_t buffSize);
 
 private:
     static const char *cleanupCommands[];

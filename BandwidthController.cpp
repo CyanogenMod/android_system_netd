@@ -15,7 +15,6 @@
  */
 
 #include <stdlib.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <string.h>
 
@@ -119,91 +118,101 @@ BandwidthController::BandwidthController(void) {
 
 }
 
-int BandwidthController::runIpxtablesCmd(const char *cmd, bool appendReject) {
+int BandwidthController::runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling) {
     int res = 0;
-    res |= runIptablesCmd(cmd, appendReject, false);
-    res |= runIptablesCmd(cmd, appendReject, true);
+    LOGD("runIpxtablesCmd(cmd=%s)", cmd);
+    res |= runIptablesCmd(cmd, rejectHandling, IptIpV4);
+    res |= runIptablesCmd(cmd, rejectHandling, IptIpV6);
     return res;
 }
 
-int BandwidthController::runIptablesCmd(const char *cmd, bool appendReject, bool isIp6) {
-    char buffer[MAX_CMD_LEN] = { 0 }; // strncpy() is not filling leftover with '\0'
+int BandwidthController::StrncpyAndCheck(char *buffer, const char *src, size_t buffSize) {
+
+    memset(buffer, '\0', buffSize);  // strncpy() is not filling leftover with '\0'
+    strncpy(buffer, src, buffSize);
+    return buffer[buffSize - 1];
+}
+
+int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandling, IptIpVer iptVer) {
+    char buffer[MAX_CMD_LEN];
     const char *argv[MAX_CMD_ARGS];
-    int argc, nextArg;
+    int argc = 0;
     char *next = buffer;
     char *tmp;
 
     std::string fullCmd = cmd;
-    if (appendReject) {
+
+    if (rejectHandling == IptRejectAdd) {
         fullCmd += " --jump REJECT --reject-with";
-        if (isIp6) {
-            fullCmd += " icmp6-adm-prohibited";
-        } else {
-            fullCmd += " icmp-net-prohibited";
+        switch (iptVer) {
+        case IptIpV4:
+                fullCmd += " icmp-net-prohibited";
+                break;
+        case IptIpV6:
+                fullCmd += " icmp6-adm-prohibited";
+                break;
         }
-        argc = 4; //  --jump ...
     }
 
-    nextArg = 0;
-    argv[nextArg++] = isIp6 ? IP6TABLES_PATH : IPTABLES_PATH;
-    argc++;
+    argc = 0;
+    argv[argc++] = iptVer == IptIpV4 ? IPTABLES_PATH : IP6TABLES_PATH;
     LOGD("About to run: %s %s", argv[0], fullCmd.c_str());
 
-    strncpy(buffer, fullCmd.c_str(), sizeof(buffer) - 1);
-    if (buffer[sizeof(buffer) - 1]) {
+    LOGD("runIpxtablesCmd(): fullCmd.c_str()=%s buffSize=%d", fullCmd.c_str(), sizeof(buffer));
+    if (StrncpyAndCheck(buffer, fullCmd.c_str(), sizeof(buffer))) {
         LOGE("iptables command too long");
-        errno = E2BIG;
         return -1;
     }
 
     while ((tmp = strsep(&next, " "))) {
-        argv[nextArg++] = tmp;
-        argc++;
+        argv[argc++] = tmp;
         if (argc >= MAX_CMD_ARGS) {
             LOGE("iptables argument overflow");
-            errno = E2BIG;
             return -1;
         }
     }
 
     argv[argc] = NULL;
+    LOGD("runIpxtablesCmd(): argc=%d, argv[argc]=%p", argc, argv[argc]);
     /* TODO(jpa): Once this stabilizes, remove logwrap() as it tends to wedge netd
      * Then just talk directly to the kernel via rtnetlink.
      */
+    for (int i = 0 ; i < argc; i++) {
+            LOGD("runIpxtablesCmd(): argv[%d]=%p:%s", i, argv[i], argv[i]?:"null");
+    }
     return logwrap(argc, argv, 0);
 }
 
 int BandwidthController::enableBandwidthControl(void) {
     int res;
     /* Some of the initialCommands are allowed to fail */
-    runCommands(sizeof(cleanupCommands) / sizeof(char*), cleanupCommands, true);
-    runCommands(sizeof(setupCommands) / sizeof(char*), setupCommands, true);
-    res = runCommands(sizeof(basicAccountingCommands) / sizeof(char*), basicAccountingCommands,
-                      false);
+    runCommands(sizeof(cleanupCommands) / sizeof(char*), cleanupCommands, RunCmdFailureOk);
+    runCommands(sizeof(setupCommands) / sizeof(char*), setupCommands, RunCmdFailureOk);
+    res = runCommands(sizeof(basicAccountingCommands) / sizeof(char*), basicAccountingCommands, RunCmdFailureBad);
     return res;
 
 }
 
 int BandwidthController::disableBandwidthControl(void) {
     /* The cleanupCommands are allowed to fail. */
-    runCommands(sizeof(cleanupCommands) / sizeof(char*), cleanupCommands, true);
+    runCommands(sizeof(cleanupCommands) / sizeof(char*), cleanupCommands, RunCmdFailureOk);
     return 0;
 }
 
-int BandwidthController::runCommands(int numCommands, const char *commands[], bool allowFailure) {
+int BandwidthController::runCommands(int numCommands, const char *commands[], RunCmdErrHandling cmdErrHandling) {
     int res = 0;
     LOGD("runCommands(): %d commands", numCommands);
     for (int cmdNum = 0; cmdNum < numCommands; cmdNum++) {
-        res = runIpxtablesCmd(commands[cmdNum], false);
-        if (res && !allowFailure)
+        res = runIpxtablesCmd(commands[cmdNum], IptRejectNoAdd);
+        if (res && cmdErrHandling != RunCmdFailureBad)
             return res;
     }
-    return allowFailure ? res : 0;
+    return cmdErrHandling == RunCmdFailureBad ? res : 0;
 }
 
 std::string BandwidthController::makeIptablesNaughtyCmd(IptOp op, int uid) {
     std::string res;
-    char convBuff[21]; // log10(2^64) ~ 20
+    char *convBuff;
 
     switch (op) {
         case IptOpInsert:
@@ -218,52 +227,68 @@ std::string BandwidthController::makeIptablesNaughtyCmd(IptOp op, int uid) {
             break;
     }
     res += " penalty_box";
-    sprintf(convBuff, "%d", uid);
+    asprintf(&convBuff, "%d", uid);
     res += " -m owner --uid-owner ";
     res += convBuff;
+    free(convBuff);
+    LOGD("makeIptablesNaughtyCmd() res=%s", res.c_str());
     return res;
 }
 
 int BandwidthController::addNaughtyApps(int numUids, char *appUids[]) {
-    return maninpulateNaughtyApps(numUids, appUids, true);
+    return maninpulateNaughtyApps(numUids, appUids, NaughtyAppOpAdd);
 }
 
 int BandwidthController::removeNaughtyApps(int numUids, char *appUids[]) {
-    return maninpulateNaughtyApps(numUids, appUids, false);
+    return maninpulateNaughtyApps(numUids, appUids, NaughtyAppOpRemove);
 }
 
-int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[], bool doAdd) {
+int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[], NaughtyAppOp appOp) {
     char cmd[MAX_CMD_LEN];
     int uidNum;
-    const char *addFailedTemplate = "Failed to add app uid %d to penalty box.";
-    const char *deleteFailedTemplate = "Failed to delete app uid %d from penalty box.";
-    IptOp op = doAdd ? IptOpInsert : IptOpDelete;
-
+    const char *failLogTemplate;
+    IptOp op;
     int appUids[numUids];
-    for (uidNum = 0; uidNum < numUids; uidNum++) {
-        appUids[uidNum] = atol(appStrUids[uidNum]);
-        if (appUids[uidNum] == 0) {
-            LOGE((doAdd ? addFailedTemplate : deleteFailedTemplate), appUids[uidNum]);
-            goto fail_parse;
-        }
+    std::string naughtyCmd;
+    LOGD("manipulateNaughtyApps()");
+    switch (appOp) {
+    case NaughtyAppOpAdd:
+            op = IptOpInsert;
+            failLogTemplate = "Failed to add app uid %d to penalty box.";
+            break;
+    case NaughtyAppOpRemove:
+            op = IptOpDelete;
+            failLogTemplate = "Failed to delete app uid %d from penalty box.";
+            break;
     }
 
     for (uidNum = 0; uidNum < numUids; uidNum++) {
-        std::string naughtyCmd = makeIptablesNaughtyCmd(op, appUids[uidNum]);
-        if (runIpxtablesCmd(naughtyCmd.c_str(), true)) {
-            LOGE((doAdd ? addFailedTemplate : deleteFailedTemplate), appUids[uidNum]);
+        appUids[uidNum] = atol(appStrUids[uidNum]);
+        if (appUids[uidNum] == 0) {
+            LOGE(failLogTemplate, appUids[uidNum]);
+            goto fail_parse;
+        }
+    }
+    LOGD("manipulateNaughtyApps() got the appUids");
+
+    for (uidNum = 0; uidNum < numUids; uidNum++) {
+        naughtyCmd = makeIptablesNaughtyCmd(op, appUids[uidNum]);
+        if (runIpxtablesCmd(naughtyCmd.c_str(), IptRejectAdd)) {
+            LOGE(failLogTemplate, appUids[uidNum]);
             goto fail_with_uidNum;
         }
     }
     return 0;
 
-    fail_with_uidNum:
+fail_with_uidNum:
     /* Try to remove the uid that failed in any case*/
-    runIpxtablesCmd(makeIptablesNaughtyCmd(IptOpDelete, appUids[uidNum]).c_str(), true);
-    fail_parse: return -1;
+    naughtyCmd = makeIptablesNaughtyCmd(IptOpDelete, appUids[uidNum]);
+    runIpxtablesCmd(naughtyCmd.c_str(), IptRejectAdd);
+fail_parse:
+    return -1;
 }
 
-std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, char *costName, int64_t quota) {
+std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *costName, int64_t quota) {
     std::string res;
     char convBuff[21]; // log10(2^64) ~ 20
 
@@ -297,7 +322,7 @@ std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, char *costName, 
     return res;
 }
 
-int BandwidthController::prepCostlyIface(const char *ifn, bool isShared) {
+int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
     char cmd[MAX_CMD_LEN];
     int res = 0;
     std::string costString;
@@ -305,56 +330,62 @@ int BandwidthController::prepCostlyIface(const char *ifn, bool isShared) {
 
     costString = "costly";
     /* The "-N costly" is created upfront, no need to handle it here. */
-    if (!isShared) {
+    switch (quotaType) {
+    case QuotaUnique:
         costString += "_";
         costString += ifn;
         costCString = costString.c_str();
         snprintf(cmd, sizeof(cmd), "-N %s", costCString);
-        res |= runIpxtablesCmd(cmd, false);
+        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
         snprintf(cmd, sizeof(cmd), "-A %s -j penalty_box", costCString);
-        res |= runIpxtablesCmd(cmd, false);
+        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
         snprintf(cmd, sizeof(cmd), "-A %s -m owner --socket-exists", costCString);
-        res |= runIpxtablesCmd(cmd, false);
+        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
         /* TODO(jpa): Figure out why iptables doesn't correctly return from this
          * chain. For now, hack the chain exit with an ACCEPT.
          */
         snprintf(cmd, sizeof(cmd), "-A %s --jump ACCEPT", costCString);
-        res |= runIpxtablesCmd(cmd, false);
-    } else {
+        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+        break;
+    case QuotaShared:
         costCString = costString.c_str();
+        break;
     }
 
     snprintf(cmd, sizeof(cmd), "-I INPUT -i %s --goto %s", ifn, costCString);
-    res |= runIpxtablesCmd(cmd, false);
+    res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
     snprintf(cmd, sizeof(cmd), "-I OUTPUT -o %s --goto %s", ifn, costCString);
-    res |= runIpxtablesCmd(cmd, false);
+    res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
     return res;
 }
 
-int BandwidthController::cleanupCostlyIface(const char *ifn, bool isShared) {
+int BandwidthController::cleanupCostlyIface(const char *ifn, QuotaType quotaType) {
     char cmd[MAX_CMD_LEN];
     int res = 0;
     std::string costString;
     const char *costCString;
 
     costString = "costly";
-    if (!isShared) {
+    switch (quotaType) {
+    case QuotaUnique:
         costString += "_";
         costString += ifn;
         costCString = costString.c_str();
-    } else {
+        break;
+    case QuotaShared:
         costCString = costString.c_str();
+        break;
     }
 
     snprintf(cmd, sizeof(cmd), "-D INPUT -i %s --goto %s", ifn, costCString);
-    res |= runIpxtablesCmd(cmd, false);
+    res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
     snprintf(cmd, sizeof(cmd), "-D OUTPUT -o %s --goto %s", ifn, costCString);
-    res |= runIpxtablesCmd(cmd, false);
+    res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
 
     /* The "-N costly" is created upfront, no need to handle it here. */
-    if (!isShared) {
+    if (quotaType == QuotaUnique) {
         snprintf(cmd, sizeof(cmd), "-F %s", costCString);
-        res |= runIpxtablesCmd(cmd, false);
+        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
     }
     return res;
 }
@@ -363,30 +394,32 @@ int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxB
     char cmd[MAX_CMD_LEN];
     char ifn[MAX_IFACENAME_LEN];
     int res = 0;
+    std::string quotaCmd;
+    std::string ifaceName;;
+    const char *costName = NULL; /* Shared quota */
+    std::list<std::string>::iterator it;
 
-    memset(ifn, 0, sizeof(ifn));
-    strncpy(ifn, iface, sizeof(ifn) - 1);
+    if (StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
+        LOGE("Interface name longer than %d", MAX_IFACENAME_LEN);
+        return -1;
+    }
+    ifaceName = ifn;
 
     if (maxBytes == -1) {
         return removeInterfaceSharedQuota(ifn);
     }
 
-    char *costName = NULL; /* Shared quota */
-
     /* Insert ingress quota. */
-    std::string ifaceName(ifn);
-    std::list<std::string>::iterator it;
     for (it = sharedQuotaIfaces.begin(); it != sharedQuotaIfaces.end(); it++) {
         if (*it == ifaceName)
             break;
     }
 
     if (it == sharedQuotaIfaces.end()) {
-        res |= prepCostlyIface(ifn, true);
+        res |= prepCostlyIface(ifn, QuotaShared);
         if (sharedQuotaIfaces.empty()) {
-            std::string quotaCmd;
             quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
-            res |= runIpxtablesCmd(quotaCmd.c_str(), true);
+            res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
             if (res) {
                 LOGE("Failed set quota rule.");
                 goto fail;
@@ -401,13 +434,12 @@ int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxB
         /* Instead of replacing, which requires being aware of the rules in
          * the kernel, we just add a new one, then delete the older one.
          */
-        std::string quotaCmd;
 
         quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), true);
+        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
 
         quotaCmd = makeIptablesQuotaCmd(IptOpDelete, costName, sharedQuotaBytes);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), true);
+        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
 
         if (res) {
             LOGE("Failed replace quota rule.");
@@ -431,12 +463,14 @@ int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxB
 int BandwidthController::removeInterfaceSharedQuota(const char *iface) {
     char ifn[MAX_IFACENAME_LEN];
     int res = 0;
-
-    memset(ifn, 0, sizeof(ifn));
-    strncpy(ifn, iface, sizeof(ifn) - 1);
-
-    std::string ifaceName(ifn);
+    std::string ifaceName;
     std::list<std::string>::iterator it;
+
+    if(StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
+        LOGE("Interface name longer than %d", MAX_IFACENAME_LEN);
+        return -1;
+    }
+    ifaceName =ifn;
 
     for (it = sharedQuotaIfaces.begin(); it != sharedQuotaIfaces.end(); it++) {
         if (*it == ifaceName)
@@ -447,13 +481,13 @@ int BandwidthController::removeInterfaceSharedQuota(const char *iface) {
         return -1;
     }
 
-    res |= cleanupCostlyIface(ifn, true);
+    res |= cleanupCostlyIface(ifn, QuotaShared);
     sharedQuotaIfaces.erase(it);
 
     if (sharedQuotaIfaces.empty()) {
         std::string quotaCmd;
         quotaCmd = makeIptablesQuotaCmd(IptOpDelete, NULL, sharedQuotaBytes);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), true);
+        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
         sharedQuotaBytes = -1;
     }
 
@@ -463,31 +497,33 @@ int BandwidthController::removeInterfaceSharedQuota(const char *iface) {
 int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) {
     char ifn[MAX_IFACENAME_LEN];
     int res = 0;
-
-    memset(ifn, 0, sizeof(ifn));
-    strncpy(ifn, iface, sizeof(ifn) - 1);
+    std::string ifaceName;
+    const char *costName;
+    std::list<QuotaInfo>::iterator it;
+    std::string quotaCmd;
 
     if (maxBytes == -1) {
-        return removeInterfaceQuota(ifn);
+        return removeInterfaceQuota(iface);
     }
 
-    char *costName = ifn;
+    if(StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
+        LOGE("Interface name longer than %d", MAX_IFACENAME_LEN);
+        return -1;
+    }
+    ifaceName = ifn;
+    costName = iface;
+
 
     /* Insert ingress quota. */
-    std::string ifaceName(ifn);
-    std::list<QuotaInfo>::iterator it;
     for (it = quotaIfaces.begin(); it != quotaIfaces.end(); it++) {
         if (it->first == ifaceName)
             break;
     }
 
     if (it == quotaIfaces.end()) {
-
-        res |= prepCostlyIface(ifn, false);
-
-        std::string quotaCmd;
+        res |= prepCostlyIface(ifn, QuotaUnique);
         quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), true);
+        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
         if (res) {
             LOGE("Failed set quota rule.");
             goto fail;
@@ -499,13 +535,11 @@ int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) 
         /* Instead of replacing, which requires being aware of the rules in
          * the kernel, we just add a new one, then delete the older one.
          */
-        std::string quotaCmd;
-
         quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), true);
+        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
 
         quotaCmd = makeIptablesQuotaCmd(IptOpDelete, costName, it->second);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), true);
+        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
 
         if (res) {
             LOGE("Failed replace quota rule.");
@@ -530,14 +564,17 @@ int BandwidthController::removeInterfaceQuota(const char *iface) {
 
     char ifn[MAX_IFACENAME_LEN];
     int res = 0;
-
-    memset(ifn, 0, sizeof(ifn));
-    strncpy(ifn, iface, sizeof(ifn) - 1);
-
-    char *costName = ifn;
-
-    std::string ifaceName(ifn);
+    std::string ifaceName;
+    const char *costName;
     std::list<QuotaInfo>::iterator it;
+
+    if(StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
+        LOGE("Interface name longer than %d", MAX_IFACENAME_LEN);
+        return -1;
+    }
+    ifaceName = ifn;
+    costName = iface;
+
     for (it = quotaIfaces.begin(); it != quotaIfaces.end(); it++) {
         if (it->first == ifaceName)
             break;
@@ -549,7 +586,7 @@ int BandwidthController::removeInterfaceQuota(const char *iface) {
     }
 
     /* This also removes the quota command of CostlyIface chain. */
-    res |= cleanupCostlyIface(ifn, false);
+    res |= cleanupCostlyIface(ifn, QuotaUnique);
 
     quotaIfaces.erase(it);
 
