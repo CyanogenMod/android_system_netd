@@ -19,12 +19,12 @@ LOCAL_SRC_FILES:=                                      \
                   NetlinkManager.cpp                   \
                   PanController.cpp                    \
                   PppController.cpp                    \
+                  ResolverController.cpp               \
                   SoftapController.cpp                 \
                   TetherController.cpp                 \
                   ThrottleController.cpp               \
                   logwrapper.c                         \
                   main.cpp                             \
-
 
 
 LOCAL_MODULE:= netd
