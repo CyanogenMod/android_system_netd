@@ -54,6 +54,7 @@ PppController *CommandListener::sPppCtrl = NULL;
 PanController *CommandListener::sPanCtrl = NULL;
 SoftapController *CommandListener::sSoftapCtrl = NULL;
 BandwidthController * CommandListener::sBandwidthCtrl = NULL;
+ResolverController *CommandListener::sResolverCtrl = NULL;
 
 CommandListener::CommandListener() :
                  FrameworkListener("netd") {
@@ -66,6 +67,7 @@ CommandListener::CommandListener() :
     registerCmd(new PanCmd());
     registerCmd(new SoftapCmd());
     registerCmd(new BandwidthControlCmd());
+    registerCmd(new ResolverCmd());
 
     if (!sTetherCtrl)
         sTetherCtrl = new TetherController();
@@ -79,6 +81,8 @@ CommandListener::CommandListener() :
         sSoftapCtrl = new SoftapController();
     if (!sBandwidthCtrl)
         sBandwidthCtrl = new BandwidthController();
+    if (!sResolverCtrl)
+        sResolverCtrl = new ResolverController();
 }
 
 CommandListener::InterfaceCmd::InterfaceCmd() :
@@ -691,6 +695,75 @@ int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
         cli->sendMsg(ResponseCode::CommandOkay, "Softap operation succeeded", false);
     } else {
         cli->sendMsg(ResponseCode::OperationFailed, "Softap operation failed", true);
+    }
+
+    return 0;
+}
+
+CommandListener::ResolverCmd::ResolverCmd() :
+        NetdCommand("resolver") {
+}
+
+int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char **argv) {
+    int rc = 0;
+    struct in_addr addr;
+
+    if (argc < 2) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Resolver missing arguments", false);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "setdefaultif")) { // "resolver setdefaultif <iface>"
+        if (argc == 3) {
+            rc = sResolverCtrl->setDefaultInterface(argv[2]);
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Wrong number of arguments to resolver setdefaultif", false);
+            return 0;
+        }
+    } else if (!strcmp(argv[1], "setifdns")) { // "resolver setifdns <iface> <dns1> <dns2> ..."
+        if (argc >= 4) {
+            rc = sResolverCtrl->setInterfaceDnsServers(argv[2], &argv[3], argc - 3);
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Wrong number of arguments to resolver setifdns", false);
+            return 0;
+        }
+
+        // set the address of the interface to which the name servers
+        // are bound. Required in order to bind to right interface when
+        // doing the dns query.
+        if (!rc) {
+            ifc_init();
+            ifc_get_info(argv[2], &addr.s_addr, NULL, 0);
+
+            rc = sResolverCtrl->setInterfaceAddress(argv[2], &addr);
+        }
+    } else if (!strcmp(argv[1], "flushdefaultif")) { // "resolver flushdefaultif"
+        if (argc == 2) {
+            rc = sResolverCtrl->flushDefaultDnsCache();
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Wrong number of arguments to resolver flushdefaultif", false);
+            return 0;
+        }
+    } else if (!strcmp(argv[1], "flushif")) { // "resolver flushif <iface>"
+        if (argc == 3) {
+            rc = sResolverCtrl->flushInterfaceDnsCache(argv[2]);
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Wrong number of arguments to resolver setdefaultif", false);
+            return 0;
+        }
+    } else {
+        cli->sendMsg(ResponseCode::CommandSyntaxError,"Resolver unknown command", false);
+        return 0;
+    }
+
+    if (!rc) {
+        cli->sendMsg(ResponseCode::CommandOkay, "Resolver command succeeded", false);
+    } else {
+        cli->sendMsg(ResponseCode::OperationFailed, "Resolver command failed", true);
     }
 
     return 0;
