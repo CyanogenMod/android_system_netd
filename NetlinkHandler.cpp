@@ -28,8 +28,9 @@
 #include "NetlinkManager.h"
 #include "ResponseCode.h"
 
-NetlinkHandler::NetlinkHandler(NetlinkManager *nm, int listenerSocket) :
-                NetlinkListener(listenerSocket) {
+NetlinkHandler::NetlinkHandler(NetlinkManager *nm, int listenerSocket,
+                               int format) :
+                        NetlinkListener(listenerSocket, format) {
     mNm = nm;
 }
 
@@ -50,18 +51,22 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
         LOGW("No subsystem found in netlink event");
         return;
     }
+
     if (!strcmp(subsys, "net")) {
         int action = evt->getAction();
+        const char *iface = evt->findParam("INTERFACE");
+
         if (action == evt->NlActionAdd) {
-            const char *iface = evt->findParam("INTERFACE");
             notifyInterfaceAdded(iface);
         } else if (action == evt->NlActionRemove) {
-            const char *iface = evt->findParam("INTERFACE");
             notifyInterfaceRemoved(iface);
         } else if (action == evt->NlActionChange) {
             evt->dump();
-            const char *iface = evt->findParam("INTERFACE");
             notifyInterfaceChanged("nana", true);
+        } else if (action == evt->NlActionLinkUp) {
+            notifyInterfaceLinkChanged(iface, true);
+        } else if (action == evt->NlActionLinkDown) {
+            notifyInterfaceLinkChanged(iface, false);
         }
     }
 }
@@ -84,7 +89,17 @@ void NetlinkHandler::notifyInterfaceRemoved(const char *name) {
 
 void NetlinkHandler::notifyInterfaceChanged(const char *name, bool isUp) {
     char msg[255];
-    snprintf(msg, sizeof(msg), "Iface is %s %s", (isUp ? "up" : "down"), name);
+    snprintf(msg, sizeof(msg), "Iface changed %s %s", name,
+             (isUp ? "up" : "down"));
+
+    mNm->getBroadcaster()->sendBroadcast(ResponseCode::InterfaceChange,
+            msg, false);
+}
+
+void NetlinkHandler::notifyInterfaceLinkChanged(const char *name, bool isUp) {
+    char msg[255];
+    snprintf(msg, sizeof(msg), "Iface linkstate %s %s", name,
+             (isUp ? "up" : "down"));
 
     mNm->getBroadcaster()->sendBroadcast(ResponseCode::InterfaceChange,
             msg, false);

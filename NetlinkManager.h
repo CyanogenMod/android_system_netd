@@ -28,8 +28,10 @@ private:
 
 private:
     SocketListener       *mBroadcaster;
-    NetlinkHandler       *mHandler;
-    int                  mSock;
+    NetlinkHandler       *mUeventHandler;
+    NetlinkHandler       *mRouteHandler;
+    int                  mUeventSock;
+    int                  mRouteSock;
 
 public:
     virtual ~NetlinkManager();
@@ -44,5 +46,7 @@ public:
 
 private:
     NetlinkManager();
+    NetlinkHandler* setupSocket(int *sock, int socketType, int groups,
+        int format);
 };
 #endif
