@@ -156,9 +156,8 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
 
     argc = 0;
     argv[argc++] = iptVer == IptIpV4 ? IPTABLES_PATH : IP6TABLES_PATH;
-    LOGD("About to run: %s %s", argv[0], fullCmd.c_str());
 
-    LOGD("runIpxtablesCmd(): fullCmd.c_str()=%s buffSize=%d", fullCmd.c_str(), sizeof(buffer));
+    LOGD("runIptablesCmd(): %s %s", argv[0], fullCmd.c_str());
     if (StrncpyAndCheck(buffer, fullCmd.c_str(), sizeof(buffer))) {
         LOGE("iptables command too long");
         return -1;
@@ -173,13 +172,9 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
     }
 
     argv[argc] = NULL;
-    LOGD("runIpxtablesCmd(): argc=%d, argv[argc]=%p", argc, argv[argc]);
     /* TODO(jpa): Once this stabilizes, remove logwrap() as it tends to wedge netd
      * Then just talk directly to the kernel via rtnetlink.
      */
-    for (int i = 0 ; i < argc; i++) {
-            LOGD("runIpxtablesCmd(): argv[%d]=%p:%s", i, argv[i], argv[i]?:"null");
-    }
     return logwrap(argc, argv, 0);
 }
 
@@ -231,7 +226,6 @@ std::string BandwidthController::makeIptablesNaughtyCmd(IptOp op, int uid) {
     res += " -m owner --uid-owner ";
     res += convBuff;
     free(convBuff);
-    LOGD("makeIptablesNaughtyCmd() res=%s", res.c_str());
     return res;
 }
 
@@ -250,7 +244,6 @@ int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[],
     IptOp op;
     int appUids[numUids];
     std::string naughtyCmd;
-    LOGD("manipulateNaughtyApps()");
     switch (appOp) {
     case NaughtyAppOpAdd:
             op = IptOpInsert;
@@ -269,7 +262,6 @@ int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[],
             goto fail_parse;
         }
     }
-    LOGD("manipulateNaughtyApps() got the appUids");
 
     for (uidNum = 0; uidNum < numUids; uidNum++) {
         naughtyCmd = makeIptablesNaughtyCmd(op, appUids[uidNum]);
@@ -385,6 +377,8 @@ int BandwidthController::cleanupCostlyIface(const char *ifn, QuotaType quotaType
     /* The "-N costly" is created upfront, no need to handle it here. */
     if (quotaType == QuotaUnique) {
         snprintf(cmd, sizeof(cmd), "-F %s", costCString);
+        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+        snprintf(cmd, sizeof(cmd), "-X %s", costCString);
         res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
     }
     return res;
