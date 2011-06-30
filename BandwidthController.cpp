@@ -51,29 +51,32 @@ const char BandwidthController::IP6TABLES_PATH[] = "/system/bin/ip6tables";
  * * global quota vs per interface quota
  *   - global quota for all costly interfaces uses a single costly chain:
  *    . initial rules
- *      iptables -N costly
- *      iptables -I INPUT -i iface0 --goto costly
- *      iptables -I OUTPUT -o iface0 --goto costly
- *      iptables -I costly -m quota \! --quota 500000 --jump REJECT --reject-with icmp-net-prohibited
- *      iptables -A costly                            --jump penalty_box
- *      iptables -A costly -m owner --socket-exists
+ *      iptables -N costly_shared
+ *      iptables -I INPUT -i iface0 --goto costly_shared
+ *      iptables -I OUTPUT -o iface0 --goto costly_shared
+ *      iptables -I costly_shared -m quota \! --quota 500000 \
+ *          --jump REJECT --reject-with icmp-net-prohibited
+ *      iptables -A costly_shared --jump penalty_box
+ *      iptables -A costly_shared -m owner --socket-exists
  *    . adding a new iface to this, E.g.:
- *      iptables -I INPUT -i iface1 --goto costly
- *      iptables -I OUTPUT -o iface1 --goto costly
+ *      iptables -I INPUT -i iface1 --goto costly_shared
+ *      iptables -I OUTPUT -o iface1 --goto costly_shared
  *
  *   - quota per interface. This is achieve by having "costly" chains per quota.
  *     E.g. adding a new costly interface iface0 with its own quota:
  *      iptables -N costly_iface0
  *      iptables -I INPUT -i iface0 --goto costly_iface0
  *      iptables -I OUTPUT -o iface0 --goto costly_iface0
- *      iptables -A costly_iface0 -m quota \! --quota 500000 --jump REJECT --reject-with icmp-net-prohibited
- *      iptables -A costly_iface0                            --jump penalty_box
+ *      iptables -A costly_iface0 -m quota \! --quota 500000 \
+ *          --jump REJECT --reject-with icmp-net-prohibited
+ *      iptables -A costly_iface0 --jump penalty_box
  *      iptables -A costly_iface0 -m owner --socket-exists
  *
  * * penalty_box handling:
  *  - only one penalty_box for all interfaces
  *   E.g  Adding an app:
- *    iptables -A penalty_box -m owner --uid-owner app_3 --jump REJECT --reject-with icmp-net-prohibited
+ *    iptables -A penalty_box -m owner --uid-owner app_3 \
+ *        --jump REJECT --reject-with icmp-net-prohibited
  */
 const char *BandwidthController::cleanupCommands[] = {
     /* Cleanup rules. */
@@ -82,12 +85,12 @@ const char *BandwidthController::cleanupCommands[] = {
     /* TODO: If at some point we need more user chains than here, then we will need
      * a different cleanup approach.
      */
-    "-X",  /* Should normally only be costly, penalty_box, and costly_<iface>  */
+    "-X",  /* Should normally only be costly_shared, penalty_box, and costly_<iface>  */
 };
 
 const char *BandwidthController::setupCommands[] = {
     /* Created needed chains. */
-    "-N costly",
+    "-N costly_shared",
     "-N penalty_box",
 };
 
@@ -100,13 +103,13 @@ const char *BandwidthController::basicAccountingCommands[] = {
     "-A OUTPUT -o lo --jump ACCEPT",
     "-A OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
 
-    "-F costly",
-    "-A costly --jump penalty_box",
-    "-A costly -m owner --socket-exists", /* This is a tracking rule. */
+    "-F costly_shared",
+    "-A costly_shared --jump penalty_box",
+    "-A costly_shared -m owner --socket-exists", /* This is a tracking rule. */
     /* TODO(jpa): Figure out why iptables doesn't correctly return from this
      * chain. For now, hack the chain exit with an ACCEPT.
      */
-    "-A costly --jump ACCEPT",
+    "-A costly_shared --jump ACCEPT",
 };
 
 BandwidthController::BandwidthController(void) {
@@ -284,7 +287,7 @@ fail_parse:
 
 std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *costName, int64_t quota) {
     std::string res;
-    char convBuff[21]; // log10(2^64) ~ 20
+    char *convBuff;
 
     LOGD("makeIptablesQuotaCmd(%d, %llu)", op, quota);
 
@@ -300,19 +303,15 @@ std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *cost
             res = "-D";
             break;
     }
-    res += " costly";
-    if (costName) {
-        res += "_";
-        res += costName;
-    }
-    sprintf(convBuff, "%lld", quota);
-    /* TODO(jpa): Use -m quota2 --name " + costName + " ! --quota "
-     * once available.
-     */
-    res += " -m quota ! --quota ";
+    res += " costly_";
+    res += costName;
+    asprintf(&convBuff, "%lld", quota);
+    res += " -m quota2 --name ";
+    res += costName;
+    res += " ! --quota ";
     res += convBuff;
-    ;
-    // The requried --jump REJECT ... will be added later.
+    free(convBuff);
+    // The requried IP version specific --jump REJECT ... will be added later.
     return res;
 }
 
@@ -322,11 +321,10 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
     std::string costString;
     const char *costCString;
 
-    costString = "costly";
     /* The "-N costly" is created upfront, no need to handle it here. */
     switch (quotaType) {
     case QuotaUnique:
-        costString += "_";
+        costString = "costly_";
         costString += ifn;
         costCString = costString.c_str();
         snprintf(cmd, sizeof(cmd), "-N %s", costCString);
@@ -342,7 +340,7 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
         res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
         break;
     case QuotaShared:
-        costCString = costString.c_str();
+        costCString = "costly_shared";
         break;
     }
 
@@ -359,15 +357,14 @@ int BandwidthController::cleanupCostlyIface(const char *ifn, QuotaType quotaType
     std::string costString;
     const char *costCString;
 
-    costString = "costly";
     switch (quotaType) {
     case QuotaUnique:
-        costString += "_";
+        costString = "costly_";
         costString += ifn;
         costCString = costString.c_str();
         break;
     case QuotaShared:
-        costCString = costString.c_str();
+        costCString = "costly_shared";
         break;
     }
 
@@ -376,7 +373,7 @@ int BandwidthController::cleanupCostlyIface(const char *ifn, QuotaType quotaType
     snprintf(cmd, sizeof(cmd), "-D OUTPUT -o %s --goto %s", ifn, costCString);
     res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
 
-    /* The "-N costly" is created upfront, no need to handle it here. */
+    /* The "-N costly_shared" is created upfront, no need to handle it here. */
     if (quotaType == QuotaUnique) {
         snprintf(cmd, sizeof(cmd), "-F %s", costCString);
         res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
@@ -392,7 +389,7 @@ int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxB
     int res = 0;
     std::string quotaCmd;
     std::string ifaceName;;
-    const char *costName = NULL; /* Shared quota */
+    const char *costName = "shared";
     std::list<std::string>::iterator it;
 
     if (StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
@@ -461,6 +458,7 @@ int BandwidthController::removeInterfaceSharedQuota(const char *iface) {
     int res = 0;
     std::string ifaceName;
     std::list<std::string>::iterator it;
+    const char *costName = "shared";
 
     if(StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
         LOGE("Interface name longer than %d", MAX_IFACENAME_LEN);
@@ -482,7 +480,7 @@ int BandwidthController::removeInterfaceSharedQuota(const char *iface) {
 
     if (sharedQuotaIfaces.empty()) {
         std::string quotaCmd;
-        quotaCmd = makeIptablesQuotaCmd(IptOpDelete, NULL, sharedQuotaBytes);
+        quotaCmd = makeIptablesQuotaCmd(IptOpDelete, costName, sharedQuotaBytes);
         res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
         sharedQuotaBytes = -1;
     }
