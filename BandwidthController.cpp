@@ -79,8 +79,10 @@ const char *BandwidthController::cleanupCommands[] = {
     /* Cleanup rules. */
     "-F",
     "-t raw -F",
-    "-X costly",
-    "-X penalty_box",
+    /* TODO: If at some point we need more user chains than here, then we will need
+     * a different cleanup approach.
+     */
+    "-X",  /* Should normally only be costly, penalty_box, and costly_<iface>  */
 };
 
 const char *BandwidthController::setupCommands[] = {
