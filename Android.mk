@@ -1,10 +1,3 @@
-BUILD_NETD := false
-ifneq ($(TARGET_SIMULATOR),true)
-    BUILD_NETD := true
-endif
-
-ifeq ($(BUILD_NETD),true)
-
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
@@ -66,5 +59,3 @@ LOCAL_CFLAGS :=
 LOCAL_SHARED_LIBRARIES := libcutils
 
 include $(BUILD_EXECUTABLE)
-
-endif # ifeq ($(BUILD_NETD,true)
