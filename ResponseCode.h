@@ -18,6 +18,8 @@
 #define _RESPONSECODE_H
 
 class ResponseCode {
+    // Keep in sync with
+    // frameworks/base/services/java/com/android/server/NetworkManagementService.java
 public:
     // 100 series - Requestion action was initiated; expect another reply
     // before proceeding with a new command.
@@ -40,6 +42,7 @@ public:
     static const int InterfaceTxCounterResult  = 217;
     static const int InterfaceRxThrottleResult = 218;
     static const int InterfaceTxThrottleResult = 219;
+    static const int QuotaCounterResult        = 220;
 
     // 400 series - The command was accepted but the requested action
     // did not take place.

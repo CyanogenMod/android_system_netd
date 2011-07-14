@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-#include <stdlib.h>
+#include <errno.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <sys/socket.h>
@@ -40,6 +41,8 @@ const int BandwidthController::MAX_IFACENAME_LEN = 64;
 const int BandwidthController::MAX_CMD_ARGS = 32;
 const char BandwidthController::IPTABLES_PATH[] = "/system/bin/iptables";
 const char BandwidthController::IP6TABLES_PATH[] = "/system/bin/ip6tables";
+const char BandwidthController::ALERT_IPT_TEMPLATE[] = "%s %s -m quota2 ! --quota %lld --name %s";
+const int BandwidthController::ALERT_RULE_POS_IN_COSTLY_CHAIN = 4;
 
 /**
  * Some comments about the rules:
@@ -58,6 +61,7 @@ const char BandwidthController::IP6TABLES_PATH[] = "/system/bin/ip6tables";
  *          --jump REJECT --reject-with icmp-net-prohibited
  *      iptables -A costly_shared --jump penalty_box
  *      iptables -A costly_shared -m owner --socket-exists
+ *
  *    . adding a new iface to this, E.g.:
  *      iptables -I INPUT -i iface1 --goto costly_shared
  *      iptables -I OUTPUT -o iface1 --goto costly_shared
@@ -113,7 +117,6 @@ const char *BandwidthController::basicAccountingCommands[] = {
 };
 
 BandwidthController::BandwidthController(void) {
-
     char value[PROPERTY_VALUE_MAX];
 
     property_get("persist.bandwidth.enable", value, "0");
@@ -125,6 +128,7 @@ BandwidthController::BandwidthController(void) {
 
 int BandwidthController::runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling) {
     int res = 0;
+
     LOGD("runIpxtablesCmd(cmd=%s)", cmd);
     res |= runIptablesCmd(cmd, rejectHandling, IptIpV4);
     res |= runIptablesCmd(cmd, rejectHandling, IptIpV6);
@@ -138,7 +142,8 @@ int BandwidthController::StrncpyAndCheck(char *buffer, const char *src, size_t b
     return buffer[buffSize - 1];
 }
 
-int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandling, IptIpVer iptVer) {
+int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandling,
+                                        IptIpVer iptVer) {
     char buffer[MAX_CMD_LEN];
     const char *argv[MAX_CMD_ARGS];
     int argc = 0;
@@ -151,11 +156,11 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
         fullCmd += " --jump REJECT --reject-with";
         switch (iptVer) {
         case IptIpV4:
-                fullCmd += " icmp-net-prohibited";
-                break;
+            fullCmd += " icmp-net-prohibited";
+            break;
         case IptIpV6:
-                fullCmd += " icmp6-adm-prohibited";
-                break;
+            fullCmd += " icmp6-adm-prohibited";
+            break;
         }
     }
 
@@ -188,7 +193,14 @@ int BandwidthController::enableBandwidthControl(void) {
     /* Some of the initialCommands are allowed to fail */
     runCommands(sizeof(cleanupCommands) / sizeof(char*), cleanupCommands, RunCmdFailureOk);
     runCommands(sizeof(setupCommands) / sizeof(char*), setupCommands, RunCmdFailureOk);
-    res = runCommands(sizeof(basicAccountingCommands) / sizeof(char*), basicAccountingCommands, RunCmdFailureBad);
+    res = runCommands(sizeof(basicAccountingCommands) / sizeof(char*), basicAccountingCommands,
+                      RunCmdFailureBad);
+
+    sharedQuotaBytes = sharedAlertBytes = 0;
+    sharedQuotaIfaces.clear();
+    quotaIfaces.clear();
+    naughtyAppUids.clear();
+
     return res;
 
 }
@@ -199,7 +211,8 @@ int BandwidthController::disableBandwidthControl(void) {
     return 0;
 }
 
-int BandwidthController::runCommands(int numCommands, const char *commands[], RunCmdErrHandling cmdErrHandling) {
+int BandwidthController::runCommands(int numCommands, const char *commands[],
+                                     RunCmdErrHandling cmdErrHandling) {
     int res = 0;
     LOGD("runCommands(): %d commands", numCommands);
     for (int cmdNum = 0; cmdNum < numCommands; cmdNum++) {
@@ -212,25 +225,24 @@ int BandwidthController::runCommands(int numCommands, const char *commands[], Ru
 
 std::string BandwidthController::makeIptablesNaughtyCmd(IptOp op, int uid) {
     std::string res;
-    char *convBuff;
+    char *buff;
+    const char *opFlag;
 
     switch (op) {
-        case IptOpInsert:
-            res = "-I";
-            break;
-        case IptOpReplace:
-            res = "-R";
-            break;
-        default:
-        case IptOpDelete:
-            res = "-D";
-            break;
+    case IptOpInsert:
+        opFlag = "-I";
+        break;
+    case IptOpReplace:
+        opFlag = "-R";
+        break;
+    default:
+    case IptOpDelete:
+        opFlag = "-D";
+        break;
     }
-    res += " penalty_box";
-    asprintf(&convBuff, "%d", uid);
-    res += " -m owner --uid-owner ";
-    res += convBuff;
-    free(convBuff);
+    asprintf(&buff, "%s penalty_box -m owner --uid-owner %d", opFlag, uid);
+    res = buff;
+    free(buff);
     return res;
 }
 
@@ -249,15 +261,16 @@ int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[],
     IptOp op;
     int appUids[numUids];
     std::string naughtyCmd;
+
     switch (appOp) {
     case NaughtyAppOpAdd:
-            op = IptOpInsert;
-            failLogTemplate = "Failed to add app uid %d to penalty box.";
-            break;
+        op = IptOpInsert;
+        failLogTemplate = "Failed to add app uid %d to penalty box.";
+        break;
     case NaughtyAppOpRemove:
-            op = IptOpDelete;
-            failLogTemplate = "Failed to delete app uid %d from penalty box.";
-            break;
+        op = IptOpDelete;
+        failLogTemplate = "Failed to delete app uid %d from penalty box.";
+        break;
     }
 
     for (uidNum = 0; uidNum < numUids; uidNum++) {
@@ -287,37 +300,36 @@ fail_parse:
 
 std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *costName, int64_t quota) {
     std::string res;
-    char *convBuff;
+    char *buff;
+    const char *opFlag;
 
-    LOGD("makeIptablesQuotaCmd(%d, %llu)", op, quota);
+    LOGD("makeIptablesQuotaCmd(%d, %lld)", op, quota);
 
     switch (op) {
-        case IptOpInsert:
-            res = "-I";
-            break;
-        case IptOpReplace:
-            res = "-R";
-            break;
-        default:
-        case IptOpDelete:
-            res = "-D";
-            break;
+    case IptOpInsert:
+        opFlag = "-I";
+        break;
+    case IptOpReplace:
+        opFlag = "-R";
+        break;
+    default:
+    case IptOpDelete:
+        opFlag = "-D";
+        break;
     }
-    res += " costly_";
-    res += costName;
-    asprintf(&convBuff, "%lld", quota);
-    res += " -m quota2 --name ";
-    res += costName;
-    res += " ! --quota ";
-    res += convBuff;
-    free(convBuff);
+
     // The requried IP version specific --jump REJECT ... will be added later.
+    asprintf(&buff, "%s costly_%s -m quota2 ! --quota %lld --name %s", opFlag, costName, quota,
+             costName);
+    res = buff;
+    free(buff);
     return res;
 }
 
 int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
     char cmd[MAX_CMD_LEN];
     int res = 0;
+    int ruleInsertPos = 1;
     std::string costString;
     const char *costCString;
 
@@ -344,9 +356,13 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
         break;
     }
 
-    snprintf(cmd, sizeof(cmd), "-I INPUT -i %s --goto %s", ifn, costCString);
+    if (globalAlertBytes) {
+        /* The alert rule comes 1st */
+        ruleInsertPos = 2;
+    }
+    snprintf(cmd, sizeof(cmd), "-I INPUT %d -i %s --goto %s", ruleInsertPos, ifn, costCString);
     res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
-    snprintf(cmd, sizeof(cmd), "-I OUTPUT -o %s --goto %s", ifn, costCString);
+    snprintf(cmd, sizeof(cmd), "-I OUTPUT %d -o %s --goto %s", ruleInsertPos, ifn, costCString);
     res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
     return res;
 }
@@ -388,10 +404,16 @@ int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxB
     char ifn[MAX_IFACENAME_LEN];
     int res = 0;
     std::string quotaCmd;
-    std::string ifaceName;;
+    std::string ifaceName;
+    ;
     const char *costName = "shared";
     std::list<std::string>::iterator it;
 
+    if (!maxBytes) {
+        /* Don't talk about -1, deprecate it. */
+        LOGE("Invalid bytes value. 1..max_int64.");
+        return -1;
+    }
     if (StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
         LOGE("Interface name longer than %d", MAX_IFACENAME_LEN);
         return -1;
@@ -414,7 +436,7 @@ int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxB
             quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
             res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
             if (res) {
-                LOGE("Failed set quota rule.");
+                LOGE("Failed set quota rule");
                 goto fail;
             }
             sharedQuotaBytes = maxBytes;
@@ -424,18 +446,9 @@ int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxB
     }
 
     if (maxBytes != sharedQuotaBytes) {
-        /* Instead of replacing, which requires being aware of the rules in
-         * the kernel, we just add a new one, then delete the older one.
-         */
-
-        quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
-
-        quotaCmd = makeIptablesQuotaCmd(IptOpDelete, costName, sharedQuotaBytes);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
-
+        res |= updateQuota(costName, maxBytes);
         if (res) {
-            LOGE("Failed replace quota rule.");
+            LOGE("Failed update quota for %s", costName);
             goto fail;
         }
         sharedQuotaBytes = maxBytes;
@@ -453,6 +466,7 @@ int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxB
     return -1;
 }
 
+/* It will also cleanup any shared alerts */
 int BandwidthController::removeInterfaceSharedQuota(const char *iface) {
     char ifn[MAX_IFACENAME_LEN];
     int res = 0;
@@ -460,18 +474,18 @@ int BandwidthController::removeInterfaceSharedQuota(const char *iface) {
     std::list<std::string>::iterator it;
     const char *costName = "shared";
 
-    if(StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
+    if (StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
         LOGE("Interface name longer than %d", MAX_IFACENAME_LEN);
         return -1;
     }
-    ifaceName =ifn;
+    ifaceName = ifn;
 
     for (it = sharedQuotaIfaces.begin(); it != sharedQuotaIfaces.end(); it++) {
         if (*it == ifaceName)
             break;
     }
     if (it == sharedQuotaIfaces.end()) {
-        LOGE("No such iface %s to delete.", ifn);
+        LOGE("No such iface %s to delete", ifn);
         return -1;
     }
 
@@ -482,9 +496,12 @@ int BandwidthController::removeInterfaceSharedQuota(const char *iface) {
         std::string quotaCmd;
         quotaCmd = makeIptablesQuotaCmd(IptOpDelete, costName, sharedQuotaBytes);
         res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
-        sharedQuotaBytes = -1;
+        sharedQuotaBytes = 0;
+        if (sharedAlertBytes) {
+            removeSharedAlert();
+            sharedAlertBytes = 0;
+        }
     }
-
     return res;
 }
 
@@ -496,21 +513,25 @@ int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) 
     std::list<QuotaInfo>::iterator it;
     std::string quotaCmd;
 
+    if (!maxBytes) {
+        /* Don't talk about -1, deprecate it. */
+        LOGE("Invalid bytes value. 1..max_int64.");
+        return -1;
+    }
     if (maxBytes == -1) {
         return removeInterfaceQuota(iface);
     }
 
-    if(StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
+    if (StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
         LOGE("Interface name longer than %d", MAX_IFACENAME_LEN);
         return -1;
     }
     ifaceName = ifn;
     costName = iface;
 
-
     /* Insert ingress quota. */
     for (it = quotaIfaces.begin(); it != quotaIfaces.end(); it++) {
-        if (it->first == ifaceName)
+        if (it->ifaceName == ifaceName)
             break;
     }
 
@@ -519,27 +540,19 @@ int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) 
         quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
         res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
         if (res) {
-            LOGE("Failed set quota rule.");
+            LOGE("Failed set quota rule");
             goto fail;
         }
 
-        quotaIfaces.push_front(QuotaInfo(ifaceName, maxBytes));
+        quotaIfaces.push_front(QuotaInfo(ifaceName, maxBytes, 0));
 
     } else {
-        /* Instead of replacing, which requires being aware of the rules in
-         * the kernel, we just add a new one, then delete the older one.
-         */
-        quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
-
-        quotaCmd = makeIptablesQuotaCmd(IptOpDelete, costName, it->second);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
-
+        res |= updateQuota(costName, maxBytes);
         if (res) {
-            LOGE("Failed replace quota rule.");
+            LOGE("Failed update quota for %s", iface);
             goto fail;
         }
-        it->second = maxBytes;
+        it->quota = maxBytes;
     }
     return 0;
 
@@ -554,6 +567,28 @@ int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) 
     return -1;
 }
 
+int BandwidthController::getInterfaceSharedQuota(int64_t *bytes) {
+    return getInterfaceQuota("shared", bytes);
+}
+
+int BandwidthController::getInterfaceQuota(const char *costName, int64_t *bytes) {
+    FILE *fp;
+    char *fname;
+    int scanRes;
+
+    asprintf(&fname, "/proc/net/xt_quota/%s", costName);
+    fp = fopen(fname, "r");
+    free(fname);
+    if (!fp) {
+        LOGE("Reading quota %s failed (%s)", costName, strerror(errno));
+        return -1;
+    }
+    scanRes = fscanf(fp, "%lld", bytes);
+    LOGD("Read quota res=%d bytes=%lld", scanRes, *bytes);
+    fclose(fp);
+    return scanRes == 1 ? 0 : -1;
+}
+
 int BandwidthController::removeInterfaceQuota(const char *iface) {
 
     char ifn[MAX_IFACENAME_LEN];
@@ -562,7 +597,7 @@ int BandwidthController::removeInterfaceQuota(const char *iface) {
     const char *costName;
     std::list<QuotaInfo>::iterator it;
 
-    if(StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
+    if (StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
         LOGE("Interface name longer than %d", MAX_IFACENAME_LEN);
         return -1;
     }
@@ -570,12 +605,12 @@ int BandwidthController::removeInterfaceQuota(const char *iface) {
     costName = iface;
 
     for (it = quotaIfaces.begin(); it != quotaIfaces.end(); it++) {
-        if (it->first == ifaceName)
+        if (it->ifaceName == ifaceName)
             break;
     }
 
     if (it == quotaIfaces.end()) {
-        LOGE("No such iface %s to delete.", ifn);
+        LOGE("No such iface %s to delete", ifn);
         return -1;
     }
 
@@ -584,5 +619,182 @@ int BandwidthController::removeInterfaceQuota(const char *iface) {
 
     quotaIfaces.erase(it);
 
+    return res;
+}
+
+int BandwidthController::updateQuota(const char *quotaName, int64_t bytes) {
+    FILE *fp;
+    char *fname;
+
+    asprintf(&fname, "/proc/net/xt_quota/%s", quotaName);
+    fp = fopen(fname, "w");
+    free(fname);
+    if (!fp) {
+        LOGE("Updating quota %s failed (%s)", quotaName, strerror(errno));
+        return -1;
+    }
+    fprintf(fp, "%lld\n", bytes);
+    fclose(fp);
+    return 0;
+}
+
+int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, int64_t bytes) {
+    int res = 0;
+    const char *opFlag;
+    char *alertQuotaCmd;
+
+    switch (op) {
+    case IptOpInsert:
+        opFlag = "-I";
+        break;
+    case IptOpReplace:
+        opFlag = "-R";
+        break;
+    default:
+    case IptOpDelete:
+        opFlag = "-D";
+        break;
+    }
+
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "INPUT", bytes, alertName, alertName);
+    res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+    free(alertQuotaCmd);
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "OUTPUT", bytes, alertName, alertName);
+    res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+    free(alertQuotaCmd);
+    return res;
+}
+
+int BandwidthController::setGlobalAlert(int64_t bytes) {
+    char *alertQuotaCmd;
+    const char *alertName = "globalAlert";
+    int res = 0;
+
+    if (!bytes) {
+        LOGE("Invalid bytes value. 1..max_int64.");
+        return -1;
+    }
+    if (globalAlertBytes) {
+        res = updateQuota(alertName, bytes);
+    } else {
+        res = runIptablesAlertCmd(IptOpInsert, alertName, bytes);
+    }
+    globalAlertBytes = bytes;
+    return res;
+}
+
+int BandwidthController::removeGlobalAlert(void) {
+    char *alertQuotaCmd;
+
+    const char *alertName = "globalAlert";
+    int res = 0;
+
+    if (!globalAlertBytes) {
+        LOGE("No prior alert set");
+        return -1;
+    }
+    res = runIptablesAlertCmd(IptOpDelete, alertName, globalAlertBytes);
+    globalAlertBytes = 0;
+    return res;
+}
+
+int BandwidthController::setSharedAlert(int64_t bytes) {
+    if (!sharedQuotaBytes) {
+        LOGE("Need to have a prior shared quota set to set an alert");
+        return -1;
+    }
+    if (!bytes) {
+        LOGE("Invalid bytes value. 1..max_int64.");
+        return -1;
+    }
+    return setCostlyAlert("shared", bytes, &sharedAlertBytes);
+}
+
+int BandwidthController::removeSharedAlert(void) {
+    return removeCostlyAlert("shared", &sharedAlertBytes);
+}
+
+int BandwidthController::setInterfaceAlert(const char *iface, int64_t bytes) {
+    std::list<QuotaInfo>::iterator it;
+
+    if (!bytes) {
+        LOGE("Invalid bytes value. 1..max_int64.");
+        return -1;
+    }
+    for (it = quotaIfaces.begin(); it != quotaIfaces.end(); it++) {
+        if (it->ifaceName == iface)
+            break;
+    }
+
+    if (it == quotaIfaces.end()) {
+        LOGE("Need to have a prior interface quota set to set an alert");
+        return -1;
+    }
+
+    return setCostlyAlert(iface, bytes, &it->alert);
+}
+
+int BandwidthController::removeInterfaceAlert(const char *iface) {
+    std::list<QuotaInfo>::iterator it;
+
+    for (it = quotaIfaces.begin(); it != quotaIfaces.end(); it++) {
+        if (it->ifaceName == iface)
+            break;
+    }
+
+    if (it == quotaIfaces.end()) {
+        LOGE("No prior alert set for interface %s", iface);
+        return -1;
+    }
+
+    return removeCostlyAlert(iface, &it->alert);
+}
+
+int BandwidthController::setCostlyAlert(const char *costName, int64_t bytes, int64_t *alertBytes) {
+    char *alertQuotaCmd;
+    char *chainNameAndPos;
+    int res = 0;
+    char *alertName;
+
+    if (!bytes) {
+        LOGE("Invalid bytes value. 1..max_int64.");
+        return -1;
+    }
+    asprintf(&alertName, "%sAlert", costName);
+    if (*alertBytes) {
+        res = updateQuota(alertName, *alertBytes);
+    } else {
+        asprintf(&chainNameAndPos, "costly_%s %d", costName, ALERT_RULE_POS_IN_COSTLY_CHAIN);
+        asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-I", chainNameAndPos, bytes, alertName,
+                 alertName);
+        res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+        free(alertQuotaCmd);
+        free(chainNameAndPos);
+    }
+    *alertBytes = bytes;
+    free(alertName);
+    return res;
+}
+
+int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertBytes) {
+    char *alertQuotaCmd;
+    char *chainName;
+    char *alertName;
+    int res = 0;
+
+    asprintf(&alertName, "%sAlert", costName);
+    if (!*alertBytes) {
+        LOGE("No prior alert set for %s alert", costName);
+        return -1;
+    }
+
+    asprintf(&chainName, "costly_%s", costName);
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-D", chainName, *alertBytes, alertName, alertName);
+    res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+    free(alertQuotaCmd);
+    free(chainName);
+
+    *alertBytes = 0;
+    free(alertName);
     return res;
 }

@@ -26,17 +26,34 @@ public:
     int disableBandwidthControl(void);
 
     int setInterfaceSharedQuota(const char *iface, int64_t bytes);
+    int getInterfaceSharedQuota(int64_t *bytes);
     int removeInterfaceSharedQuota(const char *iface);
 
     int setInterfaceQuota(const char *iface, int64_t bytes);
+    int getInterfaceQuota(const char *iface, int64_t *bytes);
     int removeInterfaceQuota(const char *iface);
 
     int addNaughtyApps(int numUids, char *appUids[]);
     int removeNaughtyApps(int numUids, char *appUids[]);
 
+    int setGlobalAlert(int64_t bytes);
+    int removeGlobalAlert(void);
+
+    int setSharedAlert(int64_t bytes);
+    int removeSharedAlert(void);
+
+    int setInterfaceAlert(const char *iface, int64_t bytes);
+    int removeInterfaceAlert(const char *iface);
 
 protected:
-    typedef std::pair<std::string /*ifaceName*/, int64_t /*quota*/> QuotaInfo;
+    class QuotaInfo {
+    public:
+      QuotaInfo(std::string ifn, int64_t q, int64_t a)
+              : ifaceName(ifn), quota(q), alert(a) {};
+        std::string ifaceName;
+        int64_t quota;
+        int64_t alert;
+    };
     enum IptIpVer { IptIpV4, IptIpV6 };
     enum IptOp { IptOpInsert, IptOpReplace, IptOpDelete };
     enum IptRejectOp { IptRejectAdd, IptRejectNoAdd };
@@ -44,8 +61,9 @@ protected:
     enum QuotaType { QuotaUnique, QuotaShared };
     enum RunCmdErrHandling { RunCmdFailureBad, RunCmdFailureOk };
 
-    int64_t sharedQuotaBytes;
     std::list<std::string> sharedQuotaIfaces;
+    int64_t sharedQuotaBytes;
+    int64_t sharedAlertBytes;
 
     std::list<QuotaInfo> quotaIfaces;
 
@@ -58,6 +76,8 @@ protected:
     std::string makeIptablesNaughtyCmd(IptOp op, int uid);
     std::string makeIptablesQuotaCmd(IptOp op, const char *costName, int64_t quota);
 
+    int runIptablesAlertCmd(IptOp op, const char *alertName, int64_t bytes);
+
     /* Runs for both ipv4 and ipv6 iptables */
     int runCommands(int numCommands, const char *commands[], RunCmdErrHandling cmdErrHandling);
     /* Runs for both ipv4 and ipv6 iptables, appends -j REJECT --reject-with ...  */
@@ -66,6 +86,13 @@ protected:
 
     // Provides strncpy() + check overflow.
     static int StrncpyAndCheck(char *buffer, const char *src, size_t buffSize);
+
+    int updateQuota(const char *alertName, int64_t bytes);
+
+    int64_t globalAlertBytes;
+    int setCostlyAlert(const char *costName, int64_t bytes, int64_t *alertBytes);
+    int removeCostlyAlert(const char *costName, int64_t *alertBytes);
+
 
 private:
     static const char *cleanupCommands[];
@@ -76,7 +103,8 @@ private:
     static const int MAX_CMD_ARGS;
     static const char IPTABLES_PATH[];
     static const char IP6TABLES_PATH[];
-
+    static const char ALERT_IPT_TEMPLATE[];
+    static const int ALERT_RULE_POS_IN_COSTLY_CHAIN;
 };
 
 #endif
