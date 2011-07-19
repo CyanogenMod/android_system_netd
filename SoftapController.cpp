@@ -35,6 +35,7 @@
 
 #define LOG_TAG "SoftapController"
 #include <cutils/log.h>
+#include "wifi.h"
 
 #include "SoftapController.h"
 
@@ -318,6 +319,7 @@ int SoftapController::fwReloadSoftap(int argc, char *argv[])
 {
     int ret, i = 0;
     char *iface;
+    char *fwpath;
 
     if (mSock < 0) {
         LOGE("Softap fwrealod - failed to open socket");
@@ -331,14 +333,13 @@ int SoftapController::fwReloadSoftap(int argc, char *argv[])
     iface = argv[2];
 
     if (strcmp(argv[3], "AP") == 0) {
-#ifdef WIFI_DRIVER_FW_AP_PATH
-        sprintf(mBuf, "FW_PATH=%s", WIFI_DRIVER_FW_AP_PATH);
-#endif
+        fwpath = (char *)wifi_get_fw_path(WIFI_GET_FW_PATH_AP);
     } else {
-#ifdef WIFI_DRIVER_FW_STA_PATH
-        sprintf(mBuf, "FW_PATH=%s", WIFI_DRIVER_FW_STA_PATH);
-#endif
+        fwpath = (char *)wifi_get_fw_path(WIFI_GET_FW_PATH_STA);
     }
+    if (!fwpath)
+        return -1;
+    sprintf(mBuf, "FW_PATH=%s", fwpath);
     ret = setCommand(iface, "WL_FW_RELOAD");
     if (ret) {
         LOGE("Softap fwReload - failed: %d", ret);
