@@ -45,6 +45,7 @@ public:
     int stopSoftap();
     bool isSoftapStarted();
     int setSoftap(int argc, char *argv[]);
+    void generatePsk(char *ssid, char *passphrase, char *psk);
     int fwReloadSoftap(int argc, char *argv[]);
     int clientsSoftap(char **retbuf);
 };

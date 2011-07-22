@@ -36,9 +36,12 @@
 #define LOG_TAG "SoftapController"
 #include <cutils/log.h>
 #include <netutils/ifc.h>
+#include <private/android_filesystem_config.h>
 #include "wifi.h"
 
 #include "SoftapController.h"
+
+static const char HOSTAPD_CONF_FILE[]    = "/data/misc/wifi/hostapd.conf";
 
 SoftapController::SoftapController() {
     mPid = 0;
@@ -158,7 +161,6 @@ int SoftapController::stopDriver(char *iface) {
     ifc_close();
     if (ret < 0) {
         LOGE("Softap %s down: %d", iface, ret);
-        return ret;
     }
 #endif
     ret = setCommand(iface, "STOP");
@@ -186,8 +188,8 @@ int SoftapController::startSoftap() {
 #endif
     if (!pid) {
 #ifdef HAVE_HOSTAPD
-        if (execl("/system/bin/hostapd", "/system/bin/hostapd", "-B",
-                  "/data/misc/wifi/hostapd.conf", (char *) NULL)) {
+        if (execl("/system/bin/hostapd", "/system/bin/hostapd",
+                  HOSTAPD_CONF_FILE, (char *) NULL)) {
            LOGE("execl failed (%s)", strerror(errno));
         }
 #endif
@@ -262,9 +264,8 @@ int SoftapController::addParam(int pos, const char *cmd, const char *arg)
  *	argv[9] - Max SCB
  */
 int SoftapController::setSoftap(int argc, char *argv[]) {
-    unsigned char psk[SHA256_DIGEST_LENGTH];
     char psk_str[2*SHA256_DIGEST_LENGTH+1];
-    int ret, i = 0;
+    int ret = 0, i = 0, fd;
     char *ssid, *iface;
 
     if (mSock < 0) {
@@ -279,6 +280,64 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
     strncpy(mIface, argv[3], sizeof(mIface));
     iface = argv[2];
 
+#ifdef HAVE_HOSTAPD
+    char *wbuf = NULL;
+    char *fbuf = NULL;
+
+    if (argc > 4) {
+        ssid = argv[4];
+    } else {
+        ssid = (char *)"AndroidAP";
+    }
+
+    asprintf(&wbuf, "interface=%s\ndriver=nl80211\nctrl_interface="
+            "/data/misc/wifi/hostapd\nssid=%s\nchannel=6\n", iface, ssid);
+
+    if (argc > 5) {
+        if (!strcmp(argv[5], "wpa-psk")) {
+            generatePsk(ssid, argv[6], psk_str);
+            asprintf(&fbuf, "%swpa=1\nwpa_psk=%s\n", wbuf, psk_str);
+        } else if (!strcmp(argv[5], "wpa2-psk")) {
+            generatePsk(ssid, argv[6], psk_str);
+            asprintf(&fbuf, "%swpa=2\nwpa_psk=%s\n", wbuf, psk_str);
+        } else if (!strcmp(argv[5], "open")) {
+            asprintf(&fbuf, "%s", wbuf);
+        }
+    } else {
+        asprintf(&fbuf, "%s", wbuf);
+    }
+
+    fd = open(HOSTAPD_CONF_FILE, O_CREAT | O_TRUNC | O_WRONLY, 0660);
+    if (fd < 0) {
+        LOGE("Cannot update \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
+        free(wbuf);
+        free(fbuf);
+        return -1;
+    }
+    if (write(fd, fbuf, strlen(fbuf)) < 0) {
+        LOGE("Cannot write to \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
+        ret = -1;
+    }
+    close(fd);
+    free(wbuf);
+    free(fbuf);
+
+    /* Note: apparently open can fail to set permissions correctly at times */
+    if (chmod(HOSTAPD_CONF_FILE, 0660) < 0) {
+        LOGE("Error changing permissions of %s to 0660: %s",
+                HOSTAPD_CONF_FILE, strerror(errno));
+        unlink(HOSTAPD_CONF_FILE);
+        return -1;
+    }
+
+    if (chown(HOSTAPD_CONF_FILE, AID_SYSTEM, AID_WIFI) < 0) {
+        LOGE("Error changing group ownership of %s to %d: %s",
+                HOSTAPD_CONF_FILE, AID_WIFI, strerror(errno));
+        unlink(HOSTAPD_CONF_FILE);
+        return -1;
+    }
+
+#else
     /* Create command line */
     i = addParam(i, "ASCII_CMD", "AP_CFG");
     if (argc > 4) {
@@ -293,15 +352,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         i = addParam(i, "SEC", "open");
     }
     if (argc > 6) {
-        int j;
-        // Use the PKCS#5 PBKDF2 with 4096 iterations
-        PKCS5_PBKDF2_HMAC_SHA1(argv[6], strlen(argv[6]),
-                reinterpret_cast<const unsigned char *>(ssid), strlen(ssid),
-                4096, SHA256_DIGEST_LENGTH, psk);
-        for (j=0; j < SHA256_DIGEST_LENGTH; j++) {
-            sprintf(&psk_str[j<<1], "%02x", psk[j]);
-        }
-        psk_str[j<<1] = '\0';
+        generatePsk(ssid, argv[6], psk_str);
         i = addParam(i, "KEY", psk_str);
     } else {
         i = addParam(i, "KEY", "12345678");
@@ -336,8 +387,23 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         LOGD("Softap set - Ok");
         usleep(AP_SET_CFG_DELAY);
     }
+#endif
     return ret;
 }
+
+void SoftapController::generatePsk(char *ssid, char *passphrase, char *psk_str) {
+    unsigned char psk[SHA256_DIGEST_LENGTH];
+    int j;
+    // Use the PKCS#5 PBKDF2 with 4096 iterations
+    PKCS5_PBKDF2_HMAC_SHA1(passphrase, strlen(passphrase),
+            reinterpret_cast<const unsigned char *>(ssid), strlen(ssid),
+            4096, SHA256_DIGEST_LENGTH, psk);
+    for (j=0; j < SHA256_DIGEST_LENGTH; j++) {
+        sprintf(&psk_str[j<<1], "%02x", psk[j]);
+    }
+    psk_str[j<<1] = '\0';
+}
+
 
 /*
  * Arguments:
