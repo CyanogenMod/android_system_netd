@@ -68,7 +68,12 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
         } else if (action == evt->NlActionLinkDown) {
             notifyInterfaceLinkChanged(iface, false);
         }
+    } else if (!strcmp(subsys, "qlog")) {
+        const char *alertName = evt->findParam("ALERT_NAME");
+        const char *iface = evt->findParam("INTERFACE");
+        notifyQuotaLimitReached(alertName, iface);
     }
+
 }
 
 void NetlinkHandler::notifyInterfaceAdded(const char *name) {
@@ -102,5 +107,13 @@ void NetlinkHandler::notifyInterfaceLinkChanged(const char *name, bool isUp) {
              (isUp ? "up" : "down"));
 
     mNm->getBroadcaster()->sendBroadcast(ResponseCode::InterfaceChange,
+            msg, false);
+}
+
+void NetlinkHandler::notifyQuotaLimitReached(const char *name, const char *iface) {
+    char msg[255];
+    snprintf(msg, sizeof(msg), "limit alert %s %s", name, iface);
+
+    mNm->getBroadcaster()->sendBroadcast(ResponseCode::BandwidthControl,
             msg, false);
 }
