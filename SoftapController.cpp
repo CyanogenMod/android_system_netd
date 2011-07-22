@@ -35,6 +35,7 @@
 
 #define LOG_TAG "SoftapController"
 #include <cutils/log.h>
+#include <netutils/ifc.h>
 #include "wifi.h"
 
 #include "SoftapController.h"
@@ -53,6 +54,9 @@ SoftapController::~SoftapController() {
 }
 
 int SoftapController::setCommand(char *iface, const char *fname, unsigned buflen) {
+#ifdef HAVE_HOSTAPD
+    return 0;
+#else
     char tBuf[SOFTAP_MAX_BUFFER_SIZE];
     struct iwreq wrq;
     struct iw_priv_args *priv_ptr;
@@ -105,6 +109,7 @@ int SoftapController::setCommand(char *iface, const char *fname, unsigned buflen
     wrq.u.data.flags = sub_cmd;
     ret = ioctl(mSock, cmd, &wrq);
     return ret;
+#endif
 }
 
 int SoftapController::startDriver(char *iface) {
@@ -121,6 +126,15 @@ int SoftapController::startDriver(char *iface) {
 
     *mBuf = 0;
     ret = setCommand(iface, "START");
+    if (ret < 0) {
+        LOGE("Softap driver start: %d", ret);
+        return ret;
+    }
+#ifdef HAVE_HOSTAPD
+    ifc_init();
+    ret = ifc_up(iface);
+    ifc_close();
+#endif
     usleep(AP_DRIVER_START_DELAY);
     LOGD("Softap driver start: %d", ret);
     return ret;
@@ -138,6 +152,15 @@ int SoftapController::stopDriver(char *iface) {
         iface = mIface;
     }
     *mBuf = 0;
+#ifdef HAVE_HOSTAPD
+    ifc_init();
+    ret = ifc_down(iface);
+    ifc_close();
+    if (ret < 0) {
+        LOGE("Softap %s down: %d", iface, ret);
+        return ret;
+    }
+#endif
     ret = setCommand(iface, "STOP");
     LOGD("Softap driver stop: %d", ret);
     return ret;
@@ -155,16 +178,21 @@ int SoftapController::startSoftap() {
         LOGE("Softap startap - failed to open socket");
         return -1;
     }
-#if 0
-   if ((pid = fork()) < 0) {
+#ifdef HAVE_HOSTAPD
+    if ((pid = fork()) < 0) {
         LOGE("fork failed (%s)", strerror(errno));
         return -1;
     }
 #endif
-    /* system("iwpriv wl0.1 AP_BSS_START"); */
     if (!pid) {
-        /* start hostapd */
-        return ret;
+#ifdef HAVE_HOSTAPD
+        if (execl("/system/bin/hostapd", "/system/bin/hostapd", "-B",
+                  "/data/misc/wifi/hostapd.conf", (char *) NULL)) {
+           LOGE("execl failed (%s)", strerror(errno));
+        }
+#endif
+        LOGE("Should never get here!");
+        return -1;
     } else {
         *mBuf = 0;
         ret = setCommand(mIface, "AP_BSS_START");
@@ -188,17 +216,18 @@ int SoftapController::stopSoftap() {
         LOGE("Softap already stopped");
         return 0;
     }
+
+#ifdef HAVE_HOSTAPD
+    LOGD("Stopping Softap service");
+    kill(mPid, SIGTERM);
+    waitpid(mPid, NULL, 0);
+#endif
     if (mSock < 0) {
         LOGE("Softap stopap - failed to open socket");
         return -1;
     }
     *mBuf = 0;
     ret = setCommand(mIface, "AP_BSS_STOP");
-#if 0
-    LOGD("Stopping Softap service");
-    kill(mPid, SIGTERM);
-    waitpid(mPid, NULL, 0);
-#endif
     mPid = 0;
     LOGD("Softap service stopped: %d", ret);
     usleep(AP_BSS_STOP_DELAY);
@@ -339,8 +368,12 @@ int SoftapController::fwReloadSoftap(int argc, char *argv[])
     }
     if (!fwpath)
         return -1;
+#ifdef HAVE_HOSTAPD
+    ret = wifi_change_fw_path((const char *)fwpath);
+#else
     sprintf(mBuf, "FW_PATH=%s", fwpath);
     ret = setCommand(iface, "WL_FW_RELOAD");
+#endif
     if (ret) {
         LOGE("Softap fwReload - failed: %d", ret);
     }
