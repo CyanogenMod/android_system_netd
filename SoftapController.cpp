@@ -429,6 +429,8 @@ int SoftapController::fwReloadSoftap(int argc, char *argv[])
 
     if (strcmp(argv[3], "AP") == 0) {
         fwpath = (char *)wifi_get_fw_path(WIFI_GET_FW_PATH_AP);
+    } else if (strcmp(argv[3], "P2P") == 0) {
+        fwpath = (char *)wifi_get_fw_path(WIFI_GET_FW_PATH_P2P);
     } else {
         fwpath = (char *)wifi_get_fw_path(WIFI_GET_FW_PATH_STA);
     }
