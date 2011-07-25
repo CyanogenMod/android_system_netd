@@ -20,6 +20,7 @@
 #include <sysutils/SocketListener.h>
 #include <sysutils/NetlinkListener.h>
 
+
 class NetlinkHandler;
 
 class NetlinkManager {
@@ -30,8 +31,10 @@ private:
     SocketListener       *mBroadcaster;
     NetlinkHandler       *mUeventHandler;
     NetlinkHandler       *mRouteHandler;
+    NetlinkHandler       *mQuotaHandler;
     int                  mUeventSock;
     int                  mRouteSock;
+    int                  mQuotaSock;
 
 public:
     virtual ~NetlinkManager();
@@ -44,9 +47,12 @@ public:
 
     static NetlinkManager *Instance();
 
+    /* This is the nflog group arg that the xt_quota2 neftiler will use. */
+    static const int NFLOG_QUOTA_GROUP;
+
 private:
     NetlinkManager();
-    NetlinkHandler* setupSocket(int *sock, int socketType, int groups,
+    NetlinkHandler* setupSocket(int *sock, int netlinkFamily, int groups,
         int format);
 };
 #endif

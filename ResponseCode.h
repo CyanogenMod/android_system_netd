@@ -55,5 +55,6 @@ public:
 
     // 600 series - Unsolicited broadcasts
     static const int InterfaceChange        = 600;
+    static const int BandwidthControl       = 601;
 };
 #endif

@@ -33,6 +33,8 @@
 #include "NetlinkManager.h"
 #include "NetlinkHandler.h"
 
+const int NetlinkManager::NFLOG_QUOTA_GROUP = 1;
+
 NetlinkManager *NetlinkManager::sInstance = NULL;
 
 NetlinkManager *NetlinkManager::Instance() {
@@ -48,7 +50,7 @@ NetlinkManager::NetlinkManager() {
 NetlinkManager::~NetlinkManager() {
 }
 
-NetlinkHandler *NetlinkManager::setupSocket(int *sock, int socketType,
+NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
     int groups, int format) {
 
     struct sockaddr_nl nladdr;
@@ -60,7 +62,7 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int socketType,
     nladdr.nl_pid = getpid();
     nladdr.nl_groups = groups;
 
-    if ((*sock = socket(PF_NETLINK, SOCK_DGRAM, socketType)) < 0) {
+    if ((*sock = socket(PF_NETLINK, SOCK_DGRAM, netlinkFamily)) < 0) {
         LOGE("Unable to create netlink socket: %s", strerror(errno));
         return NULL;
     }
@@ -103,6 +105,12 @@ int NetlinkManager::start() {
          NetlinkListener::NETLINK_FORMAT_BINARY)) == NULL) {
         return -1;
     }
+
+    if ((mQuotaHandler = setupSocket(&mQuotaSock, NETLINK_NFLOG,
+        NFLOG_QUOTA_GROUP, NetlinkListener::NETLINK_FORMAT_BINARY)) == NULL) {
+        LOGE("Unable to open quota2 logging socket");
+        return -1;
+    }
     return 0;
 }
 
@@ -130,6 +138,17 @@ int NetlinkManager::stop() {
 
     close(mRouteSock);
     mRouteSock = -1;
+
+    if (mQuotaHandler->stop()) {
+        LOGE("Unable to stop quota NetlinkHandler: %s", strerror(errno));
+        status = -1;
+    }
+
+    delete mQuotaHandler;
+    mQuotaHandler = NULL;
+
+    close(mQuotaSock);
+    mQuotaSock = -1;
 
     return status;
 }

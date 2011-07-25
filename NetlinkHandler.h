@@ -37,5 +37,6 @@ protected:
     void notifyInterfaceRemoved(const char *name);
     void notifyInterfaceChanged(const char *name, bool isUp);
     void notifyInterfaceLinkChanged(const char *name, bool isUp);
+    void notifyQuotaLimitReached(const char *name, const char *iface);
 };
 #endif
