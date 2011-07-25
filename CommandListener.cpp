@@ -835,6 +835,40 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         }
         rc = sBandwidthCtrl->removeInterfaceSharedQuota(argv[2]);
 
+    } else if (!strcmp(argv[1], "getquota") || !strcmp(argv[1], "gq")) {
+        int64_t bytes;
+        if (argc != 2) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth getquota", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->getInterfaceSharedQuota(&bytes);
+        if (rc) {
+            cli->sendMsg(ResponseCode::OperationFailed, "Failed to get quota", true);
+            return 0;
+        }
+        char *msg;
+        asprintf(&msg, "%lld", bytes);
+        cli->sendMsg(ResponseCode::QuotaCounterResult, msg, false);
+        free(msg);
+
+    } else if (!strcmp(argv[1], "getiquota") || !strcmp(argv[1], "giq")) {
+        int64_t bytes;
+        if (argc != 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth getiquota <iface>", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->getInterfaceQuota(argv[2], &bytes);
+        if (rc) {
+            cli->sendMsg(ResponseCode::OperationFailed, "Failed to get quota", true);
+            return 0;
+        }
+        char *msg;
+        asprintf(&msg, "%lld", bytes);
+        cli->sendMsg(ResponseCode::QuotaCounterResult, msg, false);
+        free(msg);
+
     } else if (!strcmp(argv[1], "setquota") || !strcmp(argv[1], "sq")) {
         if (argc != 4) {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
@@ -849,7 +883,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
                          "Usage: bandwidth setquotas <bytes> <interface> ...", false);
             return 0;
         }
-        for (int q=3; argc >= 4; q++, argc--) {
+        for (int q = 3; argc >= 4; q++, argc--) {
             rc = sBandwidthCtrl->setInterfaceSharedQuota(argv[q], atoll(argv[2]));
             if (rc) {
                 char *msg;
@@ -867,7 +901,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
                          "Usage: bandwidth removequotas <interface> ...", false);
             return 0;
         }
-        for (int q=2; argc >= 3; q++, argc--) {
+        for (int q = 2; argc >= 3; q++, argc--) {
             rc = sBandwidthCtrl->removeInterfaceSharedQuota(argv[q]);
             if (rc) {
                 char *msg;
@@ -906,10 +940,58 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
     } else if (!strcmp(argv[1], "removenaughtyapps") || !strcmp(argv[1], "rna")) {
         if (argc < 3) {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
-                         "Usage: bandwidth remnaughtyapps <appUid> ...", false);
+                         "Usage: bandwidth removenaughtyapps <appUid> ...", false);
             return 0;
         }
         rc = sBandwidthCtrl->removeNaughtyApps(argc - 2, argv + 2);
+
+    } else if (!strcmp(argv[1], "setglobalalert") || !strcmp(argv[1], "sga")) {
+        if (argc != 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth setglobalalert <bytes>", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->setGlobalAlert(atoll(argv[2]));
+
+    } else if (!strcmp(argv[1], "removeglobalalert") || !strcmp(argv[1], "rga")) {
+        if (argc != 2) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth removeglobalalert", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->removeGlobalAlert();
+
+    } else if (!strcmp(argv[1], "setsharedalert") || !strcmp(argv[1], "ssa")) {
+        if (argc != 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth setsharedalert <bytes>", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->setSharedAlert(atoll(argv[2]));
+
+    } else if (!strcmp(argv[1], "removesharedalert") || !strcmp(argv[1], "rsa")) {
+        if (argc != 2) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth removesharedalert", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->removeSharedAlert();
+
+    } else if (!strcmp(argv[1], "setinterfacealert") || !strcmp(argv[1], "sia")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth setinterfacealert <interface> <bytes>", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->setInterfaceAlert(argv[2], atoll(argv[3]));
+
+    } else if (!strcmp(argv[1], "removeinterfacealert") || !strcmp(argv[1], "ria")) {
+        if (argc != 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: bandwidth removeinterfacealert <interface>", false);
+            return 0;
+        }
+        rc = sBandwidthCtrl->removeInterfaceAlert(argv[2]);
 
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown bandwidth cmd", false);
