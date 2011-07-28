@@ -109,7 +109,7 @@ int NetlinkManager::start() {
     if ((mQuotaHandler = setupSocket(&mQuotaSock, NETLINK_NFLOG,
         NFLOG_QUOTA_GROUP, NetlinkListener::NETLINK_FORMAT_BINARY)) == NULL) {
         LOGE("Unable to open quota2 logging socket");
-        return -1;
+        // TODO: return -1 once the emulator gets a new kernel.
     }
     return 0;
 }
@@ -139,16 +139,17 @@ int NetlinkManager::stop() {
     close(mRouteSock);
     mRouteSock = -1;
 
-    if (mQuotaHandler->stop()) {
-        LOGE("Unable to stop quota NetlinkHandler: %s", strerror(errno));
-        status = -1;
+    if (mQuotaHandler) {
+        if (mQuotaHandler->stop()) {
+            LOGE("Unable to stop quota NetlinkHandler: %s", strerror(errno));
+            status = -1;
+        }
+
+        delete mQuotaHandler;
+        mQuotaHandler = NULL;
+
+        close(mQuotaSock);
+        mQuotaSock = -1;
     }
-
-    delete mQuotaHandler;
-    mQuotaHandler = NULL;
-
-    close(mQuotaSock);
-    mQuotaSock = -1;
-
     return status;
 }
