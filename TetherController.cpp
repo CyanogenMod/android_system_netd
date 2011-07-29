@@ -53,12 +53,17 @@ TetherController::~TetherController() {
 
 int TetherController::setIpFwdEnabled(bool enable) {
 
+    // Give OEMs ability to leave IP Fwd enabled all the time for test modes.
+    char allowIpFwd[PROPERTY_VALUE_MAX] = {0};
+    property_get("ro.allow.ip.fwd", allowIpFwd, "0");
+    if ((enable == false) && ('1' == allowIpFwd[0])) {
+        LOGW("Ignoring IP forward disable due to OEM setting");
+        return 0;
+    }
+
     LOGD("Setting IP forward enable = %d", enable);
 
-    // In BP tools mode, do not disable IP forwarding
-    char bootmode[PROPERTY_VALUE_MAX] = {0};
-    property_get("ro.bootmode", bootmode, "unknown");
-    if ((enable == false) && (0 == strcmp("bp-tools", bootmode))) {
+    if (enable == false) {
         return 0;
     }
 
