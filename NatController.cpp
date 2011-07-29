@@ -15,14 +15,13 @@
  */
 
 #include <stdlib.h>
+#include <sys/wait.h>
 #include <errno.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <string.h>
-#include <cutils/properties.h>
 
 #define LOG_TAG "NatController"
 #include <cutils/log.h>
@@ -32,9 +31,21 @@
 extern "C" int logwrap(int argc, const char **argv, int background);
 
 static char IPTABLES_PATH[] = "/system/bin/iptables";
+static char OEM_SCRIPT_PATH[] = "/system/bin/oem-iptables-init.sh";
 
-NatController::NatController() {
+NatController::NatController() : mOemChainsExist(false) {
     natCount = 0;
+
+    setDefaults();
+
+    if (0 == access(OEM_SCRIPT_PATH, R_OK | X_OK)) {
+        // The call to oemCleanupHooks() is superfluous when done on bootup,
+        // but is needed for the case where netd has crashed/stopped and is
+        // restarted.
+        if (!oemCleanupHooks() && !oemSetupHooks() && !oemInitChains()) {
+            mOemChainsExist = true;
+        }
+    }
 }
 
 NatController::~NatController() {
@@ -76,8 +87,71 @@ int NatController::setDefaults() {
         return -1;
     if (runIptablesCmd("-F FORWARD"))
         return -1;
-    if (runIptablesCmd("-t nat -F"))
+
+    if (runIptablesCmd("-t nat -F PREROUTING"))
         return -1;
+    if (runIptablesCmd("-t nat -F OUTPUT"))
+        return -1;
+    if (runIptablesCmd("-t nat -F POSTROUTING"))
+        return -1;
+
+    return 0;
+}
+
+int NatController::oemSetupHooks() {
+    // Order is important!
+    // -N to create the chain (no-op if already exist).
+    // -D to delete any pre-existing jump rule, to prevent dupes (no-op if doesn't exist)
+    // -I to insert our jump rule into the default chain
+
+    runIptablesCmd("-N oem_out");
+    runIptablesCmd("-D OUTPUT -j oem_out");
+    if (runIptablesCmd("-I OUTPUT -j oem_out"))
+        return -1;
+
+    runIptablesCmd("-N oem_fwd");
+    runIptablesCmd("-D FORWARD -j oem_fwd");
+    if (runIptablesCmd("-I FORWARD -j oem_fwd"))
+        return -1;
+
+    runIptablesCmd("-t nat -N oem_nat_pre");
+    runIptablesCmd("-t nat -D PREROUTING -j oem_nat_pre");
+    if (runIptablesCmd("-t nat -I PREROUTING -j oem_nat_pre"))
+        return -1;
+
+    return 0;
+}
+
+int NatController::oemCleanupHooks() {
+    // Order is important!
+    // -D to remove ref to the chain
+    // -F to empty the chain
+    // -X to delete the chain
+
+    runIptablesCmd("-D OUTPUT -j oem_out");
+    runIptablesCmd("-F oem_out");
+    runIptablesCmd("-X oem_out");
+
+    runIptablesCmd("-D FORWARD -j oem_fwd");
+    runIptablesCmd("-F oem_fwd");
+    runIptablesCmd("-X oem_fwd");
+
+    runIptablesCmd("-t nat -D PREROUTING -j oem_nat_pre");
+    runIptablesCmd("-t nat -F oem_nat_pre");
+    runIptablesCmd("-t nat -X oem_nat_pre");
+
+    return 0;
+}
+
+// This method should only be called when netd starts up.  The OEM chains are
+// intended to be static, so there's no need to flush and recreate them every
+// time setDefaults() is called.
+int NatController::oemInitChains() {
+    int ret = system(OEM_SCRIPT_PATH);
+    if ((-1 == ret) || (0 != WEXITSTATUS(ret))) {
+        LOGE("%s failed: %s", OEM_SCRIPT_PATH, strerror(errno));
+        return -1;
+    }
     return 0;
 }
 
@@ -89,18 +163,16 @@ bool NatController::interfaceExists(const char *iface) {
 int NatController::doNatCommands(const char *intIface, const char *extIface, bool add) {
     char cmd[255];
 
-    char bootmode[PROPERTY_VALUE_MAX] = {0};
-    property_get("ro.bootmode", bootmode, "unknown");
-    if (0 != strcmp("bp-tools", bootmode)) {
-        // handle decrement to 0 case (do reset to defaults) and erroneous dec below 0
-        if (add == false) {
-            if (natCount <= 1) {
-                int ret = setDefaults();
-                if (ret == 0) {
-                    natCount=0;
-                }
-                return ret;
+    // handle decrement to 0 case (do reset to defaults) and erroneous dec below 0
+    if (add == false) {
+        if (natCount <= 1) {
+            int ret = setDefaults();
+            if (ret == 0) {
+                natCount=0;
             }
+            if (mOemChainsExist)
+                oemSetupHooks();
+            return ret;
         }
     }
 
@@ -133,10 +205,9 @@ int NatController::doNatCommands(const char *intIface, const char *extIface, boo
     if (add && natCount == 0) {
         snprintf(cmd, sizeof(cmd), "-t nat -A POSTROUTING -o %s -j MASQUERADE", extIface);
         if (runIptablesCmd(cmd)) {
-            if (0 != strcmp("bp-tools", bootmode)) {
-                // unwind what's been done, but don't care about success - what more could we do?
-                setDefaults();;
-            }
+            // unwind what's been done, but don't care about success - what more could we do?
+            setDefaults();;
+            oemSetupHooks();
             return -1;
         }
     }

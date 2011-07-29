@@ -32,8 +32,12 @@ public:
 
 private:
     int natCount;
+    bool mOemChainsExist;
 
     int setDefaults();
+    int oemSetupHooks();
+    int oemCleanupHooks();
+    int oemInitChains();
     int runIptablesCmd(const char *cmd);
     bool interfaceExists(const char *iface);
     int doNatCommands(const char *intIface, const char *extIface, bool add);
