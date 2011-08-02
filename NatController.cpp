@@ -118,10 +118,28 @@ int NatController::doNatCommands(const char *intIface, const char *extIface, boo
         return -1;
     }
 
+    snprintf(cmd, sizeof(cmd),
+            "-%s FORWARD -i %s -o %s -m state --state INVALID -j DROP",
+            (add ? "A" : "D"),
+            intIface, extIface);
+    if (runIptablesCmd(cmd)) {
+        snprintf(cmd, sizeof(cmd),
+                "-%s FORWARD -i %s -o %s -m state --state ESTABLISHED,RELATED -j ACCEPT",
+                (!add ? "A" : "D"),
+                extIface, intIface);
+        return -1;
+    }
+
     snprintf(cmd, sizeof(cmd), "-%s FORWARD -i %s -o %s -j ACCEPT", (add ? "A" : "D"),
             intIface, extIface);
     if (runIptablesCmd(cmd)) {
         // unwind what's been done, but don't care about success - what more could we do?
+        snprintf(cmd, sizeof(cmd),
+                "-%s FORWARD -i %s -o %s -m state --state INVALID -j DROP",
+                (!add ? "A" : "D"),
+                intIface, extIface);
+        runIptablesCmd(cmd);
+
         snprintf(cmd, sizeof(cmd),
                  "-%s FORWARD -i %s -o %s -m state --state ESTABLISHED,RELATED -j ACCEPT",
                  (!add ? "A" : "D"),
