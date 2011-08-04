@@ -127,6 +127,7 @@ int NatController::doNatCommands(const char *intIface, const char *extIface, boo
                 "-%s FORWARD -i %s -o %s -m state --state ESTABLISHED,RELATED -j ACCEPT",
                 (!add ? "A" : "D"),
                 extIface, intIface);
+        runIptablesCmd(cmd);
         return -1;
     }
 
@@ -144,6 +145,7 @@ int NatController::doNatCommands(const char *intIface, const char *extIface, boo
                  "-%s FORWARD -i %s -o %s -m state --state ESTABLISHED,RELATED -j ACCEPT",
                  (!add ? "A" : "D"),
                  extIface, intIface);
+        runIptablesCmd(cmd);
         return -1;
     }
 
