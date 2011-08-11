@@ -41,29 +41,20 @@ NatController::~NatController() {
 }
 
 int NatController::runIptablesCmd(const char *cmd) {
-    char buffer[255];
+    char *buffer;
+    size_t len = strnlen(cmd, 255);
+    int res;
 
-    strncpy(buffer, cmd, sizeof(buffer)-1);
-
-    const char *args[16];
-    char *next = buffer;
-    char *tmp;
-
-    args[0] = IPTABLES_PATH;
-    args[1] = "--verbose";
-    int i = 2;
-
-    while ((tmp = strsep(&next, " "))) {
-        args[i++] = tmp;
-        if (i == 16) {
-            LOGE("iptables argument overflow");
-            errno = E2BIG;
-            return -1;
-        }
+    if (len == 255) {
+        LOGE("iptables command too long");
+        errno = E2BIG;
+        return -1;
     }
-    args[i] = NULL;
 
-    return logwrap(i, args, 0);
+    asprintf(&buffer, "%s %s", IPTABLES_PATH, cmd);
+    res = system(buffer);
+    free(buffer);
+    return res;
 }
 
 int NatController::setDefaults() {

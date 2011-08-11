@@ -93,6 +93,10 @@ protected:
     int setCostlyAlert(const char *costName, int64_t bytes, int64_t *alertBytes);
     int removeCostlyAlert(const char *costName, int64_t *alertBytes);
 
+    /*
+     * When false, it will directly use system() instead of logwrap()
+     */
+    static bool useLogwrapCall;
 
 private:
     static const char *cleanupCommands[];
