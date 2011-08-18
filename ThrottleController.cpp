@@ -42,28 +42,20 @@ extern "C" int ifc_up(const char *name);
 extern "C" int ifc_down(const char *name);
 
 int ThrottleController::runTcCmd(const char *cmd) {
-    char buffer[255];
+    char *buffer;
+    size_t len = strnlen(cmd, 255);
+    int res;
 
-    strncpy(buffer, cmd, sizeof(buffer)-1);
-
-    const char *args[32];
-    char *next = buffer;
-    char *tmp;
-
-    args[0] = TC_PATH;
-    int i = 1;
-
-    while ((tmp = strsep(&next, " "))) {
-        args[i++] = tmp;
-        if (i == 32) {
-            LOGE("tc argument overflow");
-            errno = E2BIG;
-            return -1;
-        }
+    if (len == 255) {
+        LOGE("tc command too long");
+        errno = E2BIG;
+        return -1;
     }
-    args[i] = NULL;
 
-    return logwrap(i, args, 0);
+    asprintf(&buffer, "%s %s", TC_PATH, cmd);
+    res = system(buffer);
+    free(buffer);
+    return res;
 }
 
 int ThrottleController::setInterfaceThrottle(const char *iface, int rxKbps, int txKbps) {

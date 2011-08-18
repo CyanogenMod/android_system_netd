@@ -43,6 +43,7 @@ const char BandwidthController::IPTABLES_PATH[] = "/system/bin/iptables";
 const char BandwidthController::IP6TABLES_PATH[] = "/system/bin/ip6tables";
 const char BandwidthController::ALERT_IPT_TEMPLATE[] = "%s %s -m quota2 ! --quota %lld --name %s";
 const int BandwidthController::ALERT_RULE_POS_IN_COSTLY_CHAIN = 4;
+bool BandwidthController::useLogwrapCall = false;
 
 /**
  * Some comments about the rules:
@@ -124,6 +125,8 @@ BandwidthController::BandwidthController(void) {
         enableBandwidthControl();
     }
 
+    property_get("persist.bandwidth.uselogwrap", value, "0");
+    useLogwrapCall = !strcmp(value, "1");
 }
 
 int BandwidthController::runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling) {
@@ -149,6 +152,7 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
     int argc = 0;
     char *next = buffer;
     char *tmp;
+    int res;
 
     std::string fullCmd = cmd;
 
@@ -164,28 +168,33 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
         }
     }
 
-    argc = 0;
-    argv[argc++] = iptVer == IptIpV4 ? IPTABLES_PATH : IP6TABLES_PATH;
+    fullCmd.insert(0, " ");
+    fullCmd.insert(0, iptVer == IptIpV4 ? IPTABLES_PATH : IP6TABLES_PATH);
 
-    LOGD("runIptablesCmd(): %s %s", argv[0], fullCmd.c_str());
-    if (StrncpyAndCheck(buffer, fullCmd.c_str(), sizeof(buffer))) {
-        LOGE("iptables command too long");
-        return -1;
-    }
-
-    while ((tmp = strsep(&next, " "))) {
-        argv[argc++] = tmp;
-        if (argc >= MAX_CMD_ARGS) {
-            LOGE("iptables argument overflow");
+    if (!useLogwrapCall) {
+        res = system(fullCmd.c_str());
+    } else {
+        if (StrncpyAndCheck(buffer, fullCmd.c_str(), sizeof(buffer))) {
+            LOGE("iptables command too long");
             return -1;
         }
-    }
 
-    argv[argc] = NULL;
-    /* TODO(jpa): Once this stabilizes, remove logwrap() as it tends to wedge netd
-     * Then just talk directly to the kernel via rtnetlink.
-     */
-    return logwrap(argc, argv, 0);
+        argc = 0;
+        while ((tmp = strsep(&next, " "))) {
+            argv[argc++] = tmp;
+            if (argc >= MAX_CMD_ARGS) {
+                LOGE("iptables argument overflow");
+                return -1;
+            }
+        }
+
+        argv[argc] = NULL;
+        res = logwrap(argc, argv, 0);
+    }
+    if (res) {
+        LOGE("runIptablesCmd(): failed %s res=%d", fullCmd.c_str(), res);
+    }
+    return res;
 }
 
 int BandwidthController::enableBandwidthControl(void) {
