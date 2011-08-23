@@ -76,3 +76,23 @@ int ResolverController::flushInterfaceDnsCache(const char* iface) {
 
     return 0;
 }
+
+int ResolverController::setDnsIfaceForPid(const char* iface, int pid) {
+    if (DBG) {
+        ALOGD("setDnsIfaceForPid iface = %s, pid = %d\n", iface, pid);
+    }
+
+    _resolv_set_iface_for_pid(iface, pid);
+
+    return 0;
+}
+
+int ResolverController::clearDnsIfaceForPid(int pid) {
+    if (DBG) {
+        ALOGD("clearDnsIfaceForPid pid = %d\n", pid);
+    }
+
+    _resolv_clear_iface_for_pid(pid);
+
+    return 0;
+}
