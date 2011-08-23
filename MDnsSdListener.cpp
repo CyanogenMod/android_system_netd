@@ -497,6 +497,7 @@ MDnsSdListener::Monitor::Monitor() {
     pthread_mutex_init(&mHeadMutex, NULL);
     socketpair(AF_LOCAL, SOCK_STREAM, 0, mCtrlSocketPair);
     pthread_create(&mThread, NULL, MDnsSdListener::Monitor::threadStart, this);
+    pthread_detach(mThread);
 }
 
 void *MDnsSdListener::Monitor::threadStart(void *obj) {
