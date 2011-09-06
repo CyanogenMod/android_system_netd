@@ -292,7 +292,8 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 return 0;
             }
 
-            if (ifc_set_prefixLength(argv[2], atoi(argv[4]))) {
+            //Set prefix length on a non zero address
+            if (addr.s_addr != 0 && ifc_set_prefixLength(argv[2], atoi(argv[4]))) {
                 cli->sendMsg(ResponseCode::OperationFailed, "Failed to set prefixLength", true);
                 ifc_close();
                 return 0;
