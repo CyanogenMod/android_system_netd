@@ -41,7 +41,7 @@ const int BandwidthController::MAX_IFACENAME_LEN = 64;
 const int BandwidthController::MAX_CMD_ARGS = 32;
 const char BandwidthController::IPTABLES_PATH[] = "/system/bin/iptables";
 const char BandwidthController::IP6TABLES_PATH[] = "/system/bin/ip6tables";
-const char BandwidthController::ALERT_IPT_TEMPLATE[] = "%s %s -m quota2 ! --quota %lld --name %s";
+const char BandwidthController::ALERT_IPT_TEMPLATE[] = "%s %s %s -m quota2 ! --quota %lld --name %s";
 const int BandwidthController::ALERT_RULE_POS_IN_COSTLY_CHAIN = 4;
 bool BandwidthController::useLogwrapCall = false;
 
@@ -650,6 +650,7 @@ int BandwidthController::updateQuota(const char *quotaName, int64_t bytes) {
 int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, int64_t bytes) {
     int res = 0;
     const char *opFlag;
+    const char *ifaceLimiting;
     char *alertQuotaCmd;
 
     switch (op) {
@@ -665,10 +666,14 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
         break;
     }
 
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "INPUT", bytes, alertName, alertName);
+    ifaceLimiting = "! -i lo+";
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, ifaceLimiting, opFlag, "INPUT",
+        bytes, alertName, alertName);
     res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
     free(alertQuotaCmd);
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "OUTPUT", bytes, alertName, alertName);
+    ifaceLimiting = "! -o lo+";
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, ifaceLimiting, opFlag, "OUTPUT",
+        bytes, alertName, alertName);
     res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
     free(alertQuotaCmd);
     return res;
