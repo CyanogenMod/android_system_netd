@@ -22,6 +22,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <string.h>
+#include <fcntl.h>
 
 #include <linux/if.h>
 
@@ -363,6 +364,37 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             }
             ifc_close();
             cli->sendMsg(ResponseCode::CommandOkay, "Interface IP addresses cleared", false);
+            return 0;
+        } else if (!strcmp(argv[1], "ipv6privacyextensions")) {
+            if (argc != 4) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError,
+                        "Usage: interface ipv6privacyextensions <interface> <enable|disable>",
+                        false);
+                return 0;
+            }
+
+            char *tmp = NULL;
+            asprintf(&tmp, "/proc/sys/net/ipv6/conf/%s/use_tempaddr", argv[2]);
+            int fd = open(tmp, O_WRONLY);
+            if (fd < 0) {
+                LOGE("Failed to open %s (%s)", tmp, strerror(errno));
+                free(tmp);
+                cli->sendMsg(ResponseCode::OperationFailed,
+                        "Failed to set ipv6 privacy extensions", true);
+                return 0;
+            }
+
+            if (write(fd, (!strncmp(argv[3], "enable", 6) ? "2" : "0"), 1) != 1) {
+                LOGE("Failed to write %s (%s)", tmp, strerror(errno));
+                close(fd);
+                free(tmp);
+                cli->sendMsg(ResponseCode::OperationFailed,
+                        "Failed to set ipv6 privacy extensions", true);
+                return 0;
+            }
+            close(fd);
+            free(tmp);
+            cli->sendMsg(ResponseCode::CommandOkay, "IPv6 privacy extensions changed", false);
             return 0;
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown interface cmd", false);
