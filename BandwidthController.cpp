@@ -14,8 +14,17 @@
  * limitations under the License.
  */
 
+// #define LOG_NDEBUG 0
+
+/*
+ * The CommandListener, FrameworkListener don't allow for
+ * multiple calls in parallel to reach the BandwidthController.
+ * If they ever were to allow it, then netd/ would need some tweaking.
+ */
+
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -36,13 +45,16 @@ extern "C" int logwrap(int argc, const char **argv, int background);
 
 #include "BandwidthController.h"
 
-const int BandwidthController::MAX_CMD_LEN = 1024;
-const int BandwidthController::MAX_IFACENAME_LEN = 64;
-const int BandwidthController::MAX_CMD_ARGS = 32;
-const char BandwidthController::IPTABLES_PATH[] = "/system/bin/iptables";
-const char BandwidthController::IP6TABLES_PATH[] = "/system/bin/ip6tables";
+/* Alphabetical */
 const char BandwidthController::ALERT_IPT_TEMPLATE[] = "%s %s %s -m quota2 ! --quota %lld --name %s";
-const int BandwidthController::ALERT_RULE_POS_IN_COSTLY_CHAIN = 4;
+const int  BandwidthController::ALERT_RULE_POS_IN_COSTLY_CHAIN = 4;
+const char BandwidthController::IP6TABLES_PATH[] = "/system/bin/ip6tables";
+const char BandwidthController::IPTABLES_PATH[] = "/system/bin/iptables";
+const int  BandwidthController::MAX_CMD_ARGS = 32;
+const int  BandwidthController::MAX_CMD_LEN = 1024;
+const int  BandwidthController::MAX_IFACENAME_LEN = 64;
+const int  BandwidthController::MAX_IPT_OUTPUT_LINE_LEN = 256;
+
 bool BandwidthController::useLogwrapCall = false;
 
 /**
@@ -83,7 +95,7 @@ bool BandwidthController::useLogwrapCall = false;
  *    iptables -A penalty_box -m owner --uid-owner app_3 \
  *        --jump REJECT --reject-with icmp-net-prohibited
  */
-const char *BandwidthController::cleanupCommands[] = {
+const char *BandwidthController::IPT_CLEANUP_COMMANDS[] = {
     /* Cleanup rules. */
     "-F",
     "-t raw -F",
@@ -93,13 +105,13 @@ const char *BandwidthController::cleanupCommands[] = {
     "-X",  /* Should normally only be costly_shared, penalty_box, and costly_<iface>  */
 };
 
-const char *BandwidthController::setupCommands[] = {
+const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
     /* Created needed chains. */
     "-N costly_shared",
     "-N penalty_box",
 };
 
-const char *BandwidthController::basicAccountingCommands[] = {
+const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
     "-F INPUT",
     "-A INPUT -i lo --jump ACCEPT",
     "-A INPUT -m owner --socket-exists", /* This is a tracking rule. */
@@ -132,7 +144,7 @@ BandwidthController::BandwidthController(void) {
 int BandwidthController::runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling) {
     int res = 0;
 
-    LOGD("runIpxtablesCmd(cmd=%s)", cmd);
+    LOGV("runIpxtablesCmd(cmd=%s)", cmd);
     res |= runIptablesCmd(cmd, rejectHandling, IptIpV4);
     res |= runIptablesCmd(cmd, rejectHandling, IptIpV6);
     return res;
@@ -199,31 +211,38 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
 
 int BandwidthController::enableBandwidthControl(void) {
     int res;
-    /* Some of the initialCommands are allowed to fail */
-    runCommands(sizeof(cleanupCommands) / sizeof(char*), cleanupCommands, RunCmdFailureOk);
-    runCommands(sizeof(setupCommands) / sizeof(char*), setupCommands, RunCmdFailureOk);
-    res = runCommands(sizeof(basicAccountingCommands) / sizeof(char*), basicAccountingCommands,
-                      RunCmdFailureBad);
 
-    sharedQuotaBytes = sharedAlertBytes = 0;
+    /* Let's pretend we started from scratch ... */
     sharedQuotaIfaces.clear();
     quotaIfaces.clear();
     naughtyAppUids.clear();
+    globalAlertBytes = 0;
+    sharedQuotaBytes = sharedAlertBytes = 0;
+
+
+    /* Some of the initialCommands are allowed to fail */
+    runCommands(sizeof(IPT_CLEANUP_COMMANDS) / sizeof(char*),
+            IPT_CLEANUP_COMMANDS, RunCmdFailureOk);
+    runCommands(sizeof(IPT_SETUP_COMMANDS) / sizeof(char*),
+            IPT_SETUP_COMMANDS, RunCmdFailureOk);
+    res = runCommands(sizeof(IPT_BASIC_ACCOUNTING_COMMANDS) / sizeof(char*),
+            IPT_BASIC_ACCOUNTING_COMMANDS, RunCmdFailureBad);
 
     return res;
 
 }
 
 int BandwidthController::disableBandwidthControl(void) {
-    /* The cleanupCommands are allowed to fail. */
-    runCommands(sizeof(cleanupCommands) / sizeof(char*), cleanupCommands, RunCmdFailureOk);
+    /* The IPT_CLEANUP_COMMANDS are allowed to fail. */
+    runCommands(sizeof(IPT_CLEANUP_COMMANDS) / sizeof(char*),
+            IPT_CLEANUP_COMMANDS, RunCmdFailureOk);
     return 0;
 }
 
 int BandwidthController::runCommands(int numCommands, const char *commands[],
                                      RunCmdErrHandling cmdErrHandling) {
     int res = 0;
-    LOGD("runCommands(): %d commands", numCommands);
+    LOGV("runCommands(): %d commands", numCommands);
     for (int cmdNum = 0; cmdNum < numCommands; cmdNum++) {
         res = runIpxtablesCmd(commands[cmdNum], IptRejectNoAdd);
         if (res && cmdErrHandling != RunCmdFailureBad)
@@ -312,7 +331,7 @@ std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *cost
     char *buff;
     const char *opFlag;
 
-    LOGD("makeIptablesQuotaCmd(%d, %lld)", op, quota);
+    LOGV("makeIptablesQuotaCmd(%d, %lld)", op, quota);
 
     switch (op) {
     case IptOpInsert:
@@ -593,7 +612,7 @@ int BandwidthController::getInterfaceQuota(const char *costName, int64_t *bytes)
         return -1;
     }
     scanRes = fscanf(fp, "%lld", bytes);
-    LOGD("Read quota res=%d bytes=%lld", scanRes, *bytes);
+    LOGV("Read quota res=%d bytes=%lld", scanRes, *bytes);
     fclose(fp);
     return scanRes == 1 ? 0 : -1;
 }
@@ -810,5 +829,88 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
 
     *alertBytes = 0;
     free(alertName);
+    return res;
+}
+
+/*
+ * Parse the ptks and bytes out of:
+ * Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
+ *     pkts      bytes target     prot opt in     out     source               destination
+ *        0        0 ACCEPT     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0            state RELATED,ESTABLISHED
+ *        0        0 DROP       all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0            state INVALID
+ *        0        0 ACCEPT     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0
+ *
+ */
+int BandwidthController::parseForwardChainStats(TetherStats &stats, FILE *fp) {
+    int res;
+    char lineBuffer[MAX_IPT_OUTPUT_LINE_LEN];
+    char iface0[MAX_IPT_OUTPUT_LINE_LEN];
+    char iface1[MAX_IPT_OUTPUT_LINE_LEN];
+    char rest[MAX_IPT_OUTPUT_LINE_LEN];
+
+    char *buffPtr;
+    int64_t packets, bytes;
+
+    while (NULL != (buffPtr = fgets(lineBuffer, MAX_IPT_OUTPUT_LINE_LEN, fp))) {
+        /* Clean up, so a failed parse can still print info */
+        iface0[0] = iface1[0] = rest[0] = packets = bytes = 0;
+        res = sscanf(buffPtr, "%lld %lld ACCEPT all -- %s %s 0.%s",
+                &packets, &bytes, iface0, iface1, rest);
+        LOGV("parse res=%d iface0=<%s> iface1=<%s> pkts=%lld bytes=%lld rest=<%s> orig line=<%s>", res,
+             iface0, iface1, packets, bytes, rest, buffPtr);
+        if (res != 5) {
+            continue;
+        }
+        if ((stats.ifaceIn == iface0) && (stats.ifaceOut == iface1)) {
+            LOGV("iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+            stats.rxPackets = packets;
+            stats.rxBytes = bytes;
+        } else if ((stats.ifaceOut == iface0) && (stats.ifaceIn == iface1)) {
+            LOGV("iface_in=%s iface_out=%s tx_bytes=%lld tx_packets=%lld ", iface1, iface0, bytes, packets);
+            stats.txPackets = packets;
+            stats.txBytes = bytes;
+        }
+    }
+    /* Failure if rx or tx was not found */
+    return (stats.rxBytes == -1 || stats.txBytes == -1) ? -1 : 0;
+}
+
+
+char *BandwidthController::TetherStats::getStatsLine(void) {
+    char *msg;
+    asprintf(&msg, "%s %s %lld %lld %lld %lld", ifaceIn.c_str(), ifaceOut.c_str(),
+            rxBytes, rxPackets, txBytes, txPackets);
+    return msg;
+}
+
+int BandwidthController::getTetherStats(TetherStats &stats) {
+    int res;
+    std::string fullCmd;
+    FILE *iptOutput;
+    const char *cmd;
+
+    if (stats.rxBytes != -1 || stats.txBytes != -1) {
+        LOGE("Unexpected input stats. Byte counts should be -1.");
+        return -1;
+    }
+
+    /*
+     * Why not use some kind of lib to talk to iptables?
+     * Because the only libs are libiptc and libip6tc in iptables, and they are
+     * not easy to use. They require the known iptables match modules to be
+     * preloaded/linked, and require apparently a lot of wrapper code to get
+     * the wanted info.
+     */
+    fullCmd = IPTABLES_PATH;
+    fullCmd += " -nvx -L FORWARD";
+    iptOutput = popen(fullCmd.c_str(), "r");
+    if (!iptOutput) {
+            LOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
+        return -1;
+    }
+    res = parseForwardChainStats(stats, iptOutput);
+    pclose(iptOutput);
+
+    /* Currently NatController doesn't do ipv6 tethering, so we are done. */
     return res;
 }

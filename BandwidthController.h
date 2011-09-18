@@ -19,8 +19,32 @@
 #include <list>
 #include <string>
 #include <utility>  // for pair
+
 class BandwidthController {
 public:
+    class TetherStats {
+    public:
+        TetherStats(void)
+                : rxBytes(-1), rxPackets(-1),
+                    txBytes(-1), txPackets(-1) {};
+        TetherStats(std::string ifnIn, std::string ifnOut,
+                int64_t rxB, int64_t rxP,
+                int64_t txB, int64_t txP)
+                        : ifaceIn(ifnIn), ifaceOut(ifnOut),
+                            rxBytes(rxB), rxPackets(rxP),
+                    txBytes(txB), txPackets(txP) {};
+        std::string ifaceIn;
+        std::string ifaceOut;
+        int64_t rxBytes, rxPackets;
+        int64_t txBytes, txPackets;
+        /*
+         * Allocates a new string representing this:
+         * ifaceIn ifaceOut rx_bytes rx_packets tx_bytes tx_packets
+         * The caller is responsible for free()'ing the returned ptr.
+         */
+        char *getStatsLine(void);
+    };
+
     BandwidthController();
     int enableBandwidthControl(void);
     int disableBandwidthControl(void);
@@ -45,6 +69,12 @@ public:
     int setInterfaceAlert(const char *iface, int64_t bytes);
     int removeInterfaceAlert(const char *iface);
 
+    /*
+     * stats should have ifaceIn and ifaceOut initialized.
+     * Byte counts should be left to the default (-1).
+     */
+    int getTetherStats(TetherStats &stats);
+
 protected:
     class QuotaInfo {
     public:
@@ -54,6 +84,7 @@ protected:
         int64_t quota;
         int64_t alert;
     };
+
     enum IptIpVer { IptIpV4, IptIpV6 };
     enum IptOp { IptOpInsert, IptOpReplace, IptOpDelete };
     enum IptRejectOp { IptRejectAdd, IptRejectNoAdd };
@@ -61,13 +92,6 @@ protected:
     enum QuotaType { QuotaUnique, QuotaShared };
     enum RunCmdErrHandling { RunCmdFailureBad, RunCmdFailureOk };
 
-    std::list<std::string> sharedQuotaIfaces;
-    int64_t sharedQuotaBytes;
-    int64_t sharedAlertBytes;
-
-    std::list<QuotaInfo> quotaIfaces;
-
-    std::list<int /*appUid*/> naughtyAppUids;
     int maninpulateNaughtyApps(int numUids, char *appStrUids[], NaughtyAppOp appOp);
 
     int prepCostlyIface(const char *ifn, QuotaType quotaType);
@@ -89,26 +113,43 @@ protected:
 
     int updateQuota(const char *alertName, int64_t bytes);
 
-    int64_t globalAlertBytes;
     int setCostlyAlert(const char *costName, int64_t bytes, int64_t *alertBytes);
     int removeCostlyAlert(const char *costName, int64_t *alertBytes);
+
+    /*
+     * stats should have ifaceIn and ifaceOut initialized.
+     * fp should be a file to the FORWARD rules of iptables.
+     */
+    static int parseForwardChainStats(TetherStats &stats, FILE *fp);
+
+    /*------------------*/
+
+    std::list<std::string> sharedQuotaIfaces;
+    int64_t sharedQuotaBytes;
+    int64_t sharedAlertBytes;
+    int64_t globalAlertBytes;
+    std::list<QuotaInfo> quotaIfaces;
+    std::list<int /*appUid*/> naughtyAppUids;
+
+private:
+    static const char *IPT_CLEANUP_COMMANDS[];
+    static const char *IPT_SETUP_COMMANDS[];
+    static const char *IPT_BASIC_ACCOUNTING_COMMANDS[];
+
+    /* Alphabetical */
+    static const char ALERT_IPT_TEMPLATE[];
+    static const int  ALERT_RULE_POS_IN_COSTLY_CHAIN;
+    static const char IP6TABLES_PATH[];
+    static const char IPTABLES_PATH[];
+    static const int  MAX_CMD_ARGS;
+    static const int  MAX_CMD_LEN;
+    static const int  MAX_IFACENAME_LEN;
+    static const int  MAX_IPT_OUTPUT_LINE_LEN;
 
     /*
      * When false, it will directly use system() instead of logwrap()
      */
     static bool useLogwrapCall;
-
-private:
-    static const char *cleanupCommands[];
-    static const char *setupCommands[];
-    static const char *basicAccountingCommands[];
-    static const int MAX_CMD_LEN;
-    static const int MAX_IFACENAME_LEN;
-    static const int MAX_CMD_ARGS;
-    static const char IPTABLES_PATH[];
-    static const char IP6TABLES_PATH[];
-    static const char ALERT_IPT_TEMPLATE[];
-    static const int ALERT_RULE_POS_IN_COSTLY_CHAIN;
 };
 
 #endif

@@ -106,6 +106,10 @@ private:
         BandwidthControlCmd();
         virtual ~BandwidthControlCmd() {}
         int runCommand(SocketClient *c, int argc, char ** argv);
+    protected:
+        void sendGenericOkFail(SocketClient *cli, int cond);
+        void sendGenericOpFailed(SocketClient *cli, const char *errMsg);
+        void sendGenericSyntaxError(SocketClient *cli, const char *usageMsg);
     };
 
     class ResolverCmd : public NetdCommand {
