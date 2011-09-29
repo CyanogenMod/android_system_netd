@@ -25,12 +25,12 @@
 #include <errno.h>
 #include <string.h>
 #include <fcntl.h>
-
 #include <linux/if.h>
 
 #define LOG_TAG "CommandListener"
-#include <cutils/log.h>
 
+#include <cutils/log.h>
+#include <netutils/ifc.h>
 #include <sysutils/SocketClient.h>
 
 #include "CommandListener.h"
@@ -39,17 +39,6 @@
 #include "BandwidthController.h"
 
 
-extern "C" int ifc_init(void);
-extern "C" int ifc_close(void);
-extern "C" int ifc_get_hwaddr(const char *name, void *ptr);
-extern "C" int ifc_get_info(const char *name, in_addr_t *addr, int *prefixLength, unsigned *flags);
-extern "C" int ifc_get_addr(const char *name, in_addr_t *addr);
-extern "C" int ifc_set_addr(const char *name, in_addr_t addr);
-extern "C" int ifc_set_prefixLength(const char *name, int prefixLength);
-extern "C" int ifc_up(const char *name);
-extern "C" int ifc_down(const char *name);
-extern "C" int ifc_add_route(const char *name, const char *dst, int prefix_length, const char *gw);
-extern "C" int ifc_remove_route(const char *name, const char *dst, int p_length, const char *gw);
 
 TetherController *CommandListener::sTetherCtrl = NULL;
 NatController *CommandListener::sNatCtrl = NULL;
@@ -352,19 +341,10 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             return 0;
         } else if (!strcmp(argv[1], "clearaddrs")) {
             // arglist: iface
-            unsigned count, addr;
-
-            //IPv4 only right now
             LOGD("Clearing all IP addresses on %s", argv[2]);
 
-            ifc_init();
-            for (count=0, addr=1;((addr != 0) && (count < 255)); count++) {
-                if (ifc_get_addr(argv[2], &addr) < 0)
-                    break;
-                if (addr)
-                    ifc_set_addr(argv[2], 0);
-            }
-            ifc_close();
+            ifc_clear_addresses(argv[2]);
+
             cli->sendMsg(ResponseCode::CommandOkay, "Interface IP addresses cleared", false);
             return 0;
         } else if (!strcmp(argv[1], "ipv6privacyextensions")) {
