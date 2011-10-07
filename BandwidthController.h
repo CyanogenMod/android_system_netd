@@ -62,6 +62,8 @@ public:
 
     int setGlobalAlert(int64_t bytes);
     int removeGlobalAlert(void);
+    int setGlobalAlertInForwardChain(void);
+    int removeGlobalAlertInForwardChain(void);
 
     int setSharedAlert(int64_t bytes);
     int removeSharedAlert(void);
@@ -101,6 +103,7 @@ protected:
     std::string makeIptablesQuotaCmd(IptOp op, const char *costName, int64_t quota);
 
     int runIptablesAlertCmd(IptOp op, const char *alertName, int64_t bytes);
+    int runIptablesAlertFwdCmd(IptOp op, const char *alertName, int64_t bytes);
 
     /* Runs for both ipv4 and ipv6 iptables */
     int runCommands(int numCommands, const char *commands[], RunCmdErrHandling cmdErrHandling);
@@ -128,6 +131,16 @@ protected:
     int64_t sharedQuotaBytes;
     int64_t sharedAlertBytes;
     int64_t globalAlertBytes;
+    /*
+     * This tracks the number of tethers setup.
+     * The FORWARD chain is updated in the following cases:
+     *  - The 1st time a globalAlert is setup and there are tethers setup.
+     *  - Anytime a globalAlert is removed and there are tethers setup.
+     *  - The 1st tether is setup and there is a globalAlert active.
+     *  - The last tether is removed and there is a globalAlert active.
+     */
+    int globalAlertTetherCount;
+
     std::list<QuotaInfo> quotaIfaces;
     std::list<int /*appUid*/> naughtyAppUids;
 
@@ -139,6 +152,7 @@ private:
     /* Alphabetical */
     static const char ALERT_IPT_TEMPLATE[];
     static const int  ALERT_RULE_POS_IN_COSTLY_CHAIN;
+    static const char ALERT_GLOBAL_NAME[];
     static const char IP6TABLES_PATH[];
     static const char IPTABLES_PATH[];
     static const int  MAX_CMD_ARGS;

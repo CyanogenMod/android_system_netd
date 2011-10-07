@@ -582,8 +582,16 @@ int CommandListener::NatCmd::runCommand(SocketClient *cli,
 
     if (!strcmp(argv[1], "enable")) {
         rc = sNatCtrl->enableNat(argv[2], argv[3]);
+        if(!rc) {
+            /* Ignore ifaces for now. */
+            rc = sBandwidthCtrl->setGlobalAlertInForwardChain();
+        }
     } else if (!strcmp(argv[1], "disable")) {
         rc = sNatCtrl->disableNat(argv[2], argv[3]);
+        if(!rc) {
+            /* Ignore ifaces for now. */
+            rc = sBandwidthCtrl->removeGlobalAlertInForwardChain();
+        }
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown nat cmd", false);
         return 0;
@@ -1047,12 +1055,34 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         return 0;
 
     }
+    if (!strcmp(argv[1], "debugsettetherglobalalert") || !strcmp(argv[1], "dstga")) {
+        if (argc != 4) {
+            sendGenericSyntaxError(cli, "debugsettetherglobalalert <interface0> <interface1>");
+            return 0;
+        }
+        /* We ignore the interfaces for now. */
+        int rc = sBandwidthCtrl->setGlobalAlertInForwardChain();
+        sendGenericOkFail(cli, rc);
+        return 0;
+
+    }
     if (!strcmp(argv[1], "removeglobalalert") || !strcmp(argv[1], "rga")) {
         if (argc != 2) {
             sendGenericSyntaxError(cli, "removeglobalalert");
             return 0;
         }
         int rc = sBandwidthCtrl->removeGlobalAlert();
+        sendGenericOkFail(cli, rc);
+        return 0;
+
+    }
+    if (!strcmp(argv[1], "debugremovetetherglobalalert") || !strcmp(argv[1], "drtga")) {
+        if (argc != 4) {
+            sendGenericSyntaxError(cli, "debugremovetetherglobalalert <interface0> <interface1>");
+            return 0;
+        }
+        /* We ignore the interfaces for now. */
+        int rc = sBandwidthCtrl->removeGlobalAlertInForwardChain();
         sendGenericOkFail(cli, rc);
         return 0;
 
