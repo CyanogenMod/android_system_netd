@@ -48,6 +48,7 @@ extern "C" int logwrap(int argc, const char **argv, int background);
 /* Alphabetical */
 const char BandwidthController::ALERT_IPT_TEMPLATE[] = "%s %s %s -m quota2 ! --quota %lld --name %s";
 const int  BandwidthController::ALERT_RULE_POS_IN_COSTLY_CHAIN = 4;
+const char BandwidthController::ALERT_GLOBAL_NAME[] = "globalAlert";
 const char BandwidthController::IP6TABLES_PATH[] = "/system/bin/ip6tables";
 const char BandwidthController::IPTABLES_PATH[] = "/system/bin/iptables";
 const int  BandwidthController::MAX_CMD_ARGS = 32;
@@ -217,6 +218,7 @@ int BandwidthController::enableBandwidthControl(void) {
     quotaIfaces.clear();
     naughtyAppUids.clear();
     globalAlertBytes = 0;
+    globalAlertTetherCount = 0;
     sharedQuotaBytes = sharedAlertBytes = 0;
 
 
@@ -698,9 +700,35 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
     return res;
 }
 
-int BandwidthController::setGlobalAlert(int64_t bytes) {
+int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName, int64_t bytes) {
+    int res = 0;
+    const char *opFlag;
+    const char *ifaceLimiting;
     char *alertQuotaCmd;
-    const char *alertName = "globalAlert";
+
+    switch (op) {
+    case IptOpInsert:
+        opFlag = "-I";
+        break;
+    case IptOpReplace:
+        opFlag = "-R";
+        break;
+    default:
+    case IptOpDelete:
+        opFlag = "-D";
+        break;
+    }
+
+    ifaceLimiting = "! -i lo+";
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, ifaceLimiting, opFlag, "FORWARD",
+        bytes, alertName, alertName);
+    res = runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+    free(alertQuotaCmd);
+    return res;
+}
+
+int BandwidthController::setGlobalAlert(int64_t bytes) {
+    const char *alertName = ALERT_GLOBAL_NAME;
     int res = 0;
 
     if (!bytes) {
@@ -711,15 +739,39 @@ int BandwidthController::setGlobalAlert(int64_t bytes) {
         res = updateQuota(alertName, bytes);
     } else {
         res = runIptablesAlertCmd(IptOpInsert, alertName, bytes);
+        if (globalAlertTetherCount) {
+            LOGV("setGlobalAlert for %d tether", globalAlertTetherCount);
+            res |= runIptablesAlertFwdCmd(IptOpInsert, alertName, bytes);
+        }
     }
     globalAlertBytes = bytes;
     return res;
 }
 
-int BandwidthController::removeGlobalAlert(void) {
-    char *alertQuotaCmd;
+int BandwidthController::setGlobalAlertInForwardChain(void) {
+    const char *alertName = ALERT_GLOBAL_NAME;
+    int res = 0;
 
-    const char *alertName = "globalAlert";
+    globalAlertTetherCount++;
+    LOGV("setGlobalAlertInForwardChain(): %d tether", globalAlertTetherCount);
+
+    /*
+     * If there is no globalAlert active we are done.
+     * If there is an active globalAlert but this is not the 1st
+     * tether, we are also done.
+     */
+    if (!globalAlertBytes || globalAlertTetherCount != 1) {
+        return 0;
+    }
+
+    /* We only add the rule if this was the 1st tether added. */
+    res = runIptablesAlertFwdCmd(IptOpInsert, alertName, globalAlertBytes);
+    return res;
+}
+
+int BandwidthController::removeGlobalAlert(void) {
+
+    const char *alertName = ALERT_GLOBAL_NAME;
     int res = 0;
 
     if (!globalAlertBytes) {
@@ -727,7 +779,34 @@ int BandwidthController::removeGlobalAlert(void) {
         return -1;
     }
     res = runIptablesAlertCmd(IptOpDelete, alertName, globalAlertBytes);
+    if (globalAlertTetherCount) {
+        res |= runIptablesAlertFwdCmd(IptOpDelete, alertName, globalAlertBytes);
+    }
     globalAlertBytes = 0;
+    return res;
+}
+
+int BandwidthController::removeGlobalAlertInForwardChain(void) {
+    int res = 0;
+    const char *alertName = ALERT_GLOBAL_NAME;
+
+    if (!globalAlertTetherCount) {
+        LOGE("No prior alert set");
+        return -1;
+    }
+
+    globalAlertTetherCount--;
+    /*
+     * If there is no globalAlert active we are done.
+     * If there is an active globalAlert but there are more
+     * tethers, we are also done.
+     */
+    if (!globalAlertBytes || globalAlertTetherCount >= 1) {
+        return 0;
+    }
+
+    /* We only detete the rule if this was the last tether removed. */
+    res = runIptablesAlertFwdCmd(IptOpDelete, alertName, globalAlertBytes);
     return res;
 }
 
