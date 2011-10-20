@@ -145,7 +145,7 @@ BandwidthController::BandwidthController(void) {
 int BandwidthController::runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling) {
     int res = 0;
 
-    LOGV("runIpxtablesCmd(cmd=%s)", cmd);
+    ALOGV("runIpxtablesCmd(cmd=%s)", cmd);
     res |= runIptablesCmd(cmd, rejectHandling, IptIpV4);
     res |= runIptablesCmd(cmd, rejectHandling, IptIpV6);
     return res;
@@ -244,7 +244,7 @@ int BandwidthController::disableBandwidthControl(void) {
 int BandwidthController::runCommands(int numCommands, const char *commands[],
                                      RunCmdErrHandling cmdErrHandling) {
     int res = 0;
-    LOGV("runCommands(): %d commands", numCommands);
+    ALOGV("runCommands(): %d commands", numCommands);
     for (int cmdNum = 0; cmdNum < numCommands; cmdNum++) {
         res = runIpxtablesCmd(commands[cmdNum], IptRejectNoAdd);
         if (res && cmdErrHandling != RunCmdFailureBad)
@@ -333,7 +333,7 @@ std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *cost
     char *buff;
     const char *opFlag;
 
-    LOGV("makeIptablesQuotaCmd(%d, %lld)", op, quota);
+    ALOGV("makeIptablesQuotaCmd(%d, %lld)", op, quota);
 
     switch (op) {
     case IptOpInsert:
@@ -614,7 +614,7 @@ int BandwidthController::getInterfaceQuota(const char *costName, int64_t *bytes)
         return -1;
     }
     scanRes = fscanf(fp, "%lld", bytes);
-    LOGV("Read quota res=%d bytes=%lld", scanRes, *bytes);
+    ALOGV("Read quota res=%d bytes=%lld", scanRes, *bytes);
     fclose(fp);
     return scanRes == 1 ? 0 : -1;
 }
@@ -740,7 +740,7 @@ int BandwidthController::setGlobalAlert(int64_t bytes) {
     } else {
         res = runIptablesAlertCmd(IptOpInsert, alertName, bytes);
         if (globalAlertTetherCount) {
-            LOGV("setGlobalAlert for %d tether", globalAlertTetherCount);
+            ALOGV("setGlobalAlert for %d tether", globalAlertTetherCount);
             res |= runIptablesAlertFwdCmd(IptOpInsert, alertName, bytes);
         }
     }
@@ -753,7 +753,7 @@ int BandwidthController::setGlobalAlertInForwardChain(void) {
     int res = 0;
 
     globalAlertTetherCount++;
-    LOGV("setGlobalAlertInForwardChain(): %d tether", globalAlertTetherCount);
+    ALOGV("setGlobalAlertInForwardChain(): %d tether", globalAlertTetherCount);
 
     /*
      * If there is no globalAlert active we are done.
@@ -935,17 +935,17 @@ int BandwidthController::parseForwardChainStats(TetherStats &stats, FILE *fp) {
         iface0[0] = iface1[0] = rest[0] = packets = bytes = 0;
         res = sscanf(buffPtr, "%lld %lld ACCEPT all -- %s %s 0.%s",
                 &packets, &bytes, iface0, iface1, rest);
-        LOGV("parse res=%d iface0=<%s> iface1=<%s> pkts=%lld bytes=%lld rest=<%s> orig line=<%s>", res,
+        ALOGV("parse res=%d iface0=<%s> iface1=<%s> pkts=%lld bytes=%lld rest=<%s> orig line=<%s>", res,
              iface0, iface1, packets, bytes, rest, buffPtr);
         if (res != 5) {
             continue;
         }
         if ((stats.ifaceIn == iface0) && (stats.ifaceOut == iface1)) {
-            LOGV("iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+            ALOGV("iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
             stats.rxPackets = packets;
             stats.rxBytes = bytes;
         } else if ((stats.ifaceOut == iface0) && (stats.ifaceIn == iface1)) {
-            LOGV("iface_in=%s iface_out=%s tx_bytes=%lld tx_packets=%lld ", iface1, iface0, bytes, packets);
+            ALOGV("iface_in=%s iface_out=%s tx_bytes=%lld tx_packets=%lld ", iface1, iface0, bytes, packets);
             stats.txPackets = packets;
             stats.txBytes = bytes;
         }

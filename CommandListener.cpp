@@ -889,7 +889,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         return 0;
     }
 
-    LOGV("bwctrlcmd: argc=%d %s %s ...", argc, argv[0], argv[1]);
+    ALOGV("bwctrlcmd: argc=%d %s %s ...", argc, argv[0], argv[1]);
 
     if (!strcmp(argv[1], "enable")) {
         int rc = sBandwidthCtrl->enableBandwidthControl();
