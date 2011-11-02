@@ -37,7 +37,7 @@
 #include "ResponseCode.h"
 #include "ThrottleController.h"
 #include "BandwidthController.h"
-
+#include "SecondaryTableController.h"
 
 
 TetherController *CommandListener::sTetherCtrl = NULL;
@@ -47,6 +47,7 @@ PanController *CommandListener::sPanCtrl = NULL;
 SoftapController *CommandListener::sSoftapCtrl = NULL;
 BandwidthController * CommandListener::sBandwidthCtrl = NULL;
 ResolverController *CommandListener::sResolverCtrl = NULL;
+SecondaryTableController *CommandListener::sSecondaryTableCtrl = NULL;
 
 CommandListener::CommandListener() :
                  FrameworkListener("netd") {
@@ -61,10 +62,12 @@ CommandListener::CommandListener() :
     registerCmd(new BandwidthControlCmd());
     registerCmd(new ResolverCmd());
 
+    if (!sSecondaryTableCtrl)
+        sSecondaryTableCtrl = new SecondaryTableController();
     if (!sTetherCtrl)
         sTetherCtrl = new TetherController();
     if (!sNatCtrl)
-        sNatCtrl = new NatController();
+        sNatCtrl = new NatController(sSecondaryTableCtrl);
     if (!sPppCtrl)
         sPppCtrl = new PppController();
     if (!sPanCtrl)
@@ -203,27 +206,51 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             return 0;
         }
 
+        //     0       1       2        3          4           5     6      7
+        // interface route add/remove iface default/secondary dest prefix gateway
         if (!strcmp(argv[1], "route")) {
             int prefix_length = 0;
-            if (argc < 7) {
+            if (argc < 8) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                 return 0;
             }
-            if (sscanf(argv[5], "%d", &prefix_length) != 1) {
+            if (sscanf(argv[6], "%d", &prefix_length) != 1) {
                 cli->sendMsg(ResponseCode::CommandParameterError, "Invalid route prefix", false);
                 return 0;
             }
             if (!strcmp(argv[2], "add")) {
-                if (ifc_add_route(argv[3], argv[4], prefix_length, argv[6])) {
-                    cli->sendMsg(ResponseCode::OperationFailed, "Failed to add route", true);
+                if (!strcmp(argv[4], "default")) {
+                    if (ifc_add_route(argv[3], argv[5], prefix_length, argv[7])) {
+                        cli->sendMsg(ResponseCode::OperationFailed,
+                                "Failed to add route to default table", true);
+                    } else {
+                        cli->sendMsg(ResponseCode::CommandOkay,
+                                "Route added to default table", false);
+                    }
+                } else if (!strcmp(argv[4], "secondary")) {
+                    return sSecondaryTableCtrl->addRoute(cli, argv[3], argv[5],
+                            prefix_length, argv[7]);
                 } else {
-                    cli->sendMsg(ResponseCode::CommandOkay, "Route added", false);
+                    cli->sendMsg(ResponseCode::CommandParameterError,
+                            "Invalid route type, expecting 'default' or 'secondary'", false);
+                    return 0;
                 }
             } else if (!strcmp(argv[2], "remove")) {
-                if (ifc_remove_route(argv[3], argv[4], prefix_length, argv[6])) {
-                    cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove route", true);
+                if (!strcmp(argv[4], "default")) {
+                    if (ifc_remove_route(argv[3], argv[5], prefix_length, argv[7])) {
+                        cli->sendMsg(ResponseCode::OperationFailed,
+                                "Failed to remove route from default table", true);
+                    } else {
+                        cli->sendMsg(ResponseCode::CommandOkay,
+                                "Route removed from default table", false);
+                    }
+                } else if (!strcmp(argv[4], "secondary")) {
+                    return sSecondaryTableCtrl->removeRoute(cli, argv[3], argv[5],
+                            prefix_length, argv[7]);
                 } else {
-                    cli->sendMsg(ResponseCode::CommandOkay, "Route removed", false);
+                    cli->sendMsg(ResponseCode::CommandParameterError,
+                            "Invalid route type, expecting 'default' or 'secondary'", false);
+                    return 0;
                 }
             } else {
                 cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown interface cmd", false);
@@ -575,21 +602,21 @@ int CommandListener::NatCmd::runCommand(SocketClient *cli,
                                                       int argc, char **argv) {
     int rc = 0;
 
-    if (argc < 3) {
+    if (argc < 5) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
         return 0;
     }
 
     if (!strcmp(argv[1], "enable")) {
-        rc = sNatCtrl->enableNat(argv[2], argv[3]);
+        rc = sNatCtrl->enableNat(argc, argv);
         if(!rc) {
             /* Ignore ifaces for now. */
             rc = sBandwidthCtrl->setGlobalAlertInForwardChain();
         }
     } else if (!strcmp(argv[1], "disable")) {
-        rc = sNatCtrl->disableNat(argv[2], argv[3]);
         /* Ignore ifaces for now. */
-        rc |= sBandwidthCtrl->removeGlobalAlertInForwardChain();
+        rc = sBandwidthCtrl->removeGlobalAlertInForwardChain();
+        rc |= sNatCtrl->disableNat(argc, argv);
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown nat cmd", false);
         return 0;

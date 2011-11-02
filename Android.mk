@@ -13,6 +13,7 @@ LOCAL_SRC_FILES:=                                      \
                   PanController.cpp                    \
                   PppController.cpp                    \
                   ResolverController.cpp               \
+                  SecondaryTableController.cpp         \
                   SoftapController.cpp                 \
                   TetherController.cpp                 \
                   ThrottleController.cpp               \
