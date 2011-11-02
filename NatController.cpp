@@ -77,6 +77,8 @@ bool NatController::interfaceExists(const char *iface) {
     return true;
 }
 
+// when un-doing NAT, we should report errors, but also try to do as much cleanup
+// as we can - don't short circuit on error.
 int NatController::doNatCommands(const char *intIface, const char *extIface, bool add) {
     char cmd[255];
 
@@ -90,6 +92,7 @@ int NatController::doNatCommands(const char *intIface, const char *extIface, boo
                 if (ret == 0) {
                     natCount=0;
                 }
+                LOGE("setDefaults returned %d", ret);
                 return ret;
             }
         }
@@ -105,7 +108,8 @@ int NatController::doNatCommands(const char *intIface, const char *extIface, boo
              "-%s FORWARD -i %s -o %s -m state --state ESTABLISHED,RELATED -j ACCEPT",
              (add ? "A" : "D"),
              extIface, intIface);
-    if (runIptablesCmd(cmd)) {
+    if (runIptablesCmd(cmd) && add) {
+        // only bail out if we are adding, not removing nat rules
         return -1;
     }
 
@@ -113,7 +117,8 @@ int NatController::doNatCommands(const char *intIface, const char *extIface, boo
             "-%s FORWARD -i %s -o %s -m state --state INVALID -j DROP",
             (add ? "A" : "D"),
             intIface, extIface);
-    if (runIptablesCmd(cmd)) {
+    if (runIptablesCmd(cmd) && add) {
+        // bail on error, but only if adding
         snprintf(cmd, sizeof(cmd),
                 "-%s FORWARD -i %s -o %s -m state --state ESTABLISHED,RELATED -j ACCEPT",
                 (!add ? "A" : "D"),
@@ -124,7 +129,7 @@ int NatController::doNatCommands(const char *intIface, const char *extIface, boo
 
     snprintf(cmd, sizeof(cmd), "-%s FORWARD -i %s -o %s -j ACCEPT", (add ? "A" : "D"),
             intIface, extIface);
-    if (runIptablesCmd(cmd)) {
+    if (runIptablesCmd(cmd) && add) {
         // unwind what's been done, but don't care about success - what more could we do?
         snprintf(cmd, sizeof(cmd),
                 "-%s FORWARD -i %s -o %s -m state --state INVALID -j DROP",

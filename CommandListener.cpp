@@ -588,10 +588,8 @@ int CommandListener::NatCmd::runCommand(SocketClient *cli,
         }
     } else if (!strcmp(argv[1], "disable")) {
         rc = sNatCtrl->disableNat(argv[2], argv[3]);
-        if(!rc) {
-            /* Ignore ifaces for now. */
-            rc = sBandwidthCtrl->removeGlobalAlertInForwardChain();
-        }
+        /* Ignore ifaces for now. */
+        rc |= sBandwidthCtrl->removeGlobalAlertInForwardChain();
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown nat cmd", false);
         return 0;
