@@ -38,59 +38,12 @@ DnsProxyListener::DnsProxyListener() :
     registerCmd(new GetHostByAddrCmd());
 }
 
-DnsProxyListener::GetAddrInfoHandler::~GetAddrInfoHandler() {
-    free(mHost);
-    free(mService);
-    free(mHints);
-}
-
-void DnsProxyListener::GetAddrInfoHandler::start() {
-    pthread_create(&mThread, NULL,
-                   DnsProxyListener::GetAddrInfoHandler::threadStart, this);
-}
-
-void* DnsProxyListener::GetAddrInfoHandler::threadStart(void* obj) {
-    GetAddrInfoHandler* handler = reinterpret_cast<GetAddrInfoHandler*>(obj);
-    handler->run();
-    delete handler;
-    pthread_exit(NULL);
-    return NULL;
-}
-
 // Sends 4 bytes of big-endian length, followed by the data.
 // Returns true on success.
 static bool sendLenAndData(SocketClient *c, const int len, const void* data) {
     uint32_t len_be = htonl(len);
     return c->sendData(&len_be, 4) == 0 &&
         (len == 0 || c->sendData(data, len) == 0);
-}
-
-void DnsProxyListener::GetAddrInfoHandler::run() {
-    if (DBG) {
-        LOGD("GetAddrInfoHandler, now for %s / %s", mHost, mService);
-    }
-
-    struct addrinfo* result = NULL;
-    int rv = getaddrinfo(mHost, mService, mHints, &result);
-    bool success = (mClient->sendData(&rv, sizeof(rv)) == 0);
-    if (rv == 0) {
-        struct addrinfo* ai = result;
-        while (ai && success) {
-            success = sendLenAndData(mClient, sizeof(struct addrinfo), ai)
-                && sendLenAndData(mClient, ai->ai_addrlen, ai->ai_addr)
-                && sendLenAndData(mClient,
-                                  ai->ai_canonname ? strlen(ai->ai_canonname) + 1 : 0,
-                                  ai->ai_canonname);
-            ai = ai->ai_next;
-        }
-        success = success && sendLenAndData(mClient, 0, "");
-    }
-    if (result) {
-        freeaddrinfo(result);
-    }
-    if (!success) {
-        LOGW("Error writing DNS result to client");
-    }
 }
 
 DnsProxyListener::GetAddrInfoCmd::GetAddrInfoCmd() :
@@ -139,15 +92,36 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     }
 
     if (DBG) {
-        LOGD("GetAddrInfoHandler for %s / %s",
+        LOGD("GetAddrInfoCmd for %s / %s",
              name ? name : "[nullhost]",
              service ? service : "[nullservice]");
     }
 
-    DnsProxyListener::GetAddrInfoHandler* handler =
-        new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints);
-    handler->start();
+    if (DBG) {
+        LOGD("GetAddrInfoCmd, now for %s / %s", name, service);
+    }
 
+    struct addrinfo* result = NULL;
+    int rv = getaddrinfo(name, service, hints, &result);
+    bool success = (cli->sendData(&rv, sizeof(rv)) == 0);
+    if (rv == 0) {
+        struct addrinfo* ai = result;
+        while (ai && success) {
+            success = sendLenAndData(cli, sizeof(struct addrinfo), ai)
+                && sendLenAndData(cli, ai->ai_addrlen, ai->ai_addr)
+                && sendLenAndData(cli,
+                                  ai->ai_canonname ? strlen(ai->ai_canonname) + 1 : 0,
+                                  ai->ai_canonname);
+            ai = ai->ai_next;
+        }
+        success = success && sendLenAndData(cli, 0, "");
+    }
+    if (result) {
+        freeaddrinfo(result);
+    }
+    if (!success) {
+        LOGW("Error writing DNS result to client");
+    }
 
     return 0;
 }
@@ -186,51 +160,25 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
         return -1;
     }
 
-    DnsProxyListener::GetHostByAddrHandler* handler =
-            new DnsProxyListener::GetHostByAddrHandler(cli, addr, addrLen, addrFamily);
-    handler->start();
-
-    return 0;
-}
-
-DnsProxyListener::GetHostByAddrHandler::~GetHostByAddrHandler() {
-    free(mAddress);
-}
-
-void DnsProxyListener::GetHostByAddrHandler::start() {
-    pthread_create(&mThread, NULL,
-                   DnsProxyListener::GetHostByAddrHandler::threadStart, this);
-}
-
-void* DnsProxyListener::GetHostByAddrHandler::threadStart(void* obj) {
-    GetHostByAddrHandler* handler = reinterpret_cast<GetHostByAddrHandler*>(obj);
-    handler->run();
-    delete handler;
-    pthread_exit(NULL);
-    return NULL;
-}
-
-void DnsProxyListener::GetHostByAddrHandler::run() {
-    if (DBG) {
-        LOGD("DnsProxyListener::GetHostByAddrHandler::run\n");
-    }
-
     struct hostent* hp;
 
     // NOTE gethostbyaddr should take a void* but bionic thinks it should be char*
-    hp = gethostbyaddr((char*)mAddress, mAddressLen, mAddressFamily);
+    hp = gethostbyaddr((char*)addr, addrLen, addrFamily);
 
     if (DBG) {
-        LOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %d\n",
+        LOGD("GetHostByAddrCmd::runCommand gethostbyaddr errno: %s hp->h_name = %s, name_len = %d\n",
                 hp ? "success" : strerror(errno),
                 (hp && hp->h_name) ? hp->h_name: "null",
                 (hp && hp->h_name) ? strlen(hp->h_name)+ 1 : 0);
     }
 
-    bool success = sendLenAndData(mClient, (hp && hp->h_name) ? strlen(hp->h_name)+ 1 : 0,
+    bool success = sendLenAndData(cli, (hp && hp->h_name) ? strlen(hp->h_name)+ 1 : 0,
             (hp && hp->h_name) ? hp->h_name : "");
 
+
     if (!success) {
-        LOGW("GetHostByAddrHandler: Error writing DNS result to client\n");
+        LOGW("GetHostByAddrCmd: Error writing DNS result to client\n");
     }
+
+    return 0;
 }

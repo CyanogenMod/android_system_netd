@@ -35,31 +35,6 @@ private:
         int runCommand(SocketClient *c, int argc, char** argv);
     };
 
-    class GetAddrInfoHandler {
-    public:
-        // Note: All of host, service, and hints may be NULL
-        GetAddrInfoHandler(SocketClient *c,
-                           char* host,
-                           char* service,
-                           struct addrinfo* hints)
-            : mClient(c),
-              mHost(host),
-              mService(service),
-              mHints(hints) {}
-        ~GetAddrInfoHandler();
-
-        static void* threadStart(void* handler);
-        void start();
-
-    private:
-        void run();
-        pthread_t mThread;
-        SocketClient* mClient;  // not owned
-        char* mHost;    // owned
-        char* mService; // owned
-        struct addrinfo* mHints;  // owned
-    };
-
     /* ------ gethostbyaddr ------*/
     class GetHostByAddrCmd : public NetdCommand {
     public:
@@ -68,29 +43,6 @@ private:
         int runCommand(SocketClient *c, int argc, char** argv);
     };
 
-    class GetHostByAddrHandler {
-    public:
-        GetHostByAddrHandler(SocketClient *c,
-                            void* address,
-                            int   addressLen,
-                            int   addressFamily)
-            : mClient(c),
-              mAddress(address),
-              mAddressLen(addressLen),
-              mAddressFamily(addressFamily) {}
-        ~GetHostByAddrHandler();
-
-        static void* threadStart(void* handler);
-        void start();
-
-    private:
-        void run();
-        pthread_t mThread;
-        SocketClient* mClient;  // not owned
-        void* mAddress;    // address to lookup
-        int   mAddressLen; // length of address to look up
-        int   mAddressFamily;  // address family
-    };
 };
 
 #endif
