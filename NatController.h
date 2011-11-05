@@ -21,22 +21,25 @@
 
 #include <utils/List.h>
 
+#include "SecondaryTableController.h"
+
 class NatController {
 
 public:
-    NatController();
+    NatController(SecondaryTableController *ctrl);
     virtual ~NatController();
 
-    int enableNat(const char *intIface, const char *extIface);
-    int disableNat(const char *intIface, const char *extIface);
+    int enableNat(const int argc, char **argv);
+    int disableNat(const int argc, char **argv);
 
 private:
     int natCount;
+    SecondaryTableController *secondaryTableCtrl;
 
     int setDefaults();
-    int runIptablesCmd(const char *cmd);
-    bool interfaceExists(const char *iface);
-    int doNatCommands(const char *intIface, const char *extIface, bool add);
+    int runCmd(const char *path, const char *cmd);
+    bool checkInterface(const char *iface);
+    int setForwardRules(bool set, const char *intIface, const char *extIface);
 };
 
 #endif

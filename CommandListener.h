@@ -27,6 +27,7 @@
 #include "SoftapController.h"
 #include "BandwidthController.h"
 #include "ResolverController.h"
+#include "SecondaryTableController.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
@@ -36,6 +37,7 @@ class CommandListener : public FrameworkListener {
     static SoftapController *sSoftapCtrl;
     static BandwidthController *sBandwidthCtrl;
     static ResolverController *sResolverCtrl;
+    static SecondaryTableController *sSecondaryTableCtrl;
 
 public:
     CommandListener();
