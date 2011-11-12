@@ -1154,6 +1154,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
     }
     if (!strcmp(argv[1], "gettetherstats") || !strcmp(argv[1], "gts")) {
         BandwidthController::TetherStats tetherStats;
+        std::string extraProcessingInfo = "";
         if (argc != 4) {
             sendGenericSyntaxError(cli, "gettetherstats <interface0> <interface1>");
             return 0;
@@ -1161,9 +1162,10 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
 
         tetherStats.ifaceIn = argv[2];
         tetherStats.ifaceOut = argv[3];
-        int rc = sBandwidthCtrl->getTetherStats(tetherStats);
+        int rc = sBandwidthCtrl->getTetherStats(tetherStats, extraProcessingInfo);
         if (rc) {
-            sendGenericOpFailed(cli, "Failed to get tethering stats");
+                extraProcessingInfo.insert(0, "Failed to get tethering stats.\n");
+                sendGenericOpFailed(cli, extraProcessingInfo.c_str());
             return 0;
         }
 

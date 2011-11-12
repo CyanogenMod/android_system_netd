@@ -75,7 +75,7 @@ public:
      * stats should have ifaceIn and ifaceOut initialized.
      * Byte counts should be left to the default (-1).
      */
-    int getTetherStats(TetherStats &stats);
+    int getTetherStats(TetherStats &stats, std::string &extraProcessingInfo);
 
 protected:
     class QuotaInfo {
@@ -122,8 +122,10 @@ protected:
     /*
      * stats should have ifaceIn and ifaceOut initialized.
      * fp should be a file to the FORWARD rules of iptables.
+     * extraProcessingInfo: contains raw parsed data, and error info.
      */
-    static int parseForwardChainStats(TetherStats &stats, FILE *fp);
+    static int parseForwardChainStats(TetherStats &stats, FILE *fp,
+				      std::string &extraProcessingInfo);
 
     /*------------------*/
 

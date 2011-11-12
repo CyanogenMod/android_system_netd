@@ -920,7 +920,8 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
  *        0        0 ACCEPT     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0
  *
  */
-int BandwidthController::parseForwardChainStats(TetherStats &stats, FILE *fp) {
+int BandwidthController::parseForwardChainStats(TetherStats &stats, FILE *fp,
+                                                std::string &extraProcessingInfo) {
     int res;
     char lineBuffer[MAX_IPT_OUTPUT_LINE_LEN];
     char iface0[MAX_IPT_OUTPUT_LINE_LEN];
@@ -937,6 +938,8 @@ int BandwidthController::parseForwardChainStats(TetherStats &stats, FILE *fp) {
                 &packets, &bytes, iface0, iface1, rest);
         ALOGV("parse res=%d iface0=<%s> iface1=<%s> pkts=%lld bytes=%lld rest=<%s> orig line=<%s>", res,
              iface0, iface1, packets, bytes, rest, buffPtr);
+        extraProcessingInfo += buffPtr;
+
         if (res != 5) {
             continue;
         }
@@ -962,7 +965,7 @@ char *BandwidthController::TetherStats::getStatsLine(void) {
     return msg;
 }
 
-int BandwidthController::getTetherStats(TetherStats &stats) {
+int BandwidthController::getTetherStats(TetherStats &stats, std::string &extraProcessingInfo) {
     int res;
     std::string fullCmd;
     FILE *iptOutput;
@@ -985,9 +988,10 @@ int BandwidthController::getTetherStats(TetherStats &stats) {
     iptOutput = popen(fullCmd.c_str(), "r");
     if (!iptOutput) {
             LOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
+            extraProcessingInfo += "Failed to run iptables.";
         return -1;
     }
-    res = parseForwardChainStats(stats, iptOutput);
+    res = parseForwardChainStats(stats, iptOutput, extraProcessingInfo);
     pclose(iptOutput);
 
     /* Currently NatController doesn't do ipv6 tethering, so we are done. */
