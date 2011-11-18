@@ -35,6 +35,8 @@
 #include "SecondaryTableController.h"
 
 static char IP_PATH[] = "/system/bin/ip";
+static char ADD[] = "add";
+static char DEL[] = "del";
 
 SecondaryTableController::SecondaryTableController() {
     int i;
@@ -60,8 +62,6 @@ int SecondaryTableController::findTableNumber(const char *iface) {
 
 int SecondaryTableController::addRoute(SocketClient *cli, char *iface, char *dest, int prefix,
         char *gateway) {
-    char *cmd;
-
     int tableIndex = findTableNumber(iface);
     if (tableIndex == -1) {
         tableIndex = findTableNumber(""); // look for an empty slot
@@ -74,22 +74,44 @@ int SecondaryTableController::addRoute(SocketClient *cli, char *iface, char *des
         strncpy(mInterfaceTable[tableIndex], iface, MAX_IFACE_LENGTH);
     }
 
-    asprintf(&cmd, "%s route add %s/%d via %s table %d",
-            IP_PATH, dest, prefix, gateway, tableIndex+BASE_TABLE_NUMBER);
+    return modifyRoute(cli, ADD, iface, dest, prefix, gateway, tableIndex);
+}
+
+int SecondaryTableController::modifyRoute(SocketClient *cli, char *action, char *iface, char *dest,
+        int prefix, char *gateway, int tableIndex) {
+    char *cmd;
+
+    if (strcmp("::", gateway) == 0) {
+        //  IP tool doesn't like "::" - the equiv of 0.0.0.0 that it accepts for ipv4
+        asprintf(&cmd, "%s route %s %s/%d dev %s table %d",
+                IP_PATH, action, dest, prefix, iface, tableIndex+BASE_TABLE_NUMBER);
+    } else {
+        asprintf(&cmd, "%s route %s %s/%d via %s dev %s table %d",
+                IP_PATH, action, dest, prefix, gateway, iface, tableIndex+BASE_TABLE_NUMBER);
+    }
+
     if (runAndFree(cli, cmd)) {
-        LOGE("ip route add failed: %s", cmd);
+        LOGE("ip route %s failed: %s route %s %s/%d via %s dev %s table %d", action,
+                IP_PATH, action, dest, prefix, gateway, iface, tableIndex+BASE_TABLE_NUMBER);
         errno = ENODEV;
-        cli->sendMsg(ResponseCode::OperationFailed, "ip route add failed", true);
+        cli->sendMsg(ResponseCode::OperationFailed, "ip route modification failed", true);
         return -1;
     }
-    mInterfaceRuleCount[tableIndex]++;
-    cli->sendMsg(ResponseCode::CommandOkay, "Route added", false);
+
+    if (strcmp(action, ADD) == 0) {
+        mInterfaceRuleCount[tableIndex]++;
+    } else {
+        if (--mInterfaceRuleCount[tableIndex] < 1) {
+            mInterfaceRuleCount[tableIndex] = 0;
+            mInterfaceTable[tableIndex][0] = 0;
+        }
+    }
+    cli->sendMsg(ResponseCode::CommandOkay, "Route modified", false);
     return 0;
 }
 
 int SecondaryTableController::removeRoute(SocketClient *cli, char *iface, char *dest, int prefix,
         char *gateway) {
-    char *cmd;
     int tableIndex = findTableNumber(iface);
     if (tableIndex == -1) {
         LOGE("Interface not found");
@@ -98,19 +120,7 @@ int SecondaryTableController::removeRoute(SocketClient *cli, char *iface, char *
         return -1;
     }
 
-    asprintf(&cmd, "%s route del %s/%d via %s table %d",
-            IP_PATH, dest, prefix, gateway, tableIndex+BASE_TABLE_NUMBER);
-    if (runAndFree(cli, cmd)) {
-        LOGE("ip route del failed");
-        errno = ENODEV;
-        cli->sendMsg(ResponseCode::OperationFailed, "ip route del failed", true);
-        return -1;
-    }
-    if (--mInterfaceRuleCount[tableIndex]<1) {
-        mInterfaceTable[tableIndex][0]=0;
-    }
-    cli->sendMsg(ResponseCode::CommandOkay, "Route removed", false);
-    return 0;
+    return modifyRoute(cli, DEL, iface, dest, prefix, gateway, tableIndex);
 }
 
 int SecondaryTableController::runAndFree(SocketClient *cli, char *cmd) {

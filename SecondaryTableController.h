@@ -35,6 +35,9 @@ public:
     int findTableNumber(const char *iface);
 
 private:
+    int modifyRoute(SocketClient *cli, char *action, char *iface, char *dest, int prefix,
+            char *gateway, int tableIndex);
+
     char mInterfaceTable[INTERFACES_TRACKED][MAX_IFACE_LENGTH];
     int mInterfaceRuleCount[INTERFACES_TRACKED];
 
