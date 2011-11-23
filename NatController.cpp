@@ -74,8 +74,12 @@ int NatController::setDefaults() {
         return -1;
 
     runCmd(IP_PATH, "rule flush");
+    runCmd(IP_PATH, "-6 rule flush");
     runCmd(IP_PATH, "rule add from all lookup default prio 32767");
     runCmd(IP_PATH, "rule add from all lookup main prio 32766");
+    runCmd(IP_PATH, "-6 rule add from all lookup default prio 32767");
+    runCmd(IP_PATH, "-6 rule add from all lookup main prio 32766");
+    runCmd(IP_PATH, "route flush cache");
 
     natCount = 0;
     return 0;
@@ -84,6 +88,14 @@ int NatController::setDefaults() {
 bool NatController::checkInterface(const char *iface) {
     if (strlen(iface) > MAX_IFACE_LENGTH) return false;
     return true;
+}
+
+const char *NatController::getVersion(const char *addr) {
+    if (strchr(addr, ':') != NULL) {
+        return "-6";
+    } else {
+        return "-4";
+    }
 }
 
 //  0    1       2       3       4            5
@@ -112,8 +124,8 @@ int NatController::enableNat(const int argc, char **argv) {
     tableNumber = secondaryTableCtrl->findTableNumber(extIface);
     if (tableNumber != -1) {
         for(i = 0; i < addrCount && ret == 0; i++) {
-            snprintf(cmd, sizeof(cmd), "rule add from %s table %d", argv[5+i],
-                    tableNumber + BASE_TABLE_NUMBER);
+            snprintf(cmd, sizeof(cmd), "%s rule add from %s table %d", getVersion(argv[5+i]),
+                    argv[5+i], tableNumber + BASE_TABLE_NUMBER);
             ret |= runCmd(IP_PATH, cmd);
             if (ret) LOGE("IP rule %s got %d", cmd, ret);
 
@@ -122,6 +134,7 @@ int NatController::enableNat(const int argc, char **argv) {
             ret |= runCmd(IP_PATH, cmd);
             if (ret) LOGE("IP route %s got %d", cmd, ret);
         }
+        runCmd(IP_PATH, "route flush cache");
     }
 
     if (ret != 0 || setForwardRules(true, intIface, extIface) != 0) {
@@ -131,10 +144,11 @@ int NatController::enableNat(const int argc, char **argv) {
                         tableNumber + BASE_TABLE_NUMBER);
                 runCmd(IP_PATH, cmd);
 
-                snprintf(cmd, sizeof(cmd), "rule del from %s table %d", argv[5+i],
-                        tableNumber + BASE_TABLE_NUMBER);
+                snprintf(cmd, sizeof(cmd), "%s rule del from %s table %d", getVersion(argv[5+i]),
+                        argv[5+i], tableNumber + BASE_TABLE_NUMBER);
                 runCmd(IP_PATH, cmd);
             }
+            runCmd(IP_PATH, "route flush cache");
         }
         LOGE("Error setting forward rules");
         errno = ENODEV;
@@ -239,7 +253,13 @@ int NatController::disableNat(const int argc, char **argv) {
             // if the interface has gone down these will be gone already and give errors
             // ignore them.
             runCmd(IP_PATH, cmd);
+
+            snprintf(cmd, sizeof(cmd), "%s rule del from %s table %d", getVersion(argv[5+i]),
+                    argv[5+i], tableNumber + BASE_TABLE_NUMBER);
+            runCmd(IP_PATH, cmd);
         }
+
+        runCmd(IP_PATH, "route flush cache");
     }
 
     if (--natCount <= 0) {
