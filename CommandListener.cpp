@@ -289,7 +289,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
 
             char *flag_s;
 
-            asprintf(&flag_s, "[%s%s%s%s%s%s]", updown, brdcst, loopbk, ppp, running, multi);
+            asprintf(&flag_s, "%s%s%s%s%s%s", updown, brdcst, loopbk, ppp, running, multi);
 
             char *msg = NULL;
             asprintf(&msg, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x %s %d %s",
@@ -305,7 +305,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             ifc_close();
             return 0;
         } else if (!strcmp(argv[1], "setcfg")) {
-            // arglist: iface addr prefixLength [flags]
+            // arglist: iface addr prefixLength flags
             if (argc < 5) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                 return 0;
@@ -335,23 +335,8 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             }
 
             /* Process flags */
-            /* read from "[XX" arg to "YY]" arg */
-            bool bStarted = false;
             for (int i = 5; i < argc; i++) {
                 char *flag = argv[i];
-                if (!bStarted) {
-                    if (*flag == '[') {
-                        flag++;
-                        bStarted = true;
-                    } else {
-                        continue;
-                    }
-                }
-                int len = strlen(flag);
-                if (flag[len-1] == ']') {
-                    i = argc;  // stop after this loop
-                    flag[len-1] = 0;
-                }
                 if (!strcmp(flag, "up")) {
                     LOGD("Trying to bring up %s", argv[2]);
                     if (ifc_up(argv[2])) {
