@@ -369,9 +369,15 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                         return 0;
                     }
                 } else if (!strcmp(flag, "broadcast")) {
-                    LOGD("broadcast flag ignored");
+                    // currently ignored
                 } else if (!strcmp(flag, "multicast")) {
-                    LOGD("multicast flag ignored");
+                    // currently ignored
+                } else if (!strcmp(flag, "running")) {
+                    // currently ignored
+                } else if (!strcmp(flag, "loopback")) {
+                    // currently ignored
+                } else if (!strcmp(flag, "point-to-point")) {
+                    // currently ignored
                 } else {
                     cli->sendMsg(ResponseCode::CommandParameterError, "Flag unsupported", false);
                     ifc_close();
