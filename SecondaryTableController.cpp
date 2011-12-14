@@ -31,6 +31,8 @@
 #include <cutils/log.h>
 #include <cutils/properties.h>
 
+extern "C" int system_nosh(const char *command);
+
 #include "ResponseCode.h"
 #include "SecondaryTableController.h"
 
@@ -132,7 +134,7 @@ int SecondaryTableController::runAndFree(SocketClient *cli, char *cmd) {
         free(cmd);
         return -1;
     }
-    ret = system(cmd);
+    ret = system_nosh(cmd);
     free(cmd);
     return ret;
 }

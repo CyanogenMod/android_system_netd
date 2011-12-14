@@ -42,6 +42,7 @@
 #include <cutils/properties.h>
 
 extern "C" int logwrap(int argc, const char **argv, int background);
+extern "C" int system_nosh(const char *command);
 
 #include "BandwidthController.h"
 
@@ -185,7 +186,7 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
     fullCmd.insert(0, iptVer == IptIpV4 ? IPTABLES_PATH : IP6TABLES_PATH);
 
     if (!useLogwrapCall) {
-        res = system(fullCmd.c_str());
+        res = system_nosh(fullCmd.c_str());
     } else {
         if (StrncpyAndCheck(buffer, fullCmd.c_str(), sizeof(buffer))) {
             LOGE("iptables command too long");

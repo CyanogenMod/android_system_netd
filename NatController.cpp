@@ -30,7 +30,7 @@
 #include "NatController.h"
 #include "SecondaryTableController.h"
 
-extern "C" int logwrap(int argc, const char **argv, int background);
+extern "C" int system_nosh(const char *command);
 
 static char IPTABLES_PATH[] = "/system/bin/iptables";
 static char IP_PATH[] = "/system/bin/ip";
@@ -55,7 +55,7 @@ int NatController::runCmd(const char *path, const char *cmd) {
     }
 
     asprintf(&buffer, "%s %s", path, cmd);
-    res = system(buffer);
+    res = system_nosh(buffer);
     free(buffer);
     return res;
 }
