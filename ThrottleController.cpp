@@ -36,7 +36,7 @@
 
 static char TC_PATH[] = "/system/bin/tc";
 
-extern "C" int logwrap(int argc, const char **argv, int background);
+extern "C" int system_nosh(const char *command);
 extern "C" int ifc_init(void);
 extern "C" int ifc_up(const char *name);
 extern "C" int ifc_down(const char *name);
@@ -53,7 +53,7 @@ int ThrottleController::runTcCmd(const char *cmd) {
     }
 
     asprintf(&buffer, "%s %s", TC_PATH, cmd);
-    res = system(buffer);
+    res = system_nosh(buffer);
     free(buffer);
     return res;
 }
