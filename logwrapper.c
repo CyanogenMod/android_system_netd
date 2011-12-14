@@ -175,3 +175,66 @@ int logwrap(int argc, const char* argv[], int background)
 
     return 0;
 }
+
+/*
+ * The following is based off of bionic/libc/unistd/system.c with
+ *  modifications to avoid calling /system/bin/sh -c
+ */
+extern char **environ;
+int system_nosh(const char *command)
+{
+    pid_t pid;
+    sig_t intsave, quitsave;
+    sigset_t mask, omask;
+    int pstat;
+    char buffer[255];
+    char *argp[32];
+    char *next = buffer;
+    char *tmp;
+    int i = 0;
+
+    if (!command)           /* just checking... */
+        return(1);
+
+    /*
+     * The command to argp splitting is from code that was
+     * reverted in Change: 11b4e9b2
+     */
+    if (strnlen(buffer, sizeof(buffer) - 1) == sizeof(buffer) - 1) {
+        LOGE("command line too long while processing: %s", command);
+        errno = E2BIG;
+        return -1;
+    }
+    strcpy(buffer, command); // Command len is already checked.
+    while ((tmp = strsep(&next, " "))) {
+        argp[i++] = tmp;
+        if (i == 32) {
+            LOGE("argument overflow while processing: %s", command);
+            errno = E2BIG;
+            return -1;
+        }
+    }
+    argp[i] = NULL;
+
+
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGCHLD);
+    sigprocmask(SIG_BLOCK, &mask, &omask);
+    switch (pid = vfork()) {
+    case -1:                        /* error */
+        sigprocmask(SIG_SETMASK, &omask, NULL);
+        return(-1);
+    case 0:                                 /* child */
+        sigprocmask(SIG_SETMASK, &omask, NULL);
+        execve(argp[0], argp, environ);
+        _exit(127);
+    }
+
+    intsave = (sig_t)  bsd_signal(SIGINT, SIG_IGN);
+    quitsave = (sig_t) bsd_signal(SIGQUIT, SIG_IGN);
+    pid = waitpid(pid, (int *)&pstat, 0);
+    sigprocmask(SIG_SETMASK, &omask, NULL);
+    (void)bsd_signal(SIGINT, intsave);
+    (void)bsd_signal(SIGQUIT, quitsave);
+    return (pid == -1 ? -1 : pstat);
+}
