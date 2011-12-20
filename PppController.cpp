@@ -111,11 +111,11 @@ int PppController::detachPppd(const char *tty) {
         return 0;
     }
 
-    LOGD("Stopping PPPD services on port %s", tty);
+    ALOGD("Stopping PPPD services on port %s", tty);
     kill(mPid, SIGTERM);
     waitpid(mPid, NULL, 0);
     mPid = 0;
-    LOGD("PPPD services on port %s stopped", tty);
+    ALOGD("PPPD services on port %s stopped", tty);
     return 0;
 }
 

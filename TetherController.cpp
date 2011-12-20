@@ -53,7 +53,7 @@ TetherController::~TetherController() {
 
 int TetherController::setIpFwdEnabled(bool enable) {
 
-    LOGD("Setting IP forward enable = %d", enable);
+    ALOGD("Setting IP forward enable = %d", enable);
 
     // In BP tools mode, do not disable IP forwarding
     char bootmode[PROPERTY_VALUE_MAX] = {0};
@@ -103,7 +103,7 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
         return -1;
     }
 
-    LOGD("Starting tethering services");
+    ALOGD("Starting tethering services");
 
     pid_t pid;
     int pipefd[2];
@@ -159,7 +159,7 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
         close(pipefd[0]);
         mDaemonPid = pid;
         mDaemonFd = pipefd[1];
-        LOGD("Tethering services running");
+        ALOGD("Tethering services running");
     }
 
     return 0;
@@ -172,14 +172,14 @@ int TetherController::stopTethering() {
         return 0;
     }
 
-    LOGD("Stopping tethering services");
+    ALOGD("Stopping tethering services");
 
     kill(mDaemonPid, SIGTERM);
     waitpid(mDaemonPid, NULL, 0);
     mDaemonPid = 0;
     close(mDaemonFd);
     mDaemonFd = -1;
-    LOGD("Tethering services stopped");
+    ALOGD("Tethering services stopped");
     return 0;
 }
 
@@ -198,7 +198,7 @@ int TetherController::setDnsForwarders(char **servers, int numServers) {
 
     mDnsForwarders->clear();
     for (i = 0; i < numServers; i++) {
-        LOGD("setDnsForwarders(%d = '%s')", i, servers[i]);
+        ALOGD("setDnsForwarders(%d = '%s')", i, servers[i]);
 
         struct in_addr a;
 
@@ -210,7 +210,7 @@ int TetherController::setDnsForwarders(char **servers, int numServers) {
 
         cmdLen += strlen(servers[i]);
         if (cmdLen + 2 >= MAX_CMD_SIZE) {
-            LOGD("Too many DNS servers listed");
+            ALOGD("Too many DNS servers listed");
             break;
         }
 
@@ -220,7 +220,7 @@ int TetherController::setDnsForwarders(char **servers, int numServers) {
     }
 
     if (mDaemonFd != -1) {
-        LOGD("Sending update msg to dnsmasq [%s]", daemonCmd);
+        ALOGD("Sending update msg to dnsmasq [%s]", daemonCmd);
         if (write(mDaemonFd, daemonCmd, strlen(daemonCmd) +1) < 0) {
             LOGE("Failed to send update command to dnsmasq (%s)", strerror(errno));
             mDnsForwarders->clear();

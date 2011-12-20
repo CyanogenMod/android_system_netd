@@ -123,7 +123,7 @@ int SoftapController::startDriver(char *iface) {
         return -1;
     }
     if (!iface || (iface[0] == '\0')) {
-        LOGD("Softap driver start - wrong interface");
+        ALOGD("Softap driver start - wrong interface");
         iface = mIface;
     }
 
@@ -139,7 +139,7 @@ int SoftapController::startDriver(char *iface) {
     ifc_close();
 #endif
     usleep(AP_DRIVER_START_DELAY);
-    LOGD("Softap driver start: %d", ret);
+    ALOGD("Softap driver start: %d", ret);
     return ret;
 }
 
@@ -151,7 +151,7 @@ int SoftapController::stopDriver(char *iface) {
         return -1;
     }
     if (!iface || (iface[0] == '\0')) {
-        LOGD("Softap driver stop - wrong interface");
+        ALOGD("Softap driver stop - wrong interface");
         iface = mIface;
     }
     *mBuf = 0;
@@ -164,7 +164,7 @@ int SoftapController::stopDriver(char *iface) {
     }
 #endif
     ret = setCommand(iface, "STOP");
-    LOGD("Softap driver stop: %d", ret);
+    ALOGD("Softap driver stop: %d", ret);
     return ret;
 }
 
@@ -205,7 +205,7 @@ int SoftapController::startSoftap() {
         }
         else {
            mPid = pid;
-           LOGD("Softap startap - Ok");
+           ALOGD("Softap startap - Ok");
            usleep(AP_BSS_START_DELAY);
         }
     }
@@ -222,7 +222,7 @@ int SoftapController::stopSoftap() {
     }
 
 #ifdef HAVE_HOSTAPD
-    LOGD("Stopping Softap service");
+    ALOGD("Stopping Softap service");
     kill(mPid, SIGTERM);
     waitpid(mPid, NULL, 0);
 #endif
@@ -233,7 +233,7 @@ int SoftapController::stopSoftap() {
     *mBuf = 0;
     ret = setCommand(mIface, "AP_BSS_STOP");
     mPid = 0;
-    LOGD("Softap service stopped: %d", ret);
+    ALOGD("Softap service stopped: %d", ret);
     usleep(AP_BSS_STOP_DELAY);
     return ret;
 }
@@ -386,7 +386,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         LOGE("Softap set - failed: %d", ret);
     }
     else {
-        LOGD("Softap set - Ok");
+        ALOGD("Softap set - Ok");
         usleep(AP_SET_CFG_DELAY);
     }
 #endif
@@ -448,7 +448,7 @@ int SoftapController::fwReloadSoftap(int argc, char *argv[])
         LOGE("Softap fwReload - failed: %d", ret);
     }
     else {
-        LOGD("Softap fwReload - Ok");
+        ALOGD("Softap fwReload - Ok");
     }
     return ret;
 }
@@ -467,7 +467,7 @@ int SoftapController::clientsSoftap(char **retbuf)
         LOGE("Softap clients - failed: %d", ret);
     } else {
         asprintf(retbuf, "Softap clients:%s", mBuf);
-        LOGD("Softap clients:%s", mBuf);
+        ALOGD("Softap clients:%s", mBuf);
     }
     return ret;
 }

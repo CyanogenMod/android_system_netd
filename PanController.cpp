@@ -93,11 +93,11 @@ int PanController::stopPan() {
         return 0;
     }
 
-    LOGD("Stopping PAN services");
+    ALOGD("Stopping PAN services");
     kill(mPid, SIGTERM);
     waitpid(mPid, NULL, 0);
     mPid = 0;
-    LOGD("PAN services stopped");
+    ALOGD("PAN services stopped");
     return 0;
 }
 

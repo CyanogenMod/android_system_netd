@@ -134,5 +134,5 @@ static void coldboot(const char *path)
 
 static void sigchld_handler(int sig) {
     pid_t pid = wait(NULL);
-    LOGD("Child process %d exited", pid);
+    ALOGD("Child process %d exited", pid);
 }

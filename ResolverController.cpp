@@ -26,7 +26,7 @@
 
 int ResolverController::setDefaultInterface(const char* iface) {
     if (DBG) {
-        LOGD("setDefaultInterface iface = %s\n", iface);
+        ALOGD("setDefaultInterface iface = %s\n", iface);
     }
 
     _resolv_set_default_iface(iface);
@@ -36,7 +36,7 @@ int ResolverController::setDefaultInterface(const char* iface) {
 
 int ResolverController::setInterfaceDnsServers(const char* iface, char** servers, int numservers) {
     if (DBG) {
-        LOGD("setInterfaceDnsServers iface = %s\n", iface);
+        ALOGD("setInterfaceDnsServers iface = %s\n", iface);
     }
 
     _resolv_set_nameservers_for_iface(iface, servers, numservers);
@@ -46,7 +46,7 @@ int ResolverController::setInterfaceDnsServers(const char* iface, char** servers
 
 int ResolverController::setInterfaceAddress(const char* iface, struct in_addr* addr) {
     if (DBG) {
-        LOGD("setInterfaceAddress iface = %s\n", iface);
+        ALOGD("setInterfaceAddress iface = %s\n", iface);
     }
 
     _resolv_set_addr_of_iface(iface, addr);
@@ -56,7 +56,7 @@ int ResolverController::setInterfaceAddress(const char* iface, struct in_addr* a
 
 int ResolverController::flushDefaultDnsCache() {
     if (DBG) {
-        LOGD("flushDefaultDnsCache\n");
+        ALOGD("flushDefaultDnsCache\n");
     }
 
     _resolv_flush_cache_for_default_iface();
@@ -66,7 +66,7 @@ int ResolverController::flushDefaultDnsCache() {
 
 int ResolverController::flushInterfaceDnsCache(const char* iface) {
     if (DBG) {
-        LOGD("flushInterfaceDnsCache iface = %s\n", iface);
+        ALOGD("flushInterfaceDnsCache iface = %s\n", iface);
     }
 
     _resolv_flush_cache_for_iface(iface);

@@ -310,7 +310,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                 return 0;
             }
-            LOGD("Setting iface cfg");
+            ALOGD("Setting iface cfg");
 
             struct in_addr addr;
             unsigned flags = 0;
@@ -338,7 +338,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             for (int i = 5; i < argc; i++) {
                 char *flag = argv[i];
                 if (!strcmp(flag, "up")) {
-                    LOGD("Trying to bring up %s", argv[2]);
+                    ALOGD("Trying to bring up %s", argv[2]);
                     if (ifc_up(argv[2])) {
                         LOGE("Error upping interface");
                         cli->sendMsg(ResponseCode::OperationFailed, "Failed to up interface", true);
@@ -346,7 +346,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                         return 0;
                     }
                 } else if (!strcmp(flag, "down")) {
-                    LOGD("Trying to bring down %s", argv[2]);
+                    ALOGD("Trying to bring down %s", argv[2]);
                     if (ifc_down(argv[2])) {
                         LOGE("Error downing interface");
                         cli->sendMsg(ResponseCode::OperationFailed, "Failed to down interface", true);
@@ -375,7 +375,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             return 0;
         } else if (!strcmp(argv[1], "clearaddrs")) {
             // arglist: iface
-            LOGD("Clearing all IP addresses on %s", argv[2]);
+            ALOGD("Clearing all IP addresses on %s", argv[2]);
 
             ifc_clear_addresses(argv[2]);
 

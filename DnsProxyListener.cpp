@@ -68,7 +68,7 @@ static bool sendLenAndData(SocketClient *c, const int len, const void* data) {
 
 void DnsProxyListener::GetAddrInfoHandler::run() {
     if (DBG) {
-        LOGD("GetAddrInfoHandler, now for %s / %s", mHost, mService);
+        ALOGD("GetAddrInfoHandler, now for %s / %s", mHost, mService);
     }
 
     struct addrinfo* result = NULL;
@@ -103,7 +103,7 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
                                             int argc, char **argv) {
     if (DBG) {
         for (int i = 0; i < argc; i++) {
-            LOGD("argv[%i]=%s", i, argv[i]);
+            ALOGD("argv[%i]=%s", i, argv[i]);
         }
     }
     if (argc != 7) {
@@ -141,7 +141,7 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     }
 
     if (DBG) {
-        LOGD("GetAddrInfoHandler for %s / %s",
+        ALOGD("GetAddrInfoHandler for %s / %s",
              name ? name : "[nullhost]",
              service ? service : "[nullservice]");
     }
@@ -165,7 +165,7 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
                                             int argc, char **argv) {
     if (DBG) {
         for (int i = 0; i < argc; i++) {
-            LOGD("argv[%i]=%s", i, argv[i]);
+            ALOGD("argv[%i]=%s", i, argv[i]);
         }
     }
     if (argc != 4) {
@@ -215,7 +215,7 @@ void* DnsProxyListener::GetHostByAddrHandler::threadStart(void* obj) {
 
 void DnsProxyListener::GetHostByAddrHandler::run() {
     if (DBG) {
-        LOGD("DnsProxyListener::GetHostByAddrHandler::run\n");
+        ALOGD("DnsProxyListener::GetHostByAddrHandler::run\n");
     }
 
     struct hostent* hp;
@@ -224,7 +224,7 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     hp = gethostbyaddr((char*)mAddress, mAddressLen, mAddressFamily);
 
     if (DBG) {
-        LOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %d\n",
+        ALOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %d\n",
                 hp ? "success" : strerror(errno),
                 (hp && hp->h_name) ? hp->h_name: "null",
                 (hp && hp->h_name) ? strlen(hp->h_name)+ 1 : 0);
