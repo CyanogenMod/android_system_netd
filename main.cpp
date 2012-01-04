@@ -43,7 +43,7 @@ int main() {
     NetlinkManager *nm;
     DnsProxyListener *dpl;
 
-    LOGI("Netd 1.0 starting");
+    ALOGI("Netd 1.0 starting");
 
 //    signal(SIGCHLD, sigchld_handler);
 
@@ -83,7 +83,7 @@ int main() {
         sleep(1000);
     }
 
-    LOGI("Netd exiting");
+    ALOGI("Netd exiting");
     exit(0);
 }
 
