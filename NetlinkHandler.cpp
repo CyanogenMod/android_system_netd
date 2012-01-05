@@ -48,7 +48,7 @@ int NetlinkHandler::stop() {
 void NetlinkHandler::onEvent(NetlinkEvent *evt) {
     const char *subsys = evt->getSubsystem();
     if (!subsys) {
-        LOGW("No subsystem found in netlink event");
+        ALOGW("No subsystem found in netlink event");
         return;
     }
 

@@ -90,7 +90,7 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
         freeaddrinfo(result);
     }
     if (!success) {
-        LOGW("Error writing DNS result to client");
+        ALOGW("Error writing DNS result to client");
     }
     mClient->decRef();
 }
@@ -107,7 +107,7 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
         }
     }
     if (argc != 7) {
-        LOGW("Invalid number of arguments to getaddrinfo: %i", argc);
+        ALOGW("Invalid number of arguments to getaddrinfo: %i", argc);
         sendLenAndData(cli, 0, NULL);
         return -1;
     }
@@ -169,7 +169,7 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
         }
     }
     if (argc != 4) {
-        LOGW("Invalid number of arguments to gethostbyaddr: %i", argc);
+        ALOGW("Invalid number of arguments to gethostbyaddr: %i", argc);
         sendLenAndData(cli, 0, NULL);
         return -1;
     }
@@ -182,7 +182,7 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
     errno = 0;
     int result = inet_pton(addrFamily, addrStr, addr);
     if (result <= 0) {
-        LOGW("inet_pton(\"%s\") failed %s", addrStr, strerror(errno));
+        ALOGW("inet_pton(\"%s\") failed %s", addrStr, strerror(errno));
         free(addr);
         sendLenAndData(cli, 0, NULL);
         return -1;
@@ -234,7 +234,7 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
             (hp && hp->h_name) ? hp->h_name : "");
 
     if (!success) {
-        LOGW("GetHostByAddrHandler: Error writing DNS result to client\n");
+        ALOGW("GetHostByAddrHandler: Error writing DNS result to client\n");
     }
     mClient->decRef();
 }

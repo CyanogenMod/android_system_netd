@@ -274,7 +274,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             }
 
             if (ifc_get_hwaddr(argv[2], (void *) hwaddr)) {
-                LOGW("Failed to retrieve HW addr for %s (%s)", argv[2], strerror(errno));
+                ALOGW("Failed to retrieve HW addr for %s (%s)", argv[2], strerror(errno));
             }
 
             char *addr_s = strdup(inet_ntoa(addr));
