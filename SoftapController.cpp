@@ -47,7 +47,7 @@ SoftapController::SoftapController() {
     mPid = 0;
     mSock = socket(AF_INET, SOCK_DGRAM, 0);
     if (mSock < 0)
-        LOGE("Failed to open socket");
+        ALOGE("Failed to open socket");
     memset(mIface, 0, sizeof(mIface));
 }
 
@@ -71,7 +71,7 @@ int SoftapController::setCommand(char *iface, const char *fname, unsigned buflen
     wrq.u.data.length = sizeof(tBuf) / sizeof(struct iw_priv_args);
     wrq.u.data.flags = 0;
     if ((ret = ioctl(mSock, SIOCGIWPRIV, &wrq)) < 0) {
-        LOGE("SIOCGIPRIV failed: %d", ret);
+        ALOGE("SIOCGIPRIV failed: %d", ret);
         return ret;
     }
 
@@ -84,7 +84,7 @@ int SoftapController::setCommand(char *iface, const char *fname, unsigned buflen
     }
 
     if (i == wrq.u.data.length) {
-        LOGE("iface:%s, fname: %s - function not supported", iface, fname);
+        ALOGE("iface:%s, fname: %s - function not supported", iface, fname);
         return -1;
     }
 
@@ -96,7 +96,7 @@ int SoftapController::setCommand(char *iface, const char *fname, unsigned buflen
                 break;
         }
         if (j == i) {
-            LOGE("iface:%s, fname: %s - invalid private ioctl", iface, fname);
+            ALOGE("iface:%s, fname: %s - invalid private ioctl", iface, fname);
             return -1;
         }
         sub_cmd = cmd;
@@ -119,7 +119,7 @@ int SoftapController::startDriver(char *iface) {
     int ret;
 
     if (mSock < 0) {
-        LOGE("Softap driver start - failed to open socket");
+        ALOGE("Softap driver start - failed to open socket");
         return -1;
     }
     if (!iface || (iface[0] == '\0')) {
@@ -130,7 +130,7 @@ int SoftapController::startDriver(char *iface) {
     *mBuf = 0;
     ret = setCommand(iface, "START");
     if (ret < 0) {
-        LOGE("Softap driver start: %d", ret);
+        ALOGE("Softap driver start: %d", ret);
         return ret;
     }
 #ifdef HAVE_HOSTAPD
@@ -147,7 +147,7 @@ int SoftapController::stopDriver(char *iface) {
     int ret;
 
     if (mSock < 0) {
-        LOGE("Softap driver stop - failed to open socket");
+        ALOGE("Softap driver stop - failed to open socket");
         return -1;
     }
     if (!iface || (iface[0] == '\0')) {
@@ -160,7 +160,7 @@ int SoftapController::stopDriver(char *iface) {
     ret = ifc_down(iface);
     ifc_close();
     if (ret < 0) {
-        LOGE("Softap %s down: %d", iface, ret);
+        ALOGE("Softap %s down: %d", iface, ret);
     }
 #endif
     ret = setCommand(iface, "STOP");
@@ -173,16 +173,16 @@ int SoftapController::startSoftap() {
     int ret = 0;
 
     if (mPid) {
-        LOGE("Softap already started");
+        ALOGE("Softap already started");
         return 0;
     }
     if (mSock < 0) {
-        LOGE("Softap startap - failed to open socket");
+        ALOGE("Softap startap - failed to open socket");
         return -1;
     }
 #ifdef HAVE_HOSTAPD
     if ((pid = fork()) < 0) {
-        LOGE("fork failed (%s)", strerror(errno));
+        ALOGE("fork failed (%s)", strerror(errno));
         return -1;
     }
 #endif
@@ -192,16 +192,16 @@ int SoftapController::startSoftap() {
         if (execl("/system/bin/hostapd", "/system/bin/hostapd",
                   "-e", WIFI_ENTROPY_FILE,
                   HOSTAPD_CONF_FILE, (char *) NULL)) {
-            LOGE("execl failed (%s)", strerror(errno));
+            ALOGE("execl failed (%s)", strerror(errno));
         }
 #endif
-        LOGE("Should never get here!");
+        ALOGE("Should never get here!");
         return -1;
     } else {
         *mBuf = 0;
         ret = setCommand(mIface, "AP_BSS_START");
         if (ret) {
-            LOGE("Softap startap - failed: %d", ret);
+            ALOGE("Softap startap - failed: %d", ret);
         }
         else {
            mPid = pid;
@@ -217,7 +217,7 @@ int SoftapController::stopSoftap() {
     int ret;
 
     if (mPid == 0) {
-        LOGE("Softap already stopped");
+        ALOGE("Softap already stopped");
         return 0;
     }
 
@@ -227,7 +227,7 @@ int SoftapController::stopSoftap() {
     waitpid(mPid, NULL, 0);
 #endif
     if (mSock < 0) {
-        LOGE("Softap stopap - failed to open socket");
+        ALOGE("Softap stopap - failed to open socket");
         return -1;
     }
     *mBuf = 0;
@@ -247,7 +247,7 @@ int SoftapController::addParam(int pos, const char *cmd, const char *arg)
     if (pos < 0)
         return pos;
     if ((unsigned)(pos + strlen(cmd) + strlen(arg) + 1) >= sizeof(mBuf)) {
-        LOGE("Command line is too big");
+        ALOGE("Command line is too big");
         return -1;
     }
     pos += sprintf(&mBuf[pos], "%s=%s,", cmd, arg);
@@ -271,11 +271,11 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
     char *ssid, *iface;
 
     if (mSock < 0) {
-        LOGE("Softap set - failed to open socket");
+        ALOGE("Softap set - failed to open socket");
         return -1;
     }
     if (argc < 4) {
-        LOGE("Softap set - missing arguments");
+        ALOGE("Softap set - missing arguments");
         return -1;
     }
 
@@ -311,13 +311,13 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
 
     fd = open(HOSTAPD_CONF_FILE, O_CREAT | O_TRUNC | O_WRONLY, 0660);
     if (fd < 0) {
-        LOGE("Cannot update \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
+        ALOGE("Cannot update \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
         free(wbuf);
         free(fbuf);
         return -1;
     }
     if (write(fd, fbuf, strlen(fbuf)) < 0) {
-        LOGE("Cannot write to \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
+        ALOGE("Cannot write to \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
         ret = -1;
     }
     close(fd);
@@ -326,14 +326,14 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
 
     /* Note: apparently open can fail to set permissions correctly at times */
     if (chmod(HOSTAPD_CONF_FILE, 0660) < 0) {
-        LOGE("Error changing permissions of %s to 0660: %s",
+        ALOGE("Error changing permissions of %s to 0660: %s",
                 HOSTAPD_CONF_FILE, strerror(errno));
         unlink(HOSTAPD_CONF_FILE);
         return -1;
     }
 
     if (chown(HOSTAPD_CONF_FILE, AID_SYSTEM, AID_WIFI) < 0) {
-        LOGE("Error changing group ownership of %s to %d: %s",
+        ALOGE("Error changing group ownership of %s to %d: %s",
                 HOSTAPD_CONF_FILE, AID_WIFI, strerror(errno));
         unlink(HOSTAPD_CONF_FILE);
         return -1;
@@ -375,7 +375,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         i = addParam(i, "MAX_SCB", "8");
     }
     if ((i < 0) || ((unsigned)(i + 4) >= sizeof(mBuf))) {
-        LOGE("Softap set - command is too big");
+        ALOGE("Softap set - command is too big");
         return i;
     }
     sprintf(&mBuf[i], "END");
@@ -383,7 +383,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
     /* system("iwpriv eth0 WL_AP_CFG ASCII_CMD=AP_CFG,SSID=\"AndroidAP\",SEC=\"open\",KEY=12345,CHANNEL=1,PREAMBLE=0,MAX_SCB=8,END"); */
     ret = setCommand(iface, "AP_SET_CFG");
     if (ret) {
-        LOGE("Softap set - failed: %d", ret);
+        ALOGE("Softap set - failed: %d", ret);
     }
     else {
         ALOGD("Softap set - Ok");
@@ -419,11 +419,11 @@ int SoftapController::fwReloadSoftap(int argc, char *argv[])
     char *fwpath;
 
     if (mSock < 0) {
-        LOGE("Softap fwrealod - failed to open socket");
+        ALOGE("Softap fwrealod - failed to open socket");
         return -1;
     }
     if (argc < 4) {
-        LOGE("Softap fwreload - missing arguments");
+        ALOGE("Softap fwreload - missing arguments");
         return -1;
     }
 
@@ -445,7 +445,7 @@ int SoftapController::fwReloadSoftap(int argc, char *argv[])
     ret = setCommand(iface, "WL_FW_RELOAD");
 #endif
     if (ret) {
-        LOGE("Softap fwReload - failed: %d", ret);
+        ALOGE("Softap fwReload - failed: %d", ret);
     }
     else {
         ALOGD("Softap fwReload - Ok");
@@ -458,13 +458,13 @@ int SoftapController::clientsSoftap(char **retbuf)
     int ret;
 
     if (mSock < 0) {
-        LOGE("Softap clients - failed to open socket");
+        ALOGE("Softap clients - failed to open socket");
         return -1;
     }
     *mBuf = 0;
     ret = setCommand(mIface, "AP_GET_STA_LIST", SOFTAP_MAX_BUFFER_SIZE);
     if (ret) {
-        LOGE("Softap clients - failed: %d", ret);
+        ALOGE("Softap clients - failed: %d", ret);
     } else {
         asprintf(retbuf, "Softap clients:%s", mBuf);
         ALOGD("Softap clients:%s", mBuf);

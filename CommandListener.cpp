@@ -87,12 +87,12 @@ CommandListener::InterfaceCmd::InterfaceCmd() :
 int CommandListener::writeFile(const char *path, const char *value, int size) {
     int fd = open(path, O_WRONLY);
     if (fd < 0) {
-        LOGE("Failed to open %s: %s", path, strerror(errno));
+        ALOGE("Failed to open %s: %s", path, strerror(errno));
         return -1;
     }
 
     if (write(fd, value, size) != size) {
-        LOGE("Failed to write %s: %s", path, strerror(errno));
+        ALOGE("Failed to write %s: %s", path, strerror(errno));
         close(fd);
         return -1;
     }
@@ -340,7 +340,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 if (!strcmp(flag, "up")) {
                     ALOGD("Trying to bring up %s", argv[2]);
                     if (ifc_up(argv[2])) {
-                        LOGE("Error upping interface");
+                        ALOGE("Error upping interface");
                         cli->sendMsg(ResponseCode::OperationFailed, "Failed to up interface", true);
                         ifc_close();
                         return 0;
@@ -348,7 +348,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 } else if (!strcmp(flag, "down")) {
                     ALOGD("Trying to bring down %s", argv[2]);
                     if (ifc_down(argv[2])) {
-                        LOGE("Error downing interface");
+                        ALOGE("Error downing interface");
                         cli->sendMsg(ResponseCode::OperationFailed, "Failed to down interface", true);
                         ifc_close();
                         return 0;
@@ -838,7 +838,7 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
 int CommandListener::readInterfaceCounters(const char *iface, unsigned long *rx, unsigned long *tx) {
     FILE *fp = fopen("/proc/net/dev", "r");
     if (!fp) {
-        LOGE("Failed to open /proc/net/dev (%s)", strerror(errno));
+        ALOGE("Failed to open /proc/net/dev (%s)", strerror(errno));
         return -1;
     }
 

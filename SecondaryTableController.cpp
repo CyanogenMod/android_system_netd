@@ -68,7 +68,7 @@ int SecondaryTableController::addRoute(SocketClient *cli, char *iface, char *des
     if (tableIndex == -1) {
         tableIndex = findTableNumber(""); // look for an empty slot
         if (tableIndex == -1) {
-            LOGE("Max number of NATed interfaces reached");
+            ALOGE("Max number of NATed interfaces reached");
             errno = ENODEV;
             cli->sendMsg(ResponseCode::OperationFailed, "Max number NATed", true);
             return -1;
@@ -93,7 +93,7 @@ int SecondaryTableController::modifyRoute(SocketClient *cli, char *action, char 
     }
 
     if (runAndFree(cli, cmd)) {
-        LOGE("ip route %s failed: %s route %s %s/%d via %s dev %s table %d", action,
+        ALOGE("ip route %s failed: %s route %s %s/%d via %s dev %s table %d", action,
                 IP_PATH, action, dest, prefix, gateway, iface, tableIndex+BASE_TABLE_NUMBER);
         errno = ENODEV;
         cli->sendMsg(ResponseCode::OperationFailed, "ip route modification failed", true);
@@ -116,7 +116,7 @@ int SecondaryTableController::removeRoute(SocketClient *cli, char *iface, char *
         char *gateway) {
     int tableIndex = findTableNumber(iface);
     if (tableIndex == -1) {
-        LOGE("Interface not found");
+        ALOGE("Interface not found");
         errno = ENODEV;
         cli->sendMsg(ResponseCode::OperationFailed, "Interface not found", true);
         return -1;
@@ -128,7 +128,7 @@ int SecondaryTableController::removeRoute(SocketClient *cli, char *iface, char *
 int SecondaryTableController::runAndFree(SocketClient *cli, char *cmd) {
     int ret = 0;
     if (strlen(cmd) >= 255) {
-        LOGE("ip command (%s) too long", cmd);
+        ALOGE("ip command (%s) too long", cmd);
         errno = E2BIG;
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Too long", true);
         free(cmd);

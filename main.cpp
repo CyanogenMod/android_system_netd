@@ -48,7 +48,7 @@ int main() {
 //    signal(SIGCHLD, sigchld_handler);
 
     if (!(nm = NetlinkManager::Instance())) {
-        LOGE("Unable to create NetlinkManager");
+        ALOGE("Unable to create NetlinkManager");
         exit(1);
     };
 
@@ -57,7 +57,7 @@ int main() {
     nm->setBroadcaster((SocketListener *) cl);
 
     if (nm->start()) {
-        LOGE("Unable to start NetlinkManager (%s)", strerror(errno));
+        ALOGE("Unable to start NetlinkManager (%s)", strerror(errno));
         exit(1);
     }
 
@@ -66,7 +66,7 @@ int main() {
     setenv("ANDROID_DNS_MODE", "local", 1);
     dpl = new DnsProxyListener();
     if (dpl->startListener()) {
-        LOGE("Unable to start DnsProxyListener (%s)", strerror(errno));
+        ALOGE("Unable to start DnsProxyListener (%s)", strerror(errno));
         exit(1);
     }
 
@@ -74,7 +74,7 @@ int main() {
      * Now that we're up, we can respond to commands
      */
     if (cl->startListener()) {
-        LOGE("Unable to start CommandListener (%s)", strerror(errno));
+        ALOGE("Unable to start CommandListener (%s)", strerror(errno));
         exit(1);
     }
 

@@ -52,33 +52,33 @@ int PanController::startPan() {
 
 #ifdef HAVE_BLUETOOTH
     if (!bt_is_enabled()) {
-        LOGE("Cannot start PAN services - Bluetooth not running");
+        ALOGE("Cannot start PAN services - Bluetooth not running");
         errno = ENODEV;
         return -1;
     }
 #else
-    LOGE("Cannot start PAN services - No Bluetooth support");
+    ALOGE("Cannot start PAN services - No Bluetooth support");
     errno = ENODEV;
     return -1;
 #endif
 
     if (mPid) {
-        LOGE("PAN already started");
+        ALOGE("PAN already started");
         errno = EBUSY;
         return -1;
     }
 
    if ((pid = fork()) < 0) {
-        LOGE("fork failed (%s)", strerror(errno));
+        ALOGE("fork failed (%s)", strerror(errno));
         return -1;
     }
 
     if (!pid) {
         if (execl("/system/bin/pand", "/system/bin/pand", "--nodetach", "--listen",
                   "--role", "NAP", (char *) NULL)) {
-            LOGE("execl failed (%s)", strerror(errno));
+            ALOGE("execl failed (%s)", strerror(errno));
         }
-        LOGE("Should never get here!");
+        ALOGE("Should never get here!");
         return 0;
     } else {
         mPid = pid;
@@ -89,7 +89,7 @@ int PanController::startPan() {
 
 int PanController::stopPan() {
     if (mPid == 0) {
-        LOGE("PAN already stopped");
+        ALOGE("PAN already stopped");
         return 0;
     }
 

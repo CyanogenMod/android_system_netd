@@ -201,7 +201,7 @@ int system_nosh(const char *command)
      * reverted in Change: 11b4e9b2
      */
     if (strnlen(buffer, sizeof(buffer) - 1) == sizeof(buffer) - 1) {
-        LOGE("command line too long while processing: %s", command);
+        ALOGE("command line too long while processing: %s", command);
         errno = E2BIG;
         return -1;
     }
@@ -209,7 +209,7 @@ int system_nosh(const char *command)
     while ((tmp = strsep(&next, " "))) {
         argp[i++] = tmp;
         if (i == 32) {
-            LOGE("argument overflow while processing: %s", command);
+            ALOGE("argument overflow while processing: %s", command);
             errno = E2BIG;
             return -1;
         }

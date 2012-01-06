@@ -49,7 +49,7 @@ int NatController::runCmd(const char *path, const char *cmd) {
     int res;
 
     if (len == 255) {
-        LOGE("command too long");
+        ALOGE("command too long");
         errno = E2BIG;
         return -1;
     }
@@ -110,13 +110,13 @@ int NatController::enableNat(const int argc, char **argv) {
     int tableNumber;
 
     if (!checkInterface(intIface) || !checkInterface(extIface)) {
-        LOGE("Invalid interface specified");
+        ALOGE("Invalid interface specified");
         errno = ENODEV;
         return -1;
     }
 
     if (argc < 5 + addrCount) {
-        LOGE("Missing Argument");
+        ALOGE("Missing Argument");
         errno = EINVAL;
         return -1;
     }
@@ -127,12 +127,12 @@ int NatController::enableNat(const int argc, char **argv) {
             snprintf(cmd, sizeof(cmd), "%s rule add from %s table %d", getVersion(argv[5+i]),
                     argv[5+i], tableNumber + BASE_TABLE_NUMBER);
             ret |= runCmd(IP_PATH, cmd);
-            if (ret) LOGE("IP rule %s got %d", cmd, ret);
+            if (ret) ALOGE("IP rule %s got %d", cmd, ret);
 
             snprintf(cmd, sizeof(cmd), "route add %s dev %s table %d", argv[5+i], intIface,
                     tableNumber + BASE_TABLE_NUMBER);
             ret |= runCmd(IP_PATH, cmd);
-            if (ret) LOGE("IP route %s got %d", cmd, ret);
+            if (ret) ALOGE("IP route %s got %d", cmd, ret);
         }
         runCmd(IP_PATH, "route flush cache");
     }
@@ -150,7 +150,7 @@ int NatController::enableNat(const int argc, char **argv) {
             }
             runCmd(IP_PATH, "route flush cache");
         }
-        LOGE("Error setting forward rules");
+        ALOGE("Error setting forward rules");
         errno = ENODEV;
         return -1;
     }
@@ -160,7 +160,7 @@ int NatController::enableNat(const int argc, char **argv) {
     if (natCount == 1) {
         snprintf(cmd, sizeof(cmd), "-t nat -A POSTROUTING -o %s -j MASQUERADE", extIface);
         if (runCmd(IPTABLES_PATH, cmd)) {
-            LOGE("Error seting postroute rule: %s", cmd);
+            ALOGE("Error seting postroute rule: %s", cmd);
             // unwind what's been done, but don't care about success - what more could we do?
             for (i = 0; i < addrCount; i++) {
                 snprintf(cmd, sizeof(cmd), "route del %s dev %s table %d", argv[5+i], intIface,
@@ -232,13 +232,13 @@ int NatController::disableNat(const int argc, char **argv) {
     int tableNumber;
 
     if (!checkInterface(intIface) || !checkInterface(extIface)) {
-        LOGE("Invalid interface specified");
+        ALOGE("Invalid interface specified");
         errno = ENODEV;
         return -1;
     }
 
     if (argc < 5 + addrCount) {
-        LOGE("Missing Argument");
+        ALOGE("Missing Argument");
         errno = EINVAL;
         return -1;
     }

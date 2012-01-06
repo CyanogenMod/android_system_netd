@@ -63,12 +63,12 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
     nladdr.nl_groups = groups;
 
     if ((*sock = socket(PF_NETLINK, SOCK_DGRAM, netlinkFamily)) < 0) {
-        LOGE("Unable to create netlink socket: %s", strerror(errno));
+        ALOGE("Unable to create netlink socket: %s", strerror(errno));
         return NULL;
     }
 
     if (setsockopt(*sock, SOL_SOCKET, SO_RCVBUFFORCE, &sz, sizeof(sz)) < 0) {
-        LOGE("Unable to set uevent socket SO_RCVBUFFORCE option: %s", strerror(errno));
+        ALOGE("Unable to set uevent socket SO_RCVBUFFORCE option: %s", strerror(errno));
         close(*sock);
         return NULL;
     }
@@ -80,14 +80,14 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
     }
 
     if (bind(*sock, (struct sockaddr *) &nladdr, sizeof(nladdr)) < 0) {
-        LOGE("Unable to bind netlink socket: %s", strerror(errno));
+        ALOGE("Unable to bind netlink socket: %s", strerror(errno));
         close(*sock);
         return NULL;
     }
 
     NetlinkHandler *handler = new NetlinkHandler(this, *sock, format);
     if (handler->start()) {
-        LOGE("Unable to start NetlinkHandler: %s", strerror(errno));
+        ALOGE("Unable to start NetlinkHandler: %s", strerror(errno));
         close(*sock);
         return NULL;
     }
@@ -108,7 +108,7 @@ int NetlinkManager::start() {
 
     if ((mQuotaHandler = setupSocket(&mQuotaSock, NETLINK_NFLOG,
         NFLOG_QUOTA_GROUP, NetlinkListener::NETLINK_FORMAT_BINARY)) == NULL) {
-        LOGE("Unable to open quota2 logging socket");
+        ALOGE("Unable to open quota2 logging socket");
         // TODO: return -1 once the emulator gets a new kernel.
     }
     return 0;
@@ -118,7 +118,7 @@ int NetlinkManager::stop() {
     int status = 0;
 
     if (mUeventHandler->stop()) {
-        LOGE("Unable to stop uevent NetlinkHandler: %s", strerror(errno));
+        ALOGE("Unable to stop uevent NetlinkHandler: %s", strerror(errno));
         status = -1;
     }
 
@@ -129,7 +129,7 @@ int NetlinkManager::stop() {
     mUeventSock = -1;
 
     if (mRouteHandler->stop()) {
-        LOGE("Unable to stop route NetlinkHandler: %s", strerror(errno));
+        ALOGE("Unable to stop route NetlinkHandler: %s", strerror(errno));
         status = -1;
     }
 
@@ -141,7 +141,7 @@ int NetlinkManager::stop() {
 
     if (mQuotaHandler) {
         if (mQuotaHandler->stop()) {
-            LOGE("Unable to stop quota NetlinkHandler: %s", strerror(errno));
+            ALOGE("Unable to stop quota NetlinkHandler: %s", strerror(errno));
             status = -1;
         }
 

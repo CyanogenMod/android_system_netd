@@ -64,12 +64,12 @@ int TetherController::setIpFwdEnabled(bool enable) {
 
     int fd = open("/proc/sys/net/ipv4/ip_forward", O_WRONLY);
     if (fd < 0) {
-        LOGE("Failed to open ip_forward (%s)", strerror(errno));
+        ALOGE("Failed to open ip_forward (%s)", strerror(errno));
         return -1;
     }
 
     if (write(fd, (enable ? "1" : "0"), 1) != 1) {
-        LOGE("Failed to write ip_forward (%s)", strerror(errno));
+        ALOGE("Failed to write ip_forward (%s)", strerror(errno));
         close(fd);
         return -1;
     }
@@ -81,13 +81,13 @@ bool TetherController::getIpFwdEnabled() {
     int fd = open("/proc/sys/net/ipv4/ip_forward", O_RDONLY);
 
     if (fd < 0) {
-        LOGE("Failed to open ip_forward (%s)", strerror(errno));
+        ALOGE("Failed to open ip_forward (%s)", strerror(errno));
         return false;
     }
 
     char enabled;
     if (read(fd, &enabled, 1) != 1) {
-        LOGE("Failed to read ip_forward (%s)", strerror(errno));
+        ALOGE("Failed to read ip_forward (%s)", strerror(errno));
         close(fd);
         return -1;
     }
@@ -98,7 +98,7 @@ bool TetherController::getIpFwdEnabled() {
 
 int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
     if (mDaemonPid != 0) {
-        LOGE("Tethering already started");
+        ALOGE("Tethering already started");
         errno = EBUSY;
         return -1;
     }
@@ -109,7 +109,7 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
     int pipefd[2];
 
     if (pipe(pipefd) < 0) {
-        LOGE("pipe failed (%s)", strerror(errno));
+        ALOGE("pipe failed (%s)", strerror(errno));
         return -1;
     }
 
@@ -118,7 +118,7 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
      * the daemon if it exits prematurely
      */
     if ((pid = fork()) < 0) {
-        LOGE("fork failed (%s)", strerror(errno));
+        ALOGE("fork failed (%s)", strerror(errno));
         close(pipefd[0]);
         close(pipefd[1]);
         return -1;
@@ -128,7 +128,7 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
         close(pipefd[1]);
         if (pipefd[0] != STDIN_FILENO) {
             if (dup2(pipefd[0], STDIN_FILENO) != STDIN_FILENO) {
-                LOGE("dup2 failed (%s)", strerror(errno));
+                ALOGE("dup2 failed (%s)", strerror(errno));
                 return -1;
             }
             close(pipefd[0]);
@@ -150,9 +150,9 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
         }
 
         if (execv(args[0], args)) {
-            LOGE("execl failed (%s)", strerror(errno));
+            ALOGE("execl failed (%s)", strerror(errno));
         }
-        LOGE("Should never get here!");
+        ALOGE("Should never get here!");
         free(args);
         return 0;
     } else {
@@ -168,7 +168,7 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
 int TetherController::stopTethering() {
 
     if (mDaemonPid == 0) {
-        LOGE("Tethering already stopped");
+        ALOGE("Tethering already stopped");
         return 0;
     }
 
@@ -203,7 +203,7 @@ int TetherController::setDnsForwarders(char **servers, int numServers) {
         struct in_addr a;
 
         if (!inet_aton(servers[i], &a)) {
-            LOGE("Failed to parse DNS server '%s'", servers[i]);
+            ALOGE("Failed to parse DNS server '%s'", servers[i]);
             mDnsForwarders->clear();
             return -1;
         }
@@ -222,7 +222,7 @@ int TetherController::setDnsForwarders(char **servers, int numServers) {
     if (mDaemonFd != -1) {
         ALOGD("Sending update msg to dnsmasq [%s]", daemonCmd);
         if (write(mDaemonFd, daemonCmd, strlen(daemonCmd) +1) < 0) {
-            LOGE("Failed to send update command to dnsmasq (%s)", strerror(errno));
+            ALOGE("Failed to send update command to dnsmasq (%s)", strerror(errno));
             mDnsForwarders->clear();
             return -1;
         }
