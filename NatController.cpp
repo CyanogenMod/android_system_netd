@@ -87,7 +87,7 @@ int NatController::setDefaults() {
 }
 
 bool NatController::checkInterface(const char *iface) {
-    if (strlen(iface) > MAX_IFACE_LENGTH) return false;
+    if (strlen(iface) > IFNAMSIZ) return false;
     return true;
 }
 
