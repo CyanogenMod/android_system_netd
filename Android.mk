@@ -29,6 +29,7 @@ LOCAL_C_INCLUDES := $(KERNEL_HEADERS) \
                     external/openssl/include \
                     external/stlport/stlport \
                     bionic \
+                    bionic/libc/private \
                     $(call include-path-for, libhardware_legacy)/hardware_legacy
 
 LOCAL_CFLAGS :=

@@ -20,7 +20,10 @@
 #include <cutils/log.h>
 
 #include <linux/if.h>
-#include <resolv.h>
+
+// NOTE: <resolv_iface.h> is a private C library header that provides
+//       declarations for _resolv_set_default_iface() and others.
+#include <resolv_iface.h>
 
 #include "ResolverController.h"
 
