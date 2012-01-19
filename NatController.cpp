@@ -29,6 +29,7 @@
 
 #include "NatController.h"
 #include "SecondaryTableController.h"
+#include "oem_iptables_hook.h"
 
 extern "C" int system_nosh(const char *command);
 
@@ -82,6 +83,8 @@ int NatController::setDefaults() {
     runCmd(IP_PATH, "route flush cache");
 
     natCount = 0;
+
+    setupOemIptablesHook();
     return 0;
 }
 
@@ -263,13 +266,8 @@ int NatController::disableNat(const int argc, char **argv) {
     }
 
     if (--natCount <= 0) {
-        char bootmode[PROPERTY_VALUE_MAX] = {0};
-        property_get("ro.bootmode", bootmode, "unknown");
-        if (0 != strcmp("bp-tools", bootmode)) {
-            // handle decrement to 0 case (do reset to defaults) and erroneous dec below 0
-            setDefaults();
-        }
-        natCount = 0;
+        // handle decrement to 0 case (do reset to defaults) and erroneous dec below 0
+        setDefaults();
     }
     return 0;
 }
