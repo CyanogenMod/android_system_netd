@@ -41,6 +41,10 @@
 
 #include "SoftapController.h"
 
+#ifndef HOSTAPD_DRIVER_NAME
+#define HOSTAPD_DRIVER_NAME "nl80211"
+#endif
+
 static const char HOSTAPD_CONF_FILE[]    = "/data/misc/wifi/hostapd.conf";
 
 SoftapController::SoftapController() {
@@ -292,7 +296,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         ssid = (char *)"AndroidAP";
     }
 
-    asprintf(&wbuf, "interface=%s\ndriver=nl80211\nctrl_interface="
+    asprintf(&wbuf, "interface=%s\ndriver=" HOSTAPD_DRIVER_NAME "\nctrl_interface="
             "/data/misc/wifi/hostapd\nssid=%s\nchannel=6\n", iface, ssid);
 
     if (argc > 5) {
