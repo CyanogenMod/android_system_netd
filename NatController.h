@@ -40,7 +40,6 @@ private:
     int runCmd(const char *path, const char *cmd);
     bool checkInterface(const char *iface);
     int setForwardRules(bool set, const char *intIface, const char *extIface);
-    const char *getVersion(const char *addr);
 };
 
 #endif

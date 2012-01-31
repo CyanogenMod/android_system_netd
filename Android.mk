@@ -8,6 +8,7 @@ LOCAL_SRC_FILES:=                                      \
                   DnsProxyListener.cpp                 \
                   NatController.cpp                    \
                   NetdCommand.cpp                      \
+                  NetdConstants.cpp                    \
                   NetlinkHandler.cpp                   \
                   NetlinkManager.cpp                   \
                   PanController.cpp                    \
