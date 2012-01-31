@@ -44,6 +44,9 @@ LOCAL_SHARED_LIBRARIES := libstlport libsysutils libcutils libnetutils \
 
 ifneq ($(BOARD_HOSTAPD_DRIVER),)
   LOCAL_CFLAGS += -DHAVE_HOSTAPD
+  ifneq ($(BOARD_HOSTAPD_DRIVER_NAME),)
+    LOCAL_CFLAGS += -DHOSTAPD_DRIVER_NAME=\"$(BOARD_HOSTAPD_DRIVER_NAME)\"
+  endif
 endif
 
 ifeq ($(BOARD_HAVE_BLUETOOTH),true)
