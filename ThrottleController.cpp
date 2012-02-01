@@ -33,8 +33,7 @@
 
 
 #include "ThrottleController.h"
-
-static char TC_PATH[] = "/system/bin/tc";
+#include "NetdConstants.h"
 
 extern "C" int system_nosh(const char *command);
 extern "C" int ifc_init(void);

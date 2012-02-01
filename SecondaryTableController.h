@@ -33,13 +33,18 @@ public:
     int addRoute(SocketClient *cli, char *iface, char *dest, int prefixLen, char *gateway);
     int removeRoute(SocketClient *cli, char *iface, char *dest, int prefixLen, char *gateway);
     int findTableNumber(const char *iface);
+    int modifyFromRule(int tableIndex, const char *action, const char *addr);
+    int modifyLocalRoute(int tableIndex, const char *action, const char *iface, const char *addr);
 
 private:
-    int modifyRoute(SocketClient *cli, char *action, char *iface, char *dest, int prefix,
+    int modifyRoute(SocketClient *cli, const char *action, char *iface, char *dest, int prefix,
             char *gateway, int tableIndex);
 
     char mInterfaceTable[INTERFACES_TRACKED][MAX_IFACE_LENGTH];
     int mInterfaceRuleCount[INTERFACES_TRACKED];
+    void modifyRuleCount(int tableIndex, const char *action);
+    int verifyTableIndex(int tableIndex);
+    const char *getVersion(const char *addr);
 
     int runAndFree(SocketClient *cli, char *cmd);
 };

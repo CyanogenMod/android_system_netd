@@ -30,11 +30,9 @@
 #include "NatController.h"
 #include "SecondaryTableController.h"
 #include "oem_iptables_hook.h"
+#include "NetdConstants.h"
 
 extern "C" int system_nosh(const char *command);
-
-static char IPTABLES_PATH[] = "/system/bin/iptables";
-static char IP_PATH[] = "/system/bin/ip";
 
 NatController::NatController(SecondaryTableController *ctrl) {
     secondaryTableCtrl = ctrl;
@@ -93,14 +91,6 @@ bool NatController::checkInterface(const char *iface) {
     return true;
 }
 
-const char *NatController::getVersion(const char *addr) {
-    if (strchr(addr, ':') != NULL) {
-        return "-6";
-    } else {
-        return "-4";
-    }
-}
-
 //  0    1       2       3       4            5
 // nat enable intface extface addrcnt nated-ipaddr/prelength
 int NatController::enableNat(const int argc, char **argv) {
@@ -126,16 +116,10 @@ int NatController::enableNat(const int argc, char **argv) {
 
     tableNumber = secondaryTableCtrl->findTableNumber(extIface);
     if (tableNumber != -1) {
-        for(i = 0; i < addrCount && ret == 0; i++) {
-            snprintf(cmd, sizeof(cmd), "%s rule add from %s table %d", getVersion(argv[5+i]),
-                    argv[5+i], tableNumber + BASE_TABLE_NUMBER);
-            ret |= runCmd(IP_PATH, cmd);
-            if (ret) ALOGE("IP rule %s got %d", cmd, ret);
+        for(i = 0; i < addrCount; i++) {
+            ret |= secondaryTableCtrl->modifyFromRule(tableNumber, ADD, argv[5+i]);
 
-            snprintf(cmd, sizeof(cmd), "route add %s dev %s table %d", argv[5+i], intIface,
-                    tableNumber + BASE_TABLE_NUMBER);
-            ret |= runCmd(IP_PATH, cmd);
-            if (ret) ALOGE("IP route %s got %d", cmd, ret);
+            ret |= secondaryTableCtrl->modifyLocalRoute(tableNumber, ADD, intIface, argv[5+i]);
         }
         runCmd(IP_PATH, "route flush cache");
     }
@@ -143,13 +127,9 @@ int NatController::enableNat(const int argc, char **argv) {
     if (ret != 0 || setForwardRules(true, intIface, extIface) != 0) {
         if (tableNumber != -1) {
             for (i = 0; i < addrCount; i++) {
-                snprintf(cmd, sizeof(cmd), "route del %s dev %s table %d", argv[5+i], intIface,
-                        tableNumber + BASE_TABLE_NUMBER);
-                runCmd(IP_PATH, cmd);
+                secondaryTableCtrl->modifyLocalRoute(tableNumber, DEL, intIface, argv[5+i]);
 
-                snprintf(cmd, sizeof(cmd), "%s rule del from %s table %d", getVersion(argv[5+i]),
-                        argv[5+i], tableNumber + BASE_TABLE_NUMBER);
-                runCmd(IP_PATH, cmd);
+                secondaryTableCtrl->modifyFromRule(tableNumber, DEL, argv[5+i]);
             }
             runCmd(IP_PATH, "route flush cache");
         }
@@ -166,9 +146,9 @@ int NatController::enableNat(const int argc, char **argv) {
             ALOGE("Error seting postroute rule: %s", cmd);
             // unwind what's been done, but don't care about success - what more could we do?
             for (i = 0; i < addrCount; i++) {
-                snprintf(cmd, sizeof(cmd), "route del %s dev %s table %d", argv[5+i], intIface,
-                        tableNumber + BASE_TABLE_NUMBER);
-                runCmd(IP_PATH, cmd);
+                secondaryTableCtrl->modifyLocalRoute(tableNumber, DEL, intIface, argv[5+i]);
+
+                secondaryTableCtrl->modifyFromRule(tableNumber, DEL, argv[5+i]);
             }
             setDefaults();
             return -1;
@@ -251,15 +231,9 @@ int NatController::disableNat(const int argc, char **argv) {
     tableNumber = secondaryTableCtrl->findTableNumber(extIface);
     if (tableNumber != -1) {
         for (i = 0; i < addrCount; i++) {
-            snprintf(cmd, sizeof(cmd), "route del %s dev %s table %d", argv[5+i], intIface,
-                    tableNumber + BASE_TABLE_NUMBER);
-            // if the interface has gone down these will be gone already and give errors
-            // ignore them.
-            runCmd(IP_PATH, cmd);
+            secondaryTableCtrl->modifyLocalRoute(tableNumber, DEL, intIface, argv[5+i]);
 
-            snprintf(cmd, sizeof(cmd), "%s rule del from %s table %d", getVersion(argv[5+i]),
-                    argv[5+i], tableNumber + BASE_TABLE_NUMBER);
-            runCmd(IP_PATH, cmd);
+            secondaryTableCtrl->modifyFromRule(tableNumber, DEL, argv[5+i]);
         }
 
         runCmd(IP_PATH, "route flush cache");

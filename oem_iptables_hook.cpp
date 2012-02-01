@@ -24,11 +24,10 @@
 
 #define LOG_TAG "OemIptablesHook"
 #include <cutils/log.h>
+#include "NetdConstants.h"
 
 extern "C" int system_nosh(const char *command);
 
-static char IPTABLES_PATH[] = "/system/bin/iptables";
-static char OEM_SCRIPT_PATH[] = "/system/bin/oem-iptables-init.sh";
 
 static int runIptablesCmd(const char *cmd) {
     char *buffer;
