@@ -52,7 +52,7 @@ SecondaryTableController::~SecondaryTableController() {
 int SecondaryTableController::findTableNumber(const char *iface) {
     int i;
     for (i = 0; i < INTERFACES_TRACKED; i++) {
-        if (strncmp(iface, mInterfaceTable[i], MAX_IFACE_LENGTH) == 0) {
+        if (strncmp(iface, mInterfaceTable[i], IFNAMSIZ) == 0) {
             return i;
         }
     }
@@ -70,7 +70,9 @@ int SecondaryTableController::addRoute(SocketClient *cli, char *iface, char *des
             cli->sendMsg(ResponseCode::OperationFailed, "Max number NATed", true);
             return -1;
         }
-        strncpy(mInterfaceTable[tableIndex], iface, MAX_IFACE_LENGTH);
+        strncpy(mInterfaceTable[tableIndex], iface, IFNAMSIZ);
+        // Ensure null termination even if truncation happened
+        mInterfaceTable[tableIndex][IFNAMSIZ] = 0;
     }
 
     return modifyRoute(cli, ADD, iface, dest, prefix, gateway, tableIndex);
