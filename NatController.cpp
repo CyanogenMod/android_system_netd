@@ -73,6 +73,9 @@ int NatController::setDefaults() {
     if (runCmd(IPTABLES_PATH, "-t nat -F"))
         return -1;
 
+    // May not be supported by kernel, so don't worry about errors.
+    runCmd(IPTABLES_PATH, "-t mangle -F FORWARD");
+
     runCmd(IP_PATH, "rule flush");
     runCmd(IP_PATH, "-6 rule flush");
     runCmd(IP_PATH, "rule add from all lookup default prio 32767");
@@ -170,6 +173,9 @@ int NatController::enableNat(const int argc, char **argv) {
             setDefaults();
             return -1;
         }
+
+        if (runCmd(IPTABLES_PATH, "-t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"))
+            LOGW("Unable to set TCPMSS rule (may not be supported by kernel).");
     }
 
     return 0;
