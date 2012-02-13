@@ -293,7 +293,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
     }
 
     asprintf(&wbuf, "interface=%s\ndriver=nl80211\nctrl_interface="
-            "/data/misc/wifi/hostapd\nssid=%s\nchannel=6\n", iface, ssid);
+            "/data/misc/wifi/hostapd\nssid=%s\nchannel=6\nwmm_enabled=1\n", iface, ssid);
 
     if (argc > 5) {
         if (!strcmp(argv[5], "wpa-psk")) {
