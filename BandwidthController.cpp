@@ -99,7 +99,10 @@ bool BandwidthController::useLogwrapCall = false;
  */
 const char *BandwidthController::IPT_CLEANUP_COMMANDS[] = {
     /* Cleanup rules. */
-    "-F",
+    "-D INPUT -m owner --socket-exists", /* This is a tracking rule. */
+    "-D INPUT -i lo --jump ACCEPT",
+    "-D OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
+    "-D OUTPUT -o lo --jump ACCEPT",
     "-t raw -F",
     /* TODO: If at some point we need more user chains than here, then we will need
      * a different cleanup approach.
@@ -114,13 +117,11 @@ const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
 };
 
 const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
-    "-F INPUT",
-    "-A INPUT -i lo --jump ACCEPT",
-    "-A INPUT -m owner --socket-exists", /* This is a tracking rule. */
+    "-I INPUT -m owner --socket-exists", /* This is a tracking rule. */
+    "-I INPUT -i lo --jump ACCEPT",
 
-    "-F OUTPUT",
-    "-A OUTPUT -o lo --jump ACCEPT",
-    "-A OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
+    "-I OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
+    "-I OUTPUT -o lo --jump ACCEPT",
 
     "-F costly_shared",
     "-A costly_shared --jump penalty_box",
