@@ -152,7 +152,6 @@ private:
     static const char *IPT_BASIC_ACCOUNTING_COMMANDS[];
 
     /* Alphabetical */
-    static const char ALERT_IPT_TEMPLATE[];
     static const int  ALERT_RULE_POS_IN_COSTLY_CHAIN;
     static const char ALERT_GLOBAL_NAME[];
     static const char IP6TABLES_PATH[];
