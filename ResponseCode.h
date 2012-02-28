@@ -44,10 +44,12 @@ public:
     static const int InterfaceTxThrottleResult = 219;
     static const int QuotaCounterResult        = 220;
     static const int TetheringStatsResult      = 221;
+    static const int DnsProxyQueryResult       = 222;
 
     // 400 series - The command was accepted but the requested action
     // did not take place.
-    static const int OperationFailed = 400;
+    static const int OperationFailed           = 400;
+    static const int DnsProxyOperationFailed   = 401;
 
     // 500 series - The command was not accepted and the requested
     // action did not take place.

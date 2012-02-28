@@ -32,6 +32,7 @@
 #include <sysutils/SocketClient.h>
 
 #include "DnsProxyListener.h"
+#include "ResponseCode.h"
 
 DnsProxyListener::DnsProxyListener() :
                  FrameworkListener("dnsproxyd") {
@@ -72,9 +73,12 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     }
 
     struct addrinfo* result = NULL;
-    int rv = getaddrinfo(mHost, mService, mHints, &result);
-    bool success = (mClient->sendData(&rv, sizeof(rv)) == 0);
-    if (rv == 0) {
+    uint32_t rv = getaddrinfo(mHost, mService, mHints, &result);
+    if (rv) {
+        // getaddrinfo failed
+        mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, &rv, sizeof(rv));
+    } else {
+        bool success = !mClient->sendCode(ResponseCode::DnsProxyQueryResult);
         struct addrinfo* ai = result;
         while (ai && success) {
             success = sendLenAndData(mClient, sizeof(struct addrinfo), ai)
@@ -85,12 +89,12 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
             ai = ai->ai_next;
         }
         success = success && sendLenAndData(mClient, 0, "");
+        if (!success) {
+            ALOGW("Error writing DNS result to client");
+        }
     }
     if (result) {
         freeaddrinfo(result);
-    }
-    if (!success) {
-        ALOGW("Error writing DNS result to client");
     }
     mClient->decRef();
 }
@@ -107,8 +111,11 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
         }
     }
     if (argc != 7) {
-        ALOGW("Invalid number of arguments to getaddrinfo: %i", argc);
-        sendLenAndData(cli, 0, NULL);
+        char* msg = NULL;
+        asprintf( &msg, "Invalid number of arguments to getaddrinfo: %i", argc);
+        ALOGW("%s", msg);
+        cli->sendMsg(ResponseCode::CommandParameterError, msg, false);
+        free(msg);
         return -1;
     }
 
@@ -168,9 +175,13 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
             ALOGD("argv[%i]=%s", i, argv[i]);
         }
     }
+
     if (argc != 4) {
-        ALOGW("Invalid number of arguments to gethostbyaddr: %i", argc);
-        sendLenAndData(cli, 0, NULL);
+        char* msg = NULL;
+        asprintf(&msg, "Invalid number of arguments to gethostbyaddr: %i", argc);
+        ALOGW("%s", msg);
+        cli->sendMsg(ResponseCode::CommandParameterError, msg, false);
+        free(msg);
         return -1;
     }
 
@@ -182,9 +193,12 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
     errno = 0;
     int result = inet_pton(addrFamily, addrStr, addr);
     if (result <= 0) {
-        ALOGW("inet_pton(\"%s\") failed %s", addrStr, strerror(errno));
+        char* msg = NULL;
+        asprintf(&msg, "inet_pton(\"%s\") failed %s", addrStr, strerror(errno));
+        ALOGW("%s", msg);
+        cli->sendMsg(ResponseCode::OperationFailed, msg, false);
         free(addr);
-        sendLenAndData(cli, 0, NULL);
+        free(msg);
         return -1;
     }
 
@@ -230,10 +244,18 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
                 (hp && hp->h_name) ? strlen(hp->h_name)+ 1 : 0);
     }
 
-    bool success = sendLenAndData(mClient, (hp && hp->h_name) ? strlen(hp->h_name)+ 1 : 0,
-            (hp && hp->h_name) ? hp->h_name : "");
+    bool failed = true;
+    if (hp) {
+        failed = mClient->sendBinaryMsg(ResponseCode::DnsProxyQueryResult,
+                                        hp->h_name ? hp->h_name : "",
+                                        hp->h_name ? strlen(hp->h_name)+ 1 : 0);
+    } else {
+        uint32_t error = h_errno;
+        failed = mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed,
+                                        &error, sizeof(error));
+    }
 
-    if (!success) {
+    if (failed) {
         ALOGW("GetHostByAddrHandler: Error writing DNS result to client\n");
     }
     mClient->decRef();
