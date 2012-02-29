@@ -52,7 +52,8 @@ SecondaryTableController::~SecondaryTableController() {
 int SecondaryTableController::findTableNumber(const char *iface) {
     int i;
     for (i = 0; i < INTERFACES_TRACKED; i++) {
-        if (strncmp(iface, mInterfaceTable[i], IFNAMSIZ) == 0) {
+        // compare through the final null, hence +1
+        if (strncmp(iface, mInterfaceTable[i], IFNAMSIZ + 1) == 0) {
             return i;
         }
     }
