@@ -19,8 +19,6 @@
 
 #include <linux/in.h>
 
-#include <utils/List.h>
-
 #include "SecondaryTableController.h"
 
 class NatController {

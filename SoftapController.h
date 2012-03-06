@@ -19,7 +19,6 @@
 
 #include <linux/in.h>
 #include <net/if.h>
-#include <utils/List.h>
 
 #define SOFTAP_MAX_BUFFER_SIZE	4096
 #define AP_BSS_START_DELAY	200000
