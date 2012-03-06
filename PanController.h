@@ -19,8 +19,6 @@
 
 #include <linux/in.h>
 
-#include <utils/List.h>
-
 class PanController {
     pid_t mPid;
 

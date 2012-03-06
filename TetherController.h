@@ -19,10 +19,10 @@
 
 #include <linux/in.h>
 
-#include <utils/List.h>
+#include "List.h"
 
-typedef android::List<char *> InterfaceCollection;
-typedef android::List<struct in_addr> NetAddressCollection;
+typedef android::netd::List<char *> InterfaceCollection;
+typedef android::netd::List<struct in_addr> NetAddressCollection;
 
 class TetherController {
     InterfaceCollection  *mInterfaces;
