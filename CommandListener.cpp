@@ -50,7 +50,7 @@ ResolverController *CommandListener::sResolverCtrl = NULL;
 SecondaryTableController *CommandListener::sSecondaryTableCtrl = NULL;
 
 CommandListener::CommandListener() :
-                 FrameworkListener("netd") {
+                 FrameworkListener("netd", true) {
     registerCmd(new InterfaceCmd());
     registerCmd(new IpFwdCmd());
     registerCmd(new TetherCmd());
