@@ -41,7 +41,7 @@
 #include <cutils/log.h>
 #include <cutils/properties.h>
 
-extern "C" int logwrap(int argc, const char **argv, int background);
+extern "C" int logwrap(int argc, const char **argv);
 extern "C" int system_nosh(const char *command);
 
 #include "BandwidthController.h"
@@ -204,7 +204,7 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
         }
 
         argv[argc] = NULL;
-        res = logwrap(argc, argv, 0);
+        res = logwrap(argc, argv);
     }
     if (res) {
         ALOGE("runIptablesCmd(): failed %s res=%d", fullCmd.c_str(), res);

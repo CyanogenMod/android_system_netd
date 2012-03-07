@@ -103,7 +103,7 @@ void child(int argc, const char**argv) {
     _exit(1);
 }
 
-int logwrap(int argc, const char* argv[], int background)
+int logwrap(int argc, const char* argv[])
 {
     pid_t pid;
 
@@ -146,22 +146,6 @@ int logwrap(int argc, const char* argv[], int background)
         dup2(child_ptty, 1);
         dup2(child_ptty, 2);
         close(child_ptty);
-
-        if (background) {
-            int fd = open("/dev/cpuctl/bg_non_interactive/tasks", O_WRONLY);
-            if (fd >= 0) {
-                char text[64];
-                sprintf(text, "%d", getpid());
-                if (write(fd, text, strlen(text)) < 0) {
-                    ALOG(LOG_WARN, "logwrapper",
-                        "Unable to background process (%s)", strerror(errno));
-                }
-                close(fd);
-            } else {
-                ALOG(LOG_WARN, "logwrapper",
-                    "Unable to background process (%s)", strerror(errno));
-            }
-        }
 
         child(argc, argv);
     } else {

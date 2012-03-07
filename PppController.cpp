@@ -34,8 +34,6 @@
 
 #include "PppController.h"
 
-extern "C" int logwrap(int argc, const char **argv, int background);
-
 PppController::PppController() {
     mTtys = new TtyCollection();
     mPid = 0;
