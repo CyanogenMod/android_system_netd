@@ -200,7 +200,7 @@ int system_nosh(const char *command)
      * The command to argp splitting is from code that was
      * reverted in Change: 11b4e9b2
      */
-    if (strnlen(buffer, sizeof(buffer) - 1) == sizeof(buffer) - 1) {
+    if (strnlen(command, sizeof(buffer) - 1) == sizeof(buffer) - 1) {
         LOGE("command line too long while processing: %s", command);
         errno = E2BIG;
         return -1;
