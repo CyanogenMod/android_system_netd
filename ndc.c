@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
 }
 
 static int do_cmd(int sock, int argc, char **argv) {
-    char final_cmd[255] = { '\0' };
+    char final_cmd[255] = { '0', ' ', '\0' };
     int i;
 
     for (i = 1; i < argc; i++) {
@@ -114,7 +114,7 @@ static int do_monitor(int sock, int stop_after_cmd) {
                     return ECONNRESET;
                 return errno;
             }
-            
+
             int offset = 0;
             int i = 0;
 
