@@ -76,7 +76,9 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     uint32_t rv = getaddrinfo(mHost, mService, mHints, &result);
     if (rv) {
         // getaddrinfo failed
-        mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, &rv, sizeof(rv));
+        // TODO This is temporary. We think there is another bug exposed when we send data here, so
+        // temporarily setting it to 0.
+        mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, &rv, 0);
     } else {
         bool success = !mClient->sendCode(ResponseCode::DnsProxyQueryResult);
         struct addrinfo* ai = result;
@@ -250,9 +252,11 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
                                         hp->h_name ? hp->h_name : "",
                                         hp->h_name ? strlen(hp->h_name)+ 1 : 0);
     } else {
+        // TODO This is temporary. We think there is another bug exposed when we send data here, so 
+        // temporarily setting it to 0.
         uint32_t error = h_errno;
         failed = mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed,
-                                        &error, sizeof(error));
+                                        &error, 0);
     }
 
     if (failed) {
