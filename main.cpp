@@ -36,6 +36,7 @@
 
 static void coldboot(const char *path);
 static void sigchld_handler(int sig);
+static void blockSigpipe();
 
 int main() {
 
@@ -46,6 +47,7 @@ int main() {
     ALOGI("Netd 1.0 starting");
 
 //    signal(SIGCHLD, sigchld_handler);
+    blockSigpipe();
 
     if (!(nm = NetlinkManager::Instance())) {
         ALOGE("Unable to create NetlinkManager");
@@ -135,4 +137,14 @@ static void coldboot(const char *path)
 static void sigchld_handler(int sig) {
     pid_t pid = wait(NULL);
     ALOGD("Child process %d exited", pid);
+}
+
+static void blockSigpipe()
+{
+    sigset_t mask;
+
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGPIPE);
+    if (sigprocmask(SIG_BLOCK, &mask, NULL) != 0)
+        ALOGW("WARNING: SIGPIPE not blocked\n");
 }
