@@ -45,6 +45,7 @@ extern "C" int logwrap(int argc, const char **argv, int background);
 extern "C" int system_nosh(const char *command);
 
 #include "BandwidthController.h"
+#include "oem_iptables_hook.h"
 
 /* Alphabetical */
 const char BandwidthController::ALERT_IPT_TEMPLATE[] = "%s %s %s -m quota2 ! --quota %lld --name %s";
@@ -232,6 +233,8 @@ int BandwidthController::enableBandwidthControl(void) {
     res = runCommands(sizeof(IPT_BASIC_ACCOUNTING_COMMANDS) / sizeof(char*),
             IPT_BASIC_ACCOUNTING_COMMANDS, RunCmdFailureBad);
 
+    setupOemIptablesHook();
+
     return res;
 
 }
@@ -240,6 +243,7 @@ int BandwidthController::disableBandwidthControl(void) {
     /* The IPT_CLEANUP_COMMANDS are allowed to fail. */
     runCommands(sizeof(IPT_CLEANUP_COMMANDS) / sizeof(char*),
             IPT_CLEANUP_COMMANDS, RunCmdFailureOk);
+    setupOemIptablesHook();
     return 0;
 }
 

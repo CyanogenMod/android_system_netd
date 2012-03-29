@@ -17,6 +17,7 @@ LOCAL_SRC_FILES:=                                      \
                   SoftapController.cpp                 \
                   TetherController.cpp                 \
                   ThrottleController.cpp               \
+                  oem_iptables_hook.cpp                \
                   logwrapper.c                         \
                   main.cpp                             \
 

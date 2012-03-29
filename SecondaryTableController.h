@@ -19,6 +19,12 @@
 
 #include <sysutils/FrameworkListener.h>
 
+#include <linux/if.h>
+
+#ifndef IFNAMSIZ
+#define IFNAMSIZ 16
+#endif
+
 static const unsigned int MAX_IFACE_LENGTH = 15;
 static const int INTERFACES_TRACKED = 10;
 static const int BASE_TABLE_NUMBER = 60;
@@ -38,7 +44,7 @@ private:
     int modifyRoute(SocketClient *cli, char *action, char *iface, char *dest, int prefix,
             char *gateway, int tableIndex);
 
-    char mInterfaceTable[INTERFACES_TRACKED][MAX_IFACE_LENGTH];
+    char mInterfaceTable[INTERFACES_TRACKED][IFNAMSIZ + 1];
     int mInterfaceRuleCount[INTERFACES_TRACKED];
 
     int runAndFree(SocketClient *cli, char *cmd);
