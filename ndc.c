@@ -37,20 +37,31 @@ static int do_cmd(int sock, int argc, char **argv);
 
 int main(int argc, char **argv) {
     int sock;
+    int cmdOffset = 0;
 
     if (argc < 2)
         usage(argv[0]);
 
-    if ((sock = socket_local_client("netd",
+    // try interpreting the first arg as the socket name - if it fails go back to netd
+
+    if ((sock = socket_local_client(argv[1],
                                      ANDROID_SOCKET_NAMESPACE_RESERVED,
                                      SOCK_STREAM)) < 0) {
-        fprintf(stderr, "Error connecting (%s)\n", strerror(errno));
-        exit(4);
+        if ((sock = socket_local_client("netd",
+                                         ANDROID_SOCKET_NAMESPACE_RESERVED,
+                                         SOCK_STREAM)) < 0) {
+            fprintf(stderr, "Error connecting (%s)\n", strerror(errno));
+            exit(4);
+        }
+    } else {
+        if (argc < 3) usage(argv[0]);
+        printf("Using alt socket %s\n", argv[1]);
+        cmdOffset = 1;
     }
 
-    if (!strcmp(argv[1], "monitor"))
+    if (!strcmp(argv[1+cmdOffset], "monitor"))
         exit(do_monitor(sock, 0));
-    exit(do_cmd(sock, argc, argv));
+    exit(do_cmd(sock, argc-cmdOffset, &(argv[cmdOffset])));
 }
 
 static int do_cmd(int sock, int argc, char **argv) {
@@ -142,7 +153,6 @@ static int do_monitor(int sock, int stop_after_cmd) {
 }
 
 static void usage(char *progname) {
-    fprintf(stderr, "Usage: %s <monitor>|<cmd> [arg1] [arg2...]\n", progname);
+    fprintf(stderr, "Usage: %s [sockname] <monitor>|<cmd> [arg1] [arg2...]\n", progname);
     exit(1);
 }
-

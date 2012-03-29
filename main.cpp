@@ -33,6 +33,7 @@
 #include "CommandListener.h"
 #include "NetlinkManager.h"
 #include "DnsProxyListener.h"
+#include "MDnsSdListener.h"
 
 static void coldboot(const char *path);
 static void sigchld_handler(int sig);
@@ -43,6 +44,7 @@ int main() {
     CommandListener *cl;
     NetlinkManager *nm;
     DnsProxyListener *dpl;
+    MDnsSdListener *mdnsl;
 
     ALOGI("Netd 1.0 starting");
 
@@ -72,6 +74,11 @@ int main() {
         exit(1);
     }
 
+    mdnsl = new MDnsSdListener();
+    if (mdnsl->startListener()) {
+        ALOGE("Unable to start MDnsSdListener (%s)", strerror(errno));
+        exit(1);
+    }
     /*
      * Now that we're up, we can respond to commands
      */

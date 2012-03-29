@@ -50,6 +50,8 @@ public:
     // did not take place.
     static const int OperationFailed           = 400;
     static const int DnsProxyOperationFailed   = 401;
+    static const int ServiceStartFailed        = 402;
+    static const int ServiceStopFailed         = 403;
 
     // 500 series - The command was not accepted and the requested
     // action did not take place.
@@ -57,9 +59,20 @@ public:
     static const int CommandParameterError = 501;
 
     // 600 series - Unsolicited broadcasts
-    static const int InterfaceChange        = 600;
-    static const int BandwidthControl       = 601;
-    static const int InterfaceActive        = 602;
-    static const int InterfaceIdle          = 603;
+    static const int InterfaceChange                = 600;
+    static const int BandwidthControl               = 601;
+    static const int ServiceDiscoveryFailed         = 602;
+    static const int ServiceDiscoveryServiceAdded   = 603;
+    static const int ServiceDiscoveryServiceRemoved = 604;
+    static const int ServiceRegistrationFailed      = 605;
+    static const int ServiceRegistrationSucceeded   = 606;
+    static const int ServiceResolveFailed           = 607;
+    static const int ServiceResolveSuccess          = 608;
+    static const int ServiceSetHostnameFailed       = 609;
+    static const int ServiceSetHostnameSuccess      = 610;
+    static const int ServiceGetAddrInfoFailed       = 611;
+    static const int ServiceGetAddrInfoSuccess      = 612;
+    static const int InterfaceActive                = 613;
+    static const int InterfaceIdle                  = 614;
 };
 #endif

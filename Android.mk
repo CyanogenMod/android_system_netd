@@ -6,6 +6,7 @@ LOCAL_SRC_FILES:=                                      \
                   BandwidthController.cpp              \
                   CommandListener.cpp                  \
                   DnsProxyListener.cpp                 \
+                  MDnsSdListener.cpp                   \
                   NatController.cpp                    \
                   NetdCommand.cpp                      \
                   NetdConstants.cpp                    \
@@ -28,6 +29,7 @@ LOCAL_MODULE:= netd
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) \
                     $(LOCAL_PATH)/../bluetooth/bluedroid/include \
                     $(LOCAL_PATH)/../bluetooth/bluez-clean-headers \
+                    external/mdnsresponder/mDNSShared \
                     external/openssl/include \
                     external/stlport/stlport \
                     bionic \
@@ -37,7 +39,7 @@ LOCAL_C_INCLUDES := $(KERNEL_HEADERS) \
 LOCAL_CFLAGS := -Werror=format
 
 LOCAL_SHARED_LIBRARIES := libstlport libsysutils libcutils libnetutils \
-                          libcrypto libhardware_legacy
+                          libcrypto libhardware_legacy libmdnssd
 
 ifneq ($(BOARD_HOSTAPD_DRIVER),)
   LOCAL_CFLAGS += -DHAVE_HOSTAPD
