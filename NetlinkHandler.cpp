@@ -72,8 +72,16 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
         const char *alertName = evt->findParam("ALERT_NAME");
         const char *iface = evt->findParam("INTERFACE");
         notifyQuotaLimitReached(alertName, iface);
-    }
+    } else if (!strcmp(subsys, "idletimer")) {
+        int action = evt->getAction();
+        const char *iface = evt->findParam("INTERFACE");
 
+        if (action == evt->NlActionIfaceActive) {
+            notifyInterfaceActivity(iface, true);
+        } else if (action == evt->NlActionIfaceIdle) {
+            notifyInterfaceActivity(iface, false);
+        }
+    }
 }
 
 void NetlinkHandler::notifyInterfaceAdded(const char *name) {
@@ -115,5 +123,15 @@ void NetlinkHandler::notifyQuotaLimitReached(const char *name, const char *iface
     snprintf(msg, sizeof(msg), "limit alert %s %s", name, iface);
 
     mNm->getBroadcaster()->sendBroadcast(ResponseCode::BandwidthControl,
+            msg, false);
+}
+
+void NetlinkHandler::notifyInterfaceActivity(const char *name, bool isActive) {
+    char msg[255];
+
+    snprintf(msg, sizeof(msg), "Iface %s %s", isActive ? "active" : "idle", name);
+
+    mNm->getBroadcaster()->sendBroadcast(isActive ? ResponseCode::InterfaceActive
+            : ResponseCode::InterfaceIdle,
             msg, false);
 }
