@@ -96,14 +96,19 @@ bool TetherController::getIpFwdEnabled() {
     return (enabled  == '1' ? true : false);
 }
 
-int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
+int TetherController::startTethering(int num_addrs, struct in_addr* addrs, int lease_time) {
     if (mDaemonPid != 0) {
         LOGE("Tethering already started");
         errno = EBUSY;
         return -1;
     }
 
-    LOGD("Starting tethering services");
+    if (lease_time <= 0) {
+        LOGE("Invalid lease time %d!\n", lease_time);
+        return -1;
+    }
+
+    LOGD("Starting tethering services, lease_time=%d", lease_time);
 
     pid_t pid;
     int pipefd[2];
@@ -146,7 +151,7 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
         for (int addrIndex=0; addrIndex < num_addrs;) {
             char *start = strdup(inet_ntoa(addrs[addrIndex++]));
             char *end = strdup(inet_ntoa(addrs[addrIndex++]));
-            asprintf(&(args[nextArg++]),"--dhcp-range=%s,%s,1h", start, end);
+            asprintf(&(args[nextArg++]),"--dhcp-range=%s,%s,%d", start, end, lease_time);
         }
 
         if (execv(args[0], args)) {

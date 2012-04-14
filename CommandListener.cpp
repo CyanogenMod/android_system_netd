@@ -529,9 +529,14 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
         }
 
         if (!strcmp(argv[1], "start")) {
+            int lease_time = 0;
             if (argc % 2 == 1) {
-                cli->sendMsg(ResponseCode::CommandSyntaxError, "Bad number of arguments", false);
-                return 0;
+                if (!(lease_time = atoi(argv[argc-1]))) {
+                    cli->sendMsg(ResponseCode::CommandParameterError, "Invalid lease time",
+                        false);
+                    return 0;
+                }
+                argc--;
             }
 
             int num_addrs = argc - 2;
@@ -545,7 +550,10 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
                     return 0;
                 }
             }
-            rc = sTetherCtrl->startTethering(num_addrs, addrs);
+            if (lease_time)
+                rc = sTetherCtrl->startTethering(num_addrs, addrs, lease_time);
+            else
+                rc = sTetherCtrl->startTethering(num_addrs, addrs);
             free(addrs);
         } else if (!strcmp(argv[1], "interface")) {
             if (!strcmp(argv[2], "add")) {
