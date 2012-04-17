@@ -13,17 +13,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef _IDLETIMER_CONTROLLER_H
+#define _IDLETIMER_CONTROLLER_H
 
-#ifndef _NETD_CONSTANTS_H
-#define _NETD_CONSTANTS_H
+class IdletimerController {
+public:
 
+    IdletimerController();
+    virtual ~IdletimerController();
 
-extern const char * const IPTABLES_PATH;
-extern const char * const IP6TABLES_PATH;
-extern const char * const IP_PATH;
-extern const char * const TC_PATH;
-extern const char * const OEM_SCRIPT_PATH;
-extern const char * const ADD;
-extern const char * const DEL;
+    int enableIdletimerControl();
+    int disableIdletimerControl();
+    int addInterfaceIdletimer(const char *iface, uint32_t timeout);
+    int removeInterfaceIdletimer(const char *iface, uint32_t timeout);
+    bool setupIptablesHooks();
+
+ private:
+    enum IptOp { IptOpAdd, IptOpDelete };
+    int setDefaults();
+    int runIpxtablesCmd(const char *cmd);
+    int modifyInterfaceIdletimer(IptOp op, const char *iface, uint32_t timeout);
+};
 
 #endif

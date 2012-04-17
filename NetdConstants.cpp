@@ -18,6 +18,7 @@
 
 const char * const OEM_SCRIPT_PATH = "/system/bin/oem-iptables-init.sh";
 const char * const IPTABLES_PATH = "/system/bin/iptables";
+const char * const IP6TABLES_PATH = "/system/bin/ip6tables";
 const char * const TC_PATH = "/system/bin/tc";
 const char * const IP_PATH = "/system/bin/ip";
 const char * const ADD = "add";

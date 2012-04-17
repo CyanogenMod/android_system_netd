@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// #define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -37,7 +37,9 @@
 #include "ResponseCode.h"
 #include "ThrottleController.h"
 #include "BandwidthController.h"
+#include "IdletimerController.h"
 #include "SecondaryTableController.h"
+#include "oem_iptables_hook.h"
 
 
 TetherController *CommandListener::sTetherCtrl = NULL;
@@ -46,6 +48,7 @@ PppController *CommandListener::sPppCtrl = NULL;
 PanController *CommandListener::sPanCtrl = NULL;
 SoftapController *CommandListener::sSoftapCtrl = NULL;
 BandwidthController * CommandListener::sBandwidthCtrl = NULL;
+IdletimerController * CommandListener::sIdletimerCtrl = NULL;
 ResolverController *CommandListener::sResolverCtrl = NULL;
 SecondaryTableController *CommandListener::sSecondaryTableCtrl = NULL;
 
@@ -60,6 +63,7 @@ CommandListener::CommandListener() :
     registerCmd(new PanCmd());
     registerCmd(new SoftapCmd());
     registerCmd(new BandwidthControlCmd());
+    registerCmd(new IdletimerControlCmd());
     registerCmd(new ResolverCmd());
 
     if (!sSecondaryTableCtrl)
@@ -76,8 +80,34 @@ CommandListener::CommandListener() :
         sSoftapCtrl = new SoftapController();
     if (!sBandwidthCtrl)
         sBandwidthCtrl = new BandwidthController();
+    if (!sIdletimerCtrl)
+        sIdletimerCtrl = new IdletimerController();
     if (!sResolverCtrl)
         sResolverCtrl = new ResolverController();
+
+    /*
+     * This is the only time controllers are allowed to touch
+     * top-level chains in iptables.
+     * Each controller should setup custom chains and hook them into
+     * the top-level ones.
+     * THE ORDER IS IMPORTANT. TRIPPLE CHECK EACH setup function.
+     */
+    /* Does DROP in nat: PREROUTING, FORWARD, OUTPUT */
+    setupOemIptablesHook();
+    /* Does DROPs in FORWARD by default */
+    sNatCtrl->setupIptablesHooks();
+    /*
+     * Does REJECT in INPUT, OUTPUT. Does counting also.
+     * No DROP/REJECT allowed later in netfilter-flow hook order.
+     */
+    sBandwidthCtrl->setupIptablesHooks();
+    /*
+     * Counts in nat: PREROUTING, POSTROUTING.
+     * No DROP/REJECT allowed later in netfilter-flow hook order.
+     */
+    sIdletimerCtrl->setupIptablesHooks();
+
+    sBandwidthCtrl->enableBandwidthControl(false);
 }
 
 CommandListener::InterfaceCmd::InterfaceCmd() :
@@ -908,7 +938,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
     ALOGV("bwctrlcmd: argc=%d %s %s ...", argc, argv[0], argv[1]);
 
     if (!strcmp(argv[1], "enable")) {
-        int rc = sBandwidthCtrl->enableBandwidthControl();
+        int rc = sBandwidthCtrl->enableBandwidthControl(true);
         sendGenericOkFail(cli, rc);
         return 0;
 
@@ -1168,5 +1198,65 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
     }
 
     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown bandwidth cmd", false);
+    return 0;
+}
+
+CommandListener::IdletimerControlCmd::IdletimerControlCmd() :
+    NetdCommand("idletimer") {
+}
+
+int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc, char **argv) {
+  // TODO(ashish): Change the error statements
+    if (argc < 2) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+        return 0;
+    }
+
+    ALOGV("idletimerctrlcmd: argc=%d %s %s ...", argc, argv[0], argv[1]);
+
+    if (!strcmp(argv[1], "enable")) {
+      if (0 != sIdletimerCtrl->enableIdletimerControl()) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+      } else {
+        cli->sendMsg(ResponseCode::CommandOkay, "Enable success", false);
+      }
+      return 0;
+
+    }
+    if (!strcmp(argv[1], "disable")) {
+      if (0 != sIdletimerCtrl->disableIdletimerControl()) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+      } else {
+        cli->sendMsg(ResponseCode::CommandOkay, "Disable success", false);
+      }
+      return 0;
+    }
+    if (!strcmp(argv[1], "add")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+            return 0;
+        }
+        if(0 != sIdletimerCtrl->addInterfaceIdletimer(argv[2], atoi(argv[3]))) {
+          cli->sendMsg(ResponseCode::OperationFailed, "Failed to add interface", false);
+        } else {
+          cli->sendMsg(ResponseCode::CommandOkay,  "Add success", false);
+        }
+        return 0;
+    }
+    if (!strcmp(argv[1], "remove")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+            return 0;
+        }
+        // ashish: fixme timeout
+        if (0 != sIdletimerCtrl->removeInterfaceIdletimer(argv[2], atoi(argv[3]))) {
+          cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove interface", false);
+        } else {
+          cli->sendMsg(ResponseCode::CommandOkay, "Remove success", false);
+        }
+        return 0;
+    }
+
+    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown idletimer cmd", false);
     return 0;
 }

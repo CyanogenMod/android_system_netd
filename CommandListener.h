@@ -26,6 +26,7 @@
 #include "PanController.h"
 #include "SoftapController.h"
 #include "BandwidthController.h"
+#include "IdletimerController.h"
 #include "ResolverController.h"
 #include "SecondaryTableController.h"
 
@@ -36,6 +37,7 @@ class CommandListener : public FrameworkListener {
     static PanController *sPanCtrl;
     static SoftapController *sSoftapCtrl;
     static BandwidthController *sBandwidthCtrl;
+    static IdletimerController *sIdletimerCtrl;
     static ResolverController *sResolverCtrl;
     static SecondaryTableController *sSecondaryTableCtrl;
 
@@ -114,6 +116,13 @@ private:
         void sendGenericOkFail(SocketClient *cli, int cond);
         void sendGenericOpFailed(SocketClient *cli, const char *errMsg);
         void sendGenericSyntaxError(SocketClient *cli, const char *usageMsg);
+    };
+
+    class IdletimerControlCmd : public NetdCommand {
+    public:
+        IdletimerControlCmd();
+        virtual ~IdletimerControlCmd() {}
+        int runCommand(SocketClient *c, int argc, char ** argv);
     };
 
     class ResolverCmd : public NetdCommand {

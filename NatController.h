@@ -29,6 +29,7 @@ public:
 
     int enableNat(const int argc, char **argv);
     int disableNat(const int argc, char **argv);
+    int setupIptablesHooks();
 
 private:
     int natCount;

@@ -46,7 +46,10 @@ public:
     };
 
     BandwidthController();
-    int enableBandwidthControl(void);
+
+    int setupIptablesHooks(void);
+
+    int enableBandwidthControl(bool force);
     int disableBandwidthControl(void);
 
     int setInterfaceSharedQuota(const char *iface, int64_t bytes);
@@ -125,7 +128,7 @@ protected:
      * extraProcessingInfo: contains raw parsed data, and error info.
      */
     static int parseForwardChainStats(TetherStats &stats, FILE *fp,
-				      std::string &extraProcessingInfo);
+                                      std::string &extraProcessingInfo);
 
     /*------------------*/
 
@@ -147,6 +150,7 @@ protected:
     std::list<int /*appUid*/> naughtyAppUids;
 
 private:
+    static const char *IPT_FLUSH_COMMANDS[];
     static const char *IPT_CLEANUP_COMMANDS[];
     static const char *IPT_SETUP_COMMANDS[];
     static const char *IPT_BASIC_ACCOUNTING_COMMANDS[];
@@ -154,8 +158,6 @@ private:
     /* Alphabetical */
     static const int  ALERT_RULE_POS_IN_COSTLY_CHAIN;
     static const char ALERT_GLOBAL_NAME[];
-    static const char IP6TABLES_PATH[];
-    static const char IPTABLES_PATH[];
     static const int  MAX_CMD_ARGS;
     static const int  MAX_CMD_LEN;
     static const int  MAX_IFACENAME_LEN;
