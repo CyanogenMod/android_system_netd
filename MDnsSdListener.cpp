@@ -106,6 +106,7 @@ void MDnsSdListenerDiscoverCallback(DNSServiceRef sdRef, DNSServiceFlags flags,
         if (DBG) ALOGE("discover failure for %d, error= %d", refNumber, errorCode);
     } else {
         int respCode;
+        char *quotedServiceName = SocketClient::quoteArg(serviceName);
         if (flags & kDNSServiceFlagsAdd) {
             if (VDBG) {
                 ALOGD("Discover found new serviceName %s, regType %s and domain %s for %d",
@@ -119,7 +120,8 @@ void MDnsSdListenerDiscoverCallback(DNSServiceRef sdRef, DNSServiceFlags flags,
             }
             respCode = ResponseCode::ServiceDiscoveryServiceRemoved;
         }
-        asprintf(&msg, "%d %s %s %s", refNumber, serviceName, regType, replyDomain);
+        asprintf(&msg, "%d %s %s %s", refNumber, quotedServiceName, regType, replyDomain);
+        free(quotedServiceName);
         context->mListener->sendBroadcast(respCode, msg, false);
     }
     free(msg);
@@ -195,7 +197,9 @@ void MDnsSdListenerRegisterCallback(DNSServiceRef sdRef, DNSServiceFlags flags,
         context->mListener->sendBroadcast(ResponseCode::ServiceRegistrationFailed, msg, false);
         if (DBG) ALOGE("register failure for %d, error= %d", refNumber, errorCode);
     } else {
-        asprintf(&msg, "%d %s", refNumber, serviceName);
+        char *quotedServiceName = SocketClient::quoteArg(serviceName);
+        asprintf(&msg, "%d %s", refNumber, quotedServiceName);
+        free(quotedServiceName);
         context->mListener->sendBroadcast(ResponseCode::ServiceRegistrationSucceeded, msg, false);
         if (VDBG) ALOGD("register succeeded for %d as %s", refNumber, serviceName);
     }
@@ -248,7 +252,11 @@ void MDnsSdListenerResolveCallback(DNSServiceRef sdRef, DNSServiceFlags flags, u
         context->mListener->sendBroadcast(ResponseCode::ServiceResolveFailed, msg, false);
         if (DBG) ALOGE("resolve failure for %d, error= %d", refNumber, errorCode);
     } else {
-        asprintf(&msg, "%d %s %s %d %d", refNumber, fullname, hosttarget, port, txtLen);
+        char *quotedFullName = SocketClient::quoteArg(fullname);
+        char *quotedHostTarget = SocketClient::quoteArg(hosttarget);
+        asprintf(&msg, "%d %s %s %d %d", refNumber, quotedFullName, quotedHostTarget, port, txtLen);
+        free(quotedFullName);
+        free(quotedHostTarget);
         context->mListener->sendBroadcast(ResponseCode::ServiceResolveSuccess, msg, false);
         if (VDBG) {
             ALOGD("resolve succeeded for %d finding %s at %s:%d with txtLen %d",
@@ -302,12 +310,14 @@ void MDnsSdListenerGetAddrInfoCallback(DNSServiceRef sdRef, DNSServiceFlags flag
     } else {
         char addr[INET6_ADDRSTRLEN];
         char *msg;
+        char *quotedHostname = SocketClient::quoteArg(hostname);
         if (sa->sa_family == AF_INET) {
             inet_ntop(sa->sa_family, &(((struct sockaddr_in *)sa)->sin_addr), addr, sizeof(addr));
         } else {
             inet_ntop(sa->sa_family, &(((struct sockaddr_in6 *)sa)->sin6_addr), addr, sizeof(addr));
         }
-        asprintf(&msg, "%d %s %d %s", refNumber, hostname, ttl, addr);
+        asprintf(&msg, "%d %s %d %s", refNumber, quotedHostname, ttl, addr);
+        free(quotedHostname);
         context->mListener->sendBroadcast(ResponseCode::ServiceGetAddrInfoSuccess, msg, false);
         if (VDBG) {
             ALOGD("getAddrInfo succeeded for %d: %s", refNumber, msg);
@@ -353,7 +363,9 @@ void MDnsSdListenerSetHostnameCallback(DNSServiceRef sdRef, DNSServiceFlags flag
         context->mListener->sendBroadcast(ResponseCode::ServiceSetHostnameFailed, msg, false);
         if (DBG) ALOGE("setHostname failure for %d, error= %d", refNumber, errorCode);
     } else {
-        asprintf(&msg, "%d %s", refNumber, hostname);
+        char *quotedHostname = SocketClient::quoteArg(hostname);
+        asprintf(&msg, "%d %s", refNumber, quotedHostname);
+        free(quotedHostname);
         context->mListener->sendBroadcast(ResponseCode::ServiceSetHostnameSuccess, msg, false);
         if (VDBG) ALOGD("setHostname succeeded for %d.  Set to %s", refNumber, hostname);
     }
