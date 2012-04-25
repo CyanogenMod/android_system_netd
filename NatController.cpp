@@ -37,9 +37,6 @@ extern "C" int system_nosh(const char *command);
 
 NatController::NatController(SecondaryTableController *ctrl) {
     secondaryTableCtrl = ctrl;
-
-    setupIptablesHooks();
-    setDefaults();
 }
 
 NatController::~NatController() {
@@ -88,6 +85,7 @@ int NatController::setupIptablesHooks() {
     if (runCmd(IPTABLES_PATH, "-t nat -A POSTROUTING -j natctrl_nat_POSTROUTING"))
         return -1;
 
+    setDefaults();
     return 0;
 }
 
@@ -231,10 +229,6 @@ int NatController::setForwardRules(bool add, const char *intIface, const char * 
         runCmd(IPTABLES_PATH, cmd);
         return -1;
     }
-
-    snprintf(cmd, sizeof(cmd), "-%s natctrl_FORWARD -j DROP", (add ? "A" : "D"),
-            intIface, extIface);
-    runCmd(IPTABLES_PATH, cmd);
 
     return 0;
 }
