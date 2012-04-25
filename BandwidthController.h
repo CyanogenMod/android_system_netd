@@ -96,7 +96,11 @@ protected:
     enum NaughtyAppOp { NaughtyAppOpAdd, NaughtyAppOpRemove };
     enum QuotaType { QuotaUnique, QuotaShared };
     enum RunCmdErrHandling { RunCmdFailureBad, RunCmdFailureOk };
-
+#if LOG_NDEBUG
+    enum IptFailureLog { IptFailShow, IptFailHide };
+#else
+    enum IptFailureLog { IptFailShow, IptFailHide = IptFailShow };
+#endif
     int maninpulateNaughtyApps(int numUids, char *appStrUids[], NaughtyAppOp appOp);
 
     int prepCostlyIface(const char *ifn, QuotaType quotaType);
@@ -111,8 +115,11 @@ protected:
     /* Runs for both ipv4 and ipv6 iptables */
     int runCommands(int numCommands, const char *commands[], RunCmdErrHandling cmdErrHandling);
     /* Runs for both ipv4 and ipv6 iptables, appends -j REJECT --reject-with ...  */
-    static int runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling);
-    static int runIptablesCmd(const char *cmd, IptRejectOp rejectHandling, IptIpVer iptIpVer);
+    static int runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling,
+                               IptFailureLog failureHandling = IptFailShow);
+    static int runIptablesCmd(const char *cmd, IptRejectOp rejectHandling, IptIpVer iptIpVer,
+                              IptFailureLog failureHandling = IptFailShow);
+
 
     // Provides strncpy() + check overflow.
     static int StrncpyAndCheck(char *buffer, const char *src, size_t buffSize);
