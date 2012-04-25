@@ -155,12 +155,13 @@ BandwidthController::BandwidthController(void) {
     useLogwrapCall = !strcmp(value, "1");
 }
 
-int BandwidthController::runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling) {
+int BandwidthController::runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling,
+                                         IptFailureLog failureHandling) {
     int res = 0;
 
     ALOGV("runIpxtablesCmd(cmd=%s)", cmd);
-    res |= runIptablesCmd(cmd, rejectHandling, IptIpV4);
-    res |= runIptablesCmd(cmd, rejectHandling, IptIpV6);
+    res |= runIptablesCmd(cmd, rejectHandling, IptIpV4, failureHandling);
+    res |= runIptablesCmd(cmd, rejectHandling, IptIpV6, failureHandling);
     return res;
 }
 
@@ -172,7 +173,7 @@ int BandwidthController::StrncpyAndCheck(char *buffer, const char *src, size_t b
 }
 
 int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandling,
-                                        IptIpVer iptVer) {
+                                        IptIpVer iptVer, IptFailureLog failureHandling) {
     char buffer[MAX_CMD_LEN];
     const char *argv[MAX_CMD_ARGS];
     int argc = 0;
@@ -217,7 +218,7 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
         argv[argc] = NULL;
         res = logwrap(argc, argv);
     }
-    if (res) {
+    if (res && failureHandling == IptFailShow) {
         ALOGE("runIptablesCmd(): failed %s res=%d", fullCmd.c_str(), res);
     }
     return res;
@@ -276,9 +277,13 @@ int BandwidthController::disableBandwidthControl(void) {
 int BandwidthController::runCommands(int numCommands, const char *commands[],
                                      RunCmdErrHandling cmdErrHandling) {
     int res = 0;
+    IptFailureLog failureLogging = IptFailShow;
+    if (cmdErrHandling == RunCmdFailureOk) {
+        failureLogging = IptFailHide;
+    }
     ALOGV("runCommands(): %d commands", numCommands);
     for (int cmdNum = 0; cmdNum < numCommands; cmdNum++) {
-        res = runIpxtablesCmd(commands[cmdNum], IptRejectNoAdd);
+        res = runIpxtablesCmd(commands[cmdNum], IptRejectNoAdd, failureLogging);
         if (res && cmdErrHandling != RunCmdFailureOk)
             return res;
     }
@@ -410,9 +415,9 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
          * This helps with netd restarts.
          */
         snprintf(cmd, sizeof(cmd), "-F %s", costCString);
-        res1 = runIpxtablesCmd(cmd, IptRejectNoAdd);
+        res1 = runIpxtablesCmd(cmd, IptRejectNoAdd, IptFailHide);
         snprintf(cmd, sizeof(cmd), "-N %s", costCString);
-        res2 = runIpxtablesCmd(cmd, IptRejectNoAdd);
+        res2 = runIpxtablesCmd(cmd, IptRejectNoAdd, IptFailHide);
         res = (res1 && res2) || (!res1 && !res2);
 
         snprintf(cmd, sizeof(cmd), "-A %s -j penalty_box", costCString);
@@ -434,13 +439,13 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
     }
 
     snprintf(cmd, sizeof(cmd), "-D bw_INPUT -i %s --jump %s", ifn, costCString);
-    runIpxtablesCmd(cmd, IptRejectNoAdd);
+    runIpxtablesCmd(cmd, IptRejectNoAdd, IptFailHide);
 
     snprintf(cmd, sizeof(cmd), "-I bw_INPUT %d -i %s --jump %s", ruleInsertPos, ifn, costCString);
     res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
 
     snprintf(cmd, sizeof(cmd), "-D bw_OUTPUT -o %s --jump %s", ifn, costCString);
-    runIpxtablesCmd(cmd, IptRejectNoAdd);
+    runIpxtablesCmd(cmd, IptRejectNoAdd, IptFailHide);
 
     snprintf(cmd, sizeof(cmd), "-I bw_OUTPUT %d -o %s --jump %s", ruleInsertPos, ifn, costCString);
     res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
