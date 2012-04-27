@@ -1100,12 +1100,12 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
         return -1;
     }
 
-    asprintf(&alertName, "%sAlert", costName);
     if (!*alertBytes) {
         ALOGE("No prior alert set for %s alert", costName);
         return -1;
     }
 
+    asprintf(&alertName, "%sAlert", costName);
     asprintf(&chainName, "bw_costly_%s", costName);
     asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-D", chainName, *alertBytes, alertName);
     res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
