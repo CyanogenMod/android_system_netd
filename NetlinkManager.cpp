@@ -34,7 +34,6 @@
 #include "NetlinkHandler.h"
 
 const int NetlinkManager::NFLOG_QUOTA_GROUP = 1;
-const int NetlinkManager::IDLETIMER_GROUP = 1;
 
 NetlinkManager *NetlinkManager::sInstance = NULL;
 
@@ -113,11 +112,6 @@ int NetlinkManager::start() {
         // TODO: return -1 once the emulator gets a new kernel.
     }
 
-    if ((mIfaceIdleTimerHandler = setupSocket(&mIfaceIdleTimerSock, NETLINK_IDLETIMER,
-        IDLETIMER_GROUP, NetlinkListener::NETLINK_FORMAT_BINARY)) == NULL) {
-        // TODO: switch back to using NETLINK_NFLOG with a custom type.
-	ALOGE("Unable to open iface idletimer socket");
-    }
     return 0;
 }
 
@@ -157,19 +151,6 @@ int NetlinkManager::stop() {
 
         close(mQuotaSock);
         mQuotaSock = -1;
-    }
-
-    if (mIfaceIdleTimerHandler) {
-        if (mIfaceIdleTimerHandler->stop()) {
-            ALOGE("Unable to stop iface IDLETIMER NetlinkHandler: %s", strerror(errno));
-            status = -1;
-        }
-
-        delete mIfaceIdleTimerHandler;
-        mIfaceIdleTimerHandler = NULL;
-
-        close(mIfaceIdleTimerSock);
-        mIfaceIdleTimerSock = -1;
     }
 
     return status;
