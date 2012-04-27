@@ -52,6 +52,8 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
         return;
     }
 
+    ALOGV("subsystem %s", subsys);
+
     if (!strcmp(subsys, "net")) {
         int action = evt->getAction();
         const char *iface = evt->findParam("INTERFACE");
@@ -68,19 +70,19 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
         } else if (action == evt->NlActionLinkDown) {
             notifyInterfaceLinkChanged(iface, false);
         }
+
     } else if (!strcmp(subsys, "qlog")) {
         const char *alertName = evt->findParam("ALERT_NAME");
         const char *iface = evt->findParam("INTERFACE");
         notifyQuotaLimitReached(alertName, iface);
-    } else if (!strcmp(subsys, "idletimer")) {
+
+    } else if (!strcmp(subsys, "xt_idletimer")) {
         int action = evt->getAction();
         const char *iface = evt->findParam("INTERFACE");
+        const char *state = evt->findParam("STATE");
+        if (state)
+            notifyInterfaceActivity(iface, !strcmp("active", state));
 
-        if (action == evt->NlActionIfaceActive) {
-            notifyInterfaceActivity(iface, true);
-        } else if (action == evt->NlActionIfaceIdle) {
-            notifyInterfaceActivity(iface, false);
-        }
     }
 }
 
@@ -129,8 +131,8 @@ void NetlinkHandler::notifyQuotaLimitReached(const char *name, const char *iface
 void NetlinkHandler::notifyInterfaceActivity(const char *name, bool isActive) {
     char msg[255];
 
-    snprintf(msg, sizeof(msg), "Iface %s %s", isActive ? "active" : "idle", name);
-
+    snprintf(msg, sizeof(msg), "Iface %s %s", name, isActive ? "active" : "idle");
+    ALOGV("Broadcasting interface activity msg: %s", msg);
     mNm->getBroadcaster()->sendBroadcast(isActive ? ResponseCode::InterfaceActive
             : ResponseCode::InterfaceIdle,
             msg, false);
