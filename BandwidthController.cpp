@@ -346,6 +346,7 @@ int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[],
     IptOp op;
     int appUids[numUids];
     std::string naughtyCmd;
+    std::list<int /*uid*/>::iterator it;
 
     switch (appOp) {
     case NaughtyAppOpAdd:
@@ -370,9 +371,30 @@ int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[],
     }
 
     for (uidNum = 0; uidNum < numUids; uidNum++) {
-        naughtyCmd = makeIptablesNaughtyCmd(op, appUids[uidNum]);
+        int uid = appUids[uidNum];
+        for (it = naughtyAppUids.begin(); it != naughtyAppUids.end(); it++) {
+            if (*it == uid)
+                break;
+        }
+        bool found = (it != naughtyAppUids.end());
+
+        if (appOp == NaughtyAppOpRemove) {
+            if (!found) {
+                ALOGE("No such appUid %d to remove", uid);
+                return -1;
+            }
+            naughtyAppUids.erase(it);
+        } else {
+            if (found) {
+                ALOGE("appUid %d exists already", uid);
+                return -1;
+            }
+            naughtyAppUids.push_front(uid);
+        }
+
+        naughtyCmd = makeIptablesNaughtyCmd(op, uid);
         if (runIpxtablesCmd(naughtyCmd.c_str(), IptRejectAdd)) {
-            ALOGE(failLogTemplate, appUids[uidNum]);
+            ALOGE(failLogTemplate, uid);
             goto fail_with_uidNum;
         }
     }
