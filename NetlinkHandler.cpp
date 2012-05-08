@@ -52,8 +52,6 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
         return;
     }
 
-    ALOGV("subsystem %s", subsys);
-
     if (!strcmp(subsys, "net")) {
         int action = evt->getAction();
         const char *iface = evt->findParam("INTERFACE");
@@ -83,6 +81,11 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
         if (state)
             notifyInterfaceActivity(iface, !strcmp("active", state));
 
+#if !LOG_NDEBUG
+    } else if (strcmp(subsys, "platform") && strcmp(subsys, "backlight")) {
+        /* It is not a VSYNC or a backlight event */
+        ALOGV("unexpected event from subsystem %s", subsys);
+#endif
     }
 }
 
