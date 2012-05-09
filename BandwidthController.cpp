@@ -107,6 +107,9 @@ const char *BandwidthController::IPT_FLUSH_COMMANDS[] = {
     "-F bw_FORWARD",
     "-F penalty_box",
     "-F costly_shared",
+
+    "-t raw -F bw_raw_PREROUTING",
+    "-t mangle -F bw_mangle_POSTROUTING",
 };
 
 /* The cleanup commands assume flushing has been done. */
@@ -115,11 +118,18 @@ const char *BandwidthController::IPT_CLEANUP_COMMANDS[] = {
     "-D INPUT -j bw_INPUT",
     "-D OUTPUT -j bw_OUTPUT",
     "-D FORWARD -j bw_FORWARD",
+
+    "-t raw -D bw_raw_PREROUTING",
+    "-t mangle -D bw_mangle_POSTROUTING",
+
     "-X bw_INPUT",
     "-X bw_OUTPUT",
     "-X bw_FORWARD",
     "-X penalty_box",
     "-X costly_shared",
+
+    "-t raw -X bw_raw_PREROUTING",
+    "-t mangle -X bw_mangle_POSTROUTING",
 };
 
 const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
@@ -135,6 +145,11 @@ const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
 
     "-N costly_shared",
     "-N penalty_box",
+
+    "-t raw -N bw_raw_PREROUTING",
+    "-t raw -A PREROUTING -j bw_raw_PREROUTING",
+    "-t mangle -N bw_mangle_POSTROUTING",
+    "-t mangle -A POSTROUTING -j bw_mangle_POSTROUTING",
 };
 
 const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
@@ -146,6 +161,9 @@ const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
 
     "-A costly_shared --jump penalty_box",
     "-A costly_shared -m owner --socket-exists", /* This is a tracking rule. */
+
+    "-t raw -A bw_raw_PREROUTING ! -i lo+ -m owner --socket-exists", /* This is a tracking rule. */
+    "-t mangle -A bw_mangle_POSTROUTING ! -o lo+ -m owner --socket-exists", /* This is a tracking rule. */
 };
 
 BandwidthController::BandwidthController(void) {
