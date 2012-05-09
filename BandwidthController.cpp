@@ -62,33 +62,32 @@ bool BandwidthController::useLogwrapCall = false;
  * Some comments about the rules:
  *  * Ordering
  *    - when an interface is marked as costly it should be INSERTED into the INPUT/OUTPUT chains.
- *      E.g. "-I INPUT -i rmnet0 --jump costly"
+ *      E.g. "-I bw_INPUT -i rmnet0 --jump costly"
  *    - quota'd rules in the costly chain should be before penalty_box lookups.
+ *    - the qtaguid counting is done at the end of the bw_INPUT/bw_OUTPUT user chains.
  *
  * * global quota vs per interface quota
  *   - global quota for all costly interfaces uses a single costly chain:
  *    . initial rules
  *      iptables -N costly_shared
- *      iptables -I INPUT -i iface0 --jump costly_shared
- *      iptables -I OUTPUT -o iface0 --jump costly_shared
+ *      iptables -I bw_INPUT -i iface0 --jump costly_shared
+ *      iptables -I bw_OUTPUT -o iface0 --jump costly_shared
  *      iptables -I costly_shared -m quota \! --quota 500000 \
  *          --jump REJECT --reject-with icmp-net-prohibited
  *      iptables -A costly_shared --jump penalty_box
- *      iptables -A costly_shared -m owner --socket-exists
  *
  *    . adding a new iface to this, E.g.:
- *      iptables -I INPUT -i iface1 --jump costly_shared
- *      iptables -I OUTPUT -o iface1 --jump costly_shared
+ *      iptables -I bw_INPUT -i iface1 --jump costly_shared
+ *      iptables -I bw_OUTPUT -o iface1 --jump costly_shared
  *
  *   - quota per interface. This is achieve by having "costly" chains per quota.
  *     E.g. adding a new costly interface iface0 with its own quota:
  *      iptables -N costly_iface0
- *      iptables -I INPUT -i iface0 --jump costly_iface0
- *      iptables -I OUTPUT -o iface0 --jump costly_iface0
+ *      iptables -I bw_INPUT -i iface0 --jump costly_iface0
+ *      iptables -I bw_OUTPUT -o iface0 --jump costly_iface0
  *      iptables -A costly_iface0 -m quota \! --quota 500000 \
  *          --jump REJECT --reject-with icmp-net-prohibited
  *      iptables -A costly_iface0 --jump penalty_box
- *      iptables -A costly_iface0 -m owner --socket-exists
  *
  * * penalty_box handling:
  *  - only one penalty_box for all interfaces
@@ -160,7 +159,6 @@ const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
     "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
 
     "-A costly_shared --jump penalty_box",
-    "-A costly_shared -m owner --socket-exists", /* This is a tracking rule. */
 
     "-t raw -A bw_raw_PREROUTING ! -i lo+ -m owner --socket-exists", /* This is a tracking rule. */
     "-t mangle -A bw_mangle_POSTROUTING ! -o lo+ -m owner --socket-exists", /* This is a tracking rule. */
@@ -461,8 +459,6 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
         res = (res1 && res2) || (!res1 && !res2);
 
         snprintf(cmd, sizeof(cmd), "-A %s -j penalty_box", costCString);
-        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
-        snprintf(cmd, sizeof(cmd), "-A %s -m owner --socket-exists", costCString);
         res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
         break;
     case QuotaShared:
