@@ -134,15 +134,17 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
             close(pipefd[0]);
         }
 
-        int num_processed_args = 4 + (num_addrs/2) + 1; // 1 null for termination
+        int num_processed_args = 6 + (num_addrs/2) + 1; // 1 null for termination
         char **args = (char **)malloc(sizeof(char *) * num_processed_args);
         args[num_processed_args - 1] = NULL;
         args[0] = (char *)"/system/bin/dnsmasq";
-        args[1] = (char *)"--no-daemon";
+        args[1] = (char *)"--keep-in-foreground";
         args[2] = (char *)"--no-resolv";
         args[3] = (char *)"--no-poll";
+        args[4] = (char *)"--pid-file";
+        args[5] = (char *)"";
 
-        int nextArg = 4;
+        int nextArg = 6;
         for (int addrIndex=0; addrIndex < num_addrs;) {
             char *start = strdup(inet_ntoa(addrs[addrIndex++]));
             char *end = strdup(inet_ntoa(addrs[addrIndex++]));
