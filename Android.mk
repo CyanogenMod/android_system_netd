@@ -42,10 +42,6 @@ LOCAL_CFLAGS := -Werror=format
 LOCAL_SHARED_LIBRARIES := libstlport libsysutils libcutils libnetutils \
                           libcrypto libhardware_legacy libmdnssd
 
-ifneq ($(BOARD_HOSTAPD_DRIVER),)
-  LOCAL_CFLAGS += -DHAVE_HOSTAPD
-endif
-
 ifeq ($(BOARD_HAVE_BLUETOOTH),true)
   LOCAL_SHARED_LIBRARIES := $(LOCAL_SHARED_LIBRARIES) libbluedroid
   LOCAL_CFLAGS := $(LOCAL_CFLAGS) -DHAVE_BLUETOOTH
