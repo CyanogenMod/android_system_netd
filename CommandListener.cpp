@@ -335,8 +335,8 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             ifc_close();
             return 0;
         } else if (!strcmp(argv[1], "setcfg")) {
-            // arglist: iface addr prefixLength flags
-            if (argc < 5) {
+            // arglist: iface [addr prefixLength] flags
+            if (argc < 4) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                 return 0;
             }
@@ -344,28 +344,30 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
 
             struct in_addr addr;
             unsigned flags = 0;
-
-            if (!inet_aton(argv[3], &addr)) {
-                cli->sendMsg(ResponseCode::CommandParameterError, "Invalid address", false);
-                return 0;
-            }
+            int index = 5;
 
             ifc_init();
-            if (ifc_set_addr(argv[2], addr.s_addr)) {
-                cli->sendMsg(ResponseCode::OperationFailed, "Failed to set address", true);
-                ifc_close();
-                return 0;
-            }
 
-            //Set prefix length on a non zero address
-            if (addr.s_addr != 0 && ifc_set_prefixLength(argv[2], atoi(argv[4]))) {
-                cli->sendMsg(ResponseCode::OperationFailed, "Failed to set prefixLength", true);
-                ifc_close();
-                return 0;
+            if (!inet_aton(argv[3], &addr)) {
+                // Handle flags only case
+                index = 3;
+            } else {
+                if (ifc_set_addr(argv[2], addr.s_addr)) {
+                    cli->sendMsg(ResponseCode::OperationFailed, "Failed to set address", true);
+                    ifc_close();
+                    return 0;
+                }
+
+                // Set prefix length on a non zero address
+                if (addr.s_addr != 0 && ifc_set_prefixLength(argv[2], atoi(argv[4]))) {
+                   cli->sendMsg(ResponseCode::OperationFailed, "Failed to set prefixLength", true);
+                   ifc_close();
+                   return 0;
+               }
             }
 
             /* Process flags */
-            for (int i = 5; i < argc; i++) {
+            for (int i = index; i < argc; i++) {
                 char *flag = argv[i];
                 if (!strcmp(flag, "up")) {
                     ALOGD("Trying to bring up %s", argv[2]);
