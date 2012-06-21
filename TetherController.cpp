@@ -189,12 +189,12 @@ int TetherController::stopTethering() {
 }
 int TetherController::startReverseTethering(const char* iface) {
     if (mDhcpcdPid != 0) {
-        LOGE("Reverse tethering already started");
+        ALOGE("Reverse tethering already started");
         errno = EBUSY;
         return -1;
     }
 
-    LOGD("TetherController::startReverseTethering, Starting reverse tethering");
+    ALOGD("TetherController::startReverseTethering, Starting reverse tethering");
 
     /*
      * TODO: Create a monitoring thread to handle and restart
@@ -207,7 +207,7 @@ int TetherController::startReverseTethering(const char* iface) {
 
     pid_t pid;
     if ((pid = fork()) < 0) {
-        LOGE("fork failed (%s)", strerror(errno));
+        ALOGE("fork failed (%s)", strerror(errno));
         return -1;
     }
 
@@ -225,29 +225,29 @@ int TetherController::startReverseTethering(const char* iface) {
         args[argc++] = (char*)iface;
         args[argc] = NULL;
         if (execv(args[0], args)) {
-            LOGE("startReverseTethering, execv failed (%s)", strerror(errno));
+            ALOGE("startReverseTethering, execv failed (%s)", strerror(errno));
         }
-        LOGE("startReverseTethering, Should never get here!");
+        ALOGE("startReverseTethering, Should never get here!");
         return 0;
     } else {
         mDhcpcdPid = pid;
-        LOGD("Reverse Tethering running, pid:%d", pid);
+        ALOGD("Reverse Tethering running, pid:%d", pid);
     }
     return 0;
 }
 int TetherController::stopReverseTethering() {
 
     if (mDhcpcdPid == 0) {
-        LOGE("Tethering already stopped");
+        ALOGE("Tethering already stopped");
         return 0;
     }
 
-    LOGD("Stopping tethering services");
+    ALOGD("Stopping tethering services");
 
     kill(mDhcpcdPid, SIGTERM);
     waitpid(mDhcpcdPid, NULL, 0);
     mDhcpcdPid = 0;
-    LOGD("Tethering services stopped");
+    ALOGD("Tethering services stopped");
     return 0;
 }
 bool TetherController::isTetheringStarted() {

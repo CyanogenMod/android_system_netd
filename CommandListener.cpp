@@ -612,10 +612,10 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
     if (!strcmp(argv[1], "stop")) {
         rc = sTetherCtrl->stopTethering();
     } else if(!strcmp(argv[1], "start-reverse")) {
-        LOGD("CommandListener::TetherCmd::run, call startReverseTethering, iface:%s", argv[2]);
+        ALOGD("CommandListener::TetherCmd::run, call startReverseTethering, iface:%s", argv[2]);
         sTetherCtrl->startReverseTethering(argv[2]);
     } else if (!strcmp(argv[1], "stop-reverse")) {
-        LOGD("CommandListener::TetherCmd::run, call stopReverseTethering");
+        ALOGD("CommandListener::TetherCmd::run, call stopReverseTethering");
         rc = sTetherCtrl->stopReverseTethering();
     } else if (!strcmp(argv[1], "status")) {
         char *tmp = NULL;
