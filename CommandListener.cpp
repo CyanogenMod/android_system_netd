@@ -1228,11 +1228,12 @@ int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc
       return 0;
     }
     if (!strcmp(argv[1], "add")) {
-        if (argc != 4) {
+        if (argc != 5) {
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
             return 0;
         }
-        if(0 != sIdletimerCtrl->addInterfaceIdletimer(argv[2], atoi(argv[3]))) {
+        if(0 != sIdletimerCtrl->addInterfaceIdletimer(
+                                        argv[2], atoi(argv[3]), argv[4])) {
           cli->sendMsg(ResponseCode::OperationFailed, "Failed to add interface", false);
         } else {
           cli->sendMsg(ResponseCode::CommandOkay,  "Add success", false);
@@ -1240,12 +1241,13 @@ int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc
         return 0;
     }
     if (!strcmp(argv[1], "remove")) {
-        if (argc != 4) {
+        if (argc != 5) {
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
             return 0;
         }
         // ashish: fixme timeout
-        if (0 != sIdletimerCtrl->removeInterfaceIdletimer(argv[2], atoi(argv[3]))) {
+        if (0 != sIdletimerCtrl->removeInterfaceIdletimer(
+                                        argv[2], atoi(argv[3]), argv[4])) {
           cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove interface", false);
         } else {
           cli->sendMsg(ResponseCode::CommandOkay, "Remove success", false);

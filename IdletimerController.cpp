@@ -51,8 +51,8 @@
  * ndc command sequence
  * ------------------
  * ndc idletimer enable
- * ndc idletimer add <iface> <timeout>
- * ndc idletimer remove <iface> <timeout>
+ * ndc idletimer add <iface> <timeout> <class label>
+ * ndc idletimer remove <iface> <timeout> <class label>
  *
  * Monitor effect on the iptables chains after each step using:
  *     iptables -nxvL -t nat
@@ -148,28 +148,33 @@ int IdletimerController::disableIdletimerControl() {
 }
 
 int IdletimerController::modifyInterfaceIdletimer(IptOp op, const char *iface,
-                                                  uint32_t timeout) {
+                                                  uint32_t timeout,
+                                                  const char *classLabel) {
   int res;
   char *buffer;
   asprintf(&buffer, "-t nat -%c idletimer_nat_PREROUTING -i %s -j IDLETIMER"
            " --timeout %u --label %s --send_nl_msg 1",
-           (op == IptOpAdd) ? 'A' : 'D', iface, timeout, iface);
+           (op == IptOpAdd) ? 'A' : 'D', iface, timeout, classLabel);
   res = runIpxtablesCmd(buffer);
   free(buffer);
 
   asprintf(&buffer, "-t nat -%c idletimer_nat_POSTROUTING -o %s -j IDLETIMER"
            " --timeout %u --label %s --send_nl_msg 1",
-           (op == IptOpAdd) ? 'A' : 'D', iface, timeout, iface);
+           (op == IptOpAdd) ? 'A' : 'D', iface, timeout, classLabel);
   res |= runIpxtablesCmd(buffer);
   free(buffer);
 
   return res;
 }
 
-int IdletimerController::addInterfaceIdletimer(const char *iface, uint32_t timeout) {
-  return modifyInterfaceIdletimer(IptOpAdd, iface, timeout);
+int IdletimerController::addInterfaceIdletimer(const char *iface,
+                                               uint32_t timeout,
+                                               const char *classLabel) {
+  return modifyInterfaceIdletimer(IptOpAdd, iface, timeout, classLabel);
 }
 
-int IdletimerController::removeInterfaceIdletimer(const char *iface, uint32_t timeout) {
-  return modifyInterfaceIdletimer(IptOpDelete, iface, timeout);
+int IdletimerController::removeInterfaceIdletimer(const char *iface,
+                                                  uint32_t timeout,
+                                                  const char *classLabel) {
+  return modifyInterfaceIdletimer(IptOpDelete, iface, timeout, classLabel);
 }
