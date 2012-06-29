@@ -36,7 +36,6 @@ private:
     int                  mUeventSock;
     int                  mRouteSock;
     int                  mQuotaSock;
-    int                  mIfaceIdleTimerSock;
 
 public:
     virtual ~NetlinkManager();
