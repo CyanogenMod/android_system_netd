@@ -104,7 +104,7 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs, int l
     }
 
     if (lease_time <= 0) {
-        LOGE("Invalid lease time %d!\n", lease_time);
+        ALOGE("Invalid lease time %d!\n", lease_time);
         return -1;
     }
 

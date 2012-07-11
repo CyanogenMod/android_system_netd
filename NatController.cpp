@@ -187,7 +187,7 @@ int NatController::enableNat(const int argc, char **argv) {
         }
 
         if (runCmd(IPTABLES_PATH, "-t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"))
-            LOGW("Unable to set TCPMSS rule (may not be supported by kernel).");
+            ALOGW("Unable to set TCPMSS rule (may not be supported by kernel).");
     }
 
     return 0;
