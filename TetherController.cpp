@@ -187,6 +187,8 @@ int TetherController::stopTethering() {
     ALOGD("Tethering services stopped");
     return 0;
 }
+
+// TODO(BT) remove
 int TetherController::startReverseTethering(const char* iface) {
     if (mDhcpcdPid != 0) {
         ALOGE("Reverse tethering already started");
@@ -228,13 +230,18 @@ int TetherController::startReverseTethering(const char* iface) {
             ALOGE("startReverseTethering, execv failed (%s)", strerror(errno));
         }
         ALOGE("startReverseTethering, Should never get here!");
-        return 0;
+        // TODO(BT) inform parent of the failure.
+        //          Parent process need wait for child to report error status
+        //          before it set mDhcpcdPid and return 0.
+        exit(-1);
     } else {
         mDhcpcdPid = pid;
         ALOGD("Reverse Tethering running, pid:%d", pid);
     }
     return 0;
 }
+
+// TODO(BT) remove
 int TetherController::stopReverseTethering() {
 
     if (mDhcpcdPid == 0) {
