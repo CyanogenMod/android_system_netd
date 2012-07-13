@@ -45,48 +45,10 @@ static int runIptablesCmd(const char *cmd) {
     return res;
 }
 
-static bool oemSetupHooks() {
-    // Order is important!
-    // -N to create the chain (no-op if already exist).
-    // -D to delete any pre-existing jump rule, to prevent dupes (no-op if doesn't exist)
-    // -I to insert our jump rule into the default chain
-
-    runIptablesCmd("-N oem_out");
-    runIptablesCmd("-D OUTPUT -j oem_out");
-    if (runIptablesCmd("-I OUTPUT -j oem_out"))
-        return false;
-
-    runIptablesCmd("-N oem_fwd");
-    runIptablesCmd("-D FORWARD -j oem_fwd");
-    if (runIptablesCmd("-I FORWARD -j oem_fwd"))
-        return false;
-
-    runIptablesCmd("-t nat -N oem_nat_pre");
-    runIptablesCmd("-t nat -D PREROUTING -j oem_nat_pre");
-    if (runIptablesCmd("-t nat -I PREROUTING -j oem_nat_pre"))
-        return false;
-
-    return true;
-}
-
 static bool oemCleanupHooks() {
-    // Order is important!
-    // -D to remove ref to the chain
-    // -F to empty the chain
-    // -X to delete the chain
-
-    runIptablesCmd("-D OUTPUT -j oem_out");
     runIptablesCmd("-F oem_out");
-    runIptablesCmd("-X oem_out");
-
-    runIptablesCmd("-D FORWARD -j oem_fwd");
     runIptablesCmd("-F oem_fwd");
-    runIptablesCmd("-X oem_fwd");
-
-    runIptablesCmd("-t nat -D PREROUTING -j oem_nat_pre");
     runIptablesCmd("-t nat -F oem_nat_pre");
-    runIptablesCmd("-t nat -X oem_nat_pre");
-
     return true;
 }
 
@@ -106,7 +68,7 @@ void setupOemIptablesHook() {
         // The call to oemCleanupHooks() is superfluous when done on bootup,
         // but is needed for the case where netd has crashed/stopped and is
         // restarted.
-        if (oemCleanupHooks() && oemSetupHooks() && oemInitChains()) {
+        if (oemCleanupHooks() && oemInitChains()) {
             ALOGI("OEM iptable hook installed.");
         }
     }

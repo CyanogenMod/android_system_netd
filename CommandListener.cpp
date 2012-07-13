@@ -40,7 +40,7 @@
 #include "IdletimerController.h"
 #include "SecondaryTableController.h"
 #include "oem_iptables_hook.h"
-
+#include "NetdConstants.h"
 
 TetherController *CommandListener::sTetherCtrl = NULL;
 NatController *CommandListener::sNatCtrl = NULL;
@@ -51,6 +51,70 @@ BandwidthController * CommandListener::sBandwidthCtrl = NULL;
 IdletimerController * CommandListener::sIdletimerCtrl = NULL;
 ResolverController *CommandListener::sResolverCtrl = NULL;
 SecondaryTableController *CommandListener::sSecondaryTableCtrl = NULL;
+
+/**
+ * List of module chains to be created, along with explicit ordering. ORDERING
+ * IS CRITICAL, AND SHOULD BE TRIPLE-CHECKED WITH EACH CHANGE.
+ */
+static const char* FILTER_INPUT[] = {
+        BandwidthController::LOCAL_INPUT,
+        NULL,
+};
+
+static const char* FILTER_FORWARD[] = {
+        OEM_IPTABLES_FILTER_FORWARD,
+        BandwidthController::LOCAL_FORWARD,
+        NatController::LOCAL_FORWARD,
+        NULL,
+};
+
+static const char* FILTER_OUTPUT[] = {
+        OEM_IPTABLES_FILTER_OUTPUT,
+        BandwidthController::LOCAL_OUTPUT,
+        NULL,
+};
+
+static const char* RAW_PREROUTING[] = {
+        BandwidthController::LOCAL_RAW_PREROUTING,
+        NULL,
+};
+
+static const char* MANGLE_POSTROUTING[] = {
+        BandwidthController::LOCAL_MANGLE_POSTROUTING,
+        NULL,
+};
+
+static const char* NAT_PREROUTING[] = {
+        OEM_IPTABLES_NAT_PREROUTING,
+        IdletimerController::LOCAL_NAT_PREROUTING,
+        NULL,
+};
+
+static const char* NAT_POSTROUTING[] = {
+        IdletimerController::LOCAL_NAT_POSTROUTING,
+        NatController::LOCAL_NAT_POSTROUTING,
+        NULL,
+};
+
+static void createChildChains(IptablesTarget target, const char* table, const char* parentChain,
+        const char** childChains) {
+    const char** childChain = childChains;
+    do {
+        // Order is important:
+        // -D to delete any pre-existing jump rule (removes references
+        //    that would prevent -X from working)
+        // -F to flush any existing chain
+        // -X to delete any existing chain
+        // -N to create the chain
+        // -A to append the chain to parent
+
+        execIptablesSilently(target, "-t", table, "-D", parentChain, "-j", *childChain, NULL);
+        execIptablesSilently(target, "-t", table, "-F", *childChain, NULL);
+        execIptablesSilently(target, "-t", table, "-X", *childChain, NULL);
+        execIptables(target, "-t", table, "-N", *childChain, NULL);
+        execIptables(target, "-t", table, "-A", parentChain, "-j", *childChain, NULL);
+    } while (*(++childChain) != NULL);
+}
 
 CommandListener::CommandListener() :
                  FrameworkListener("netd", true) {
@@ -86,14 +150,27 @@ CommandListener::CommandListener() :
         sResolverCtrl = new ResolverController();
 
     /*
-     * This is the only time controllers are allowed to touch
-     * top-level chains in iptables.
-     * Each controller should setup custom chains and hook them into
-     * the top-level ones.
-     * THE ORDER IS IMPORTANT. TRIPPLE CHECK EACH setup function.
+     * This is the only time we touch top-level chains in iptables; controllers
+     * should only mutate rules inside of their children chains, as created by
+     * the constants above.
+     *
+     * Modules should never ACCEPT packets (except in well-justified cases);
+     * they should instead defer to any remaining modules using RETURN, or
+     * otherwise DROP/REJECT.
      */
-    /* Does DROP in nat: PREROUTING, FORWARD, OUTPUT */
+
+    // Create chains for children modules
+    createChildChains(V4V6, "filter", "INPUT", FILTER_INPUT);
+    createChildChains(V4V6, "filter", "FORWARD", FILTER_FORWARD);
+    createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT);
+    createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING);
+    createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING);
+    createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING);
+    createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING);
+
+    // Let each module setup their child chains
     setupOemIptablesHook();
+
     /* Does DROPs in FORWARD by default */
     sNatCtrl->setupIptablesHooks();
     /*

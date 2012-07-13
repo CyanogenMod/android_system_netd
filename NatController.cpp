@@ -35,6 +35,9 @@
 
 extern "C" int system_nosh(const char *command);
 
+const char* NatController::LOCAL_FORWARD = "natctrl_FORWARD";
+const char* NatController::LOCAL_NAT_POSTROUTING = "natctrl_nat_POSTROUTING";
+
 NatController::NatController(SecondaryTableController *ctrl) {
     secondaryTableCtrl = ctrl;
 }
@@ -61,30 +64,6 @@ int NatController::runCmd(const char *path, const char *cmd) {
 }
 
 int NatController::setupIptablesHooks() {
-    if (runCmd(IPTABLES_PATH, "-P INPUT ACCEPT"))
-        return -1;
-    if (runCmd(IPTABLES_PATH, "-P OUTPUT ACCEPT"))
-        return -1;
-    if (runCmd(IPTABLES_PATH, "-P FORWARD ACCEPT"))
-        return -1;
-
-    // Order is important!
-    // -D to delete any pre-existing jump rule, to prevent dupes (no-op if doesn't exist)
-    // -F to flush the chain (no-op if doesn't exist).
-    // -N to create the chain (no-op if already exist).
-
-    runCmd(IPTABLES_PATH, "-D FORWARD -j natctrl_FORWARD");
-    runCmd(IPTABLES_PATH, "-F natctrl_FORWARD");
-    runCmd(IPTABLES_PATH, "-N natctrl_FORWARD");
-    if (runCmd(IPTABLES_PATH, "-A FORWARD -j natctrl_FORWARD"))
-        return -1;
-
-    runCmd(IPTABLES_PATH, "-t nat -D POSTROUTING -j natctrl_nat_POSTROUTING");
-    runCmd(IPTABLES_PATH, "-t nat -F natctrl_nat_POSTROUTING");
-    runCmd(IPTABLES_PATH, "-t nat -N natctrl_nat_POSTROUTING");
-    if (runCmd(IPTABLES_PATH, "-t nat -A POSTROUTING -j natctrl_nat_POSTROUTING"))
-        return -1;
-
     setDefaults();
     return 0;
 }

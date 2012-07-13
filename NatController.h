@@ -31,6 +31,9 @@ public:
     int disableNat(const int argc, char **argv);
     int setupIptablesHooks();
 
+    static const char* LOCAL_FORWARD;
+    static const char* LOCAL_NAT_POSTROUTING;
+
 private:
     int natCount;
     SecondaryTableController *secondaryTableCtrl;

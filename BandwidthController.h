@@ -80,6 +80,12 @@ public:
      */
     int getTetherStats(TetherStats &stats, std::string &extraProcessingInfo);
 
+    static const char* LOCAL_INPUT;
+    static const char* LOCAL_FORWARD;
+    static const char* LOCAL_OUTPUT;
+    static const char* LOCAL_RAW_PREROUTING;
+    static const char* LOCAL_MANGLE_POSTROUTING;
+
 protected:
     class QuotaInfo {
     public:

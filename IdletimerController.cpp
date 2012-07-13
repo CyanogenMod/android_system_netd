@@ -90,6 +90,9 @@
 
 extern "C" int system_nosh(const char *command);
 
+const char* IdletimerController::LOCAL_NAT_PREROUTING = "idletimer_nat_PREROUTING";
+const char* IdletimerController::LOCAL_NAT_POSTROUTING = "idletimer_nat_POSTROUTING";
+
 IdletimerController::IdletimerController() {
 }
 
@@ -115,18 +118,6 @@ int IdletimerController::runIpxtablesCmd(const char *cmd) {
 }
 
 bool IdletimerController::setupIptablesHooks() {
-    runIpxtablesCmd("-t nat -D PREROUTING -j idletimer_nat_PREROUTING");
-    runIpxtablesCmd("-t nat -F idletimer_nat_PREROUTING");
-    runIpxtablesCmd("-t nat -N idletimer_nat_PREROUTING");
-
-    runIpxtablesCmd("-t nat -D POSTROUTING -j idletimer_nat_POSTROUTING");
-    runIpxtablesCmd("-t nat -F idletimer_nat_POSTROUTING");
-    runIpxtablesCmd("-t nat -N idletimer_nat_POSTROUTING");
-
-    if (runIpxtablesCmd("-t nat -I PREROUTING -j idletimer_nat_PREROUTING")
-        || runIpxtablesCmd("-t nat -I POSTROUTING -j idletimer_nat_POSTROUTING")) {
-        return false;
-    }
     return true;
 }
 

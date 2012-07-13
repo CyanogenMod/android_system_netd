@@ -30,6 +30,9 @@ public:
                                  const char *classLabel);
     bool setupIptablesHooks();
 
+    static const char* LOCAL_NAT_PREROUTING;
+    static const char* LOCAL_NAT_POSTROUTING;
+
  private:
     enum IptOp { IptOpAdd, IptOpDelete };
     int setDefaults();
