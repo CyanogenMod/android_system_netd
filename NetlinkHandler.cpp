@@ -139,11 +139,9 @@ void NetlinkHandler::notifyInterfaceClassActivity(const char *name,
                                                   bool isActive) {
     char msg[255];
 
-    snprintf(msg, sizeof(msg), "Iface %s %s", name, 
-             isActive ? "active" : "idle");
+    snprintf(msg, sizeof(msg), "IfaceClass %s %s",
+             isActive ? "active" : "idle", name);
     ALOGV("Broadcasting interface activity msg: %s", msg);
     mNm->getBroadcaster()->sendBroadcast(
-            isActive ? ResponseCode::InterfaceClassActive
-                     : ResponseCode::InterfaceClassIdle,
-            msg, false);
+        ResponseCode::InterfaceClassActivity, msg, false);
 }
