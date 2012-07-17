@@ -72,7 +72,6 @@ public:
     static const int ServiceSetHostnameSuccess      = 610;
     static const int ServiceGetAddrInfoFailed       = 611;
     static const int ServiceGetAddrInfoSuccess      = 612;
-    static const int InterfaceClassActive           = 613;
-    static const int InterfaceClassIdle             = 614;
+    static const int InterfaceClassActivity         = 613;
 };
 #endif
