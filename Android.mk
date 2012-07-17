@@ -6,8 +6,9 @@ LOCAL_SRC_FILES:=                                      \
                   BandwidthController.cpp              \
                   CommandListener.cpp                  \
                   DnsProxyListener.cpp                 \
-                  MDnsSdListener.cpp                   \
+                  FirewallController.cpp               \
                   IdletimerController.cpp              \
+                  MDnsSdListener.cpp                   \
                   NatController.cpp                    \
                   NetdCommand.cpp                      \
                   NetdConstants.cpp                    \

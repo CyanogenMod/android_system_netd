@@ -41,6 +41,7 @@
 #include "SecondaryTableController.h"
 #include "oem_iptables_hook.h"
 #include "NetdConstants.h"
+#include "FirewallController.h"
 
 TetherController *CommandListener::sTetherCtrl = NULL;
 NatController *CommandListener::sNatCtrl = NULL;
@@ -51,18 +52,23 @@ BandwidthController * CommandListener::sBandwidthCtrl = NULL;
 IdletimerController * CommandListener::sIdletimerCtrl = NULL;
 ResolverController *CommandListener::sResolverCtrl = NULL;
 SecondaryTableController *CommandListener::sSecondaryTableCtrl = NULL;
+FirewallController *CommandListener::sFirewallCtrl = NULL;
 
 /**
  * List of module chains to be created, along with explicit ordering. ORDERING
  * IS CRITICAL, AND SHOULD BE TRIPLE-CHECKED WITH EACH CHANGE.
  */
 static const char* FILTER_INPUT[] = {
+        // Bandwidth should always be early in input chain, to make sure we
+        // correctly count incoming traffic against data plan.
         BandwidthController::LOCAL_INPUT,
+        FirewallController::LOCAL_INPUT,
         NULL,
 };
 
 static const char* FILTER_FORWARD[] = {
         OEM_IPTABLES_FILTER_FORWARD,
+        FirewallController::LOCAL_FORWARD,
         BandwidthController::LOCAL_FORWARD,
         NatController::LOCAL_FORWARD,
         NULL,
@@ -70,6 +76,7 @@ static const char* FILTER_FORWARD[] = {
 
 static const char* FILTER_OUTPUT[] = {
         OEM_IPTABLES_FILTER_OUTPUT,
+        FirewallController::LOCAL_OUTPUT,
         BandwidthController::LOCAL_OUTPUT,
         NULL,
 };
@@ -129,6 +136,7 @@ CommandListener::CommandListener() :
     registerCmd(new BandwidthControlCmd());
     registerCmd(new IdletimerControlCmd());
     registerCmd(new ResolverCmd());
+    registerCmd(new FirewallCmd());
 
     if (!sSecondaryTableCtrl)
         sSecondaryTableCtrl = new SecondaryTableController();
@@ -148,6 +156,8 @@ CommandListener::CommandListener() :
         sIdletimerCtrl = new IdletimerController();
     if (!sResolverCtrl)
         sResolverCtrl = new ResolverController();
+    if (!sFirewallCtrl)
+        sFirewallCtrl = new FirewallController();
 
     /*
      * This is the only time we touch top-level chains in iptables; controllers
@@ -170,6 +180,9 @@ CommandListener::CommandListener() :
 
     // Let each module setup their child chains
     setupOemIptablesHook();
+
+    /* When enabled, DROPs all packets except those matching rules. */
+    sFirewallCtrl->setupIptablesHooks();
 
     /* Does DROPs in FORWARD by default */
     sNatCtrl->setupIptablesHooks();
@@ -1341,5 +1354,112 @@ int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc
     }
 
     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown idletimer cmd", false);
+    return 0;
+}
+
+CommandListener::FirewallCmd::FirewallCmd() :
+    NetdCommand("firewall") {
+}
+
+int CommandListener::FirewallCmd::sendGenericOkFail(SocketClient *cli, int cond) {
+    if (!cond) {
+        cli->sendMsg(ResponseCode::CommandOkay, "Firewall command succeeded", false);
+    } else {
+        cli->sendMsg(ResponseCode::OperationFailed, "Firewall command failed", false);
+    }
+    return 0;
+}
+
+FirewallRule CommandListener::FirewallCmd::parseRule(const char* arg) {
+    if (!strcmp(arg, "allow")) {
+        return ALLOW;
+    } else {
+        return DENY;
+    }
+}
+
+int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
+        char **argv) {
+    if (argc < 2) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing command", false);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "enable")) {
+        int res = sFirewallCtrl->enableFirewall();
+        return sendGenericOkFail(cli, res);
+    }
+    if (!strcmp(argv[1], "disable")) {
+        int res = sFirewallCtrl->disableFirewall();
+        return sendGenericOkFail(cli, res);
+    }
+    if (!strcmp(argv[1], "is_enabled")) {
+        int res = sFirewallCtrl->isFirewallEnabled();
+        return sendGenericOkFail(cli, res);
+    }
+
+    if (!strcmp(argv[1], "set_interface_rule")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: firewall set_interface_rule <rmnet0> <allow|deny>", false);
+            return 0;
+        }
+
+        const char* iface = argv[2];
+        FirewallRule rule = parseRule(argv[3]);
+
+        int res = sFirewallCtrl->setInterfaceRule(iface, rule);
+        return sendGenericOkFail(cli, res);
+    }
+
+    if (!strcmp(argv[1], "set_egress_source_rule")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: firewall set_egress_source_rule <192.168.0.1> <allow|deny>",
+                         false);
+            return 0;
+        }
+
+        const char* addr = argv[2];
+        FirewallRule rule = parseRule(argv[3]);
+
+        int res = sFirewallCtrl->setEgressSourceRule(addr, rule);
+        return sendGenericOkFail(cli, res);
+    }
+
+    if (!strcmp(argv[1], "set_egress_dest_rule")) {
+        if (argc != 5) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: firewall set_egress_dest_rule <192.168.0.1> <80> <allow|deny>",
+                         false);
+            return 0;
+        }
+
+        const char* addr = argv[2];
+        int port = atoi(argv[3]);
+        FirewallRule rule = parseRule(argv[4]);
+
+        int res = 0;
+        res |= sFirewallCtrl->setEgressDestRule(addr, PROTOCOL_TCP, port, rule);
+        res |= sFirewallCtrl->setEgressDestRule(addr, PROTOCOL_UDP, port, rule);
+        return sendGenericOkFail(cli, res);
+    }
+
+    if (!strcmp(argv[1], "set_uid_rule")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: firewall set_uid_rule <1000> <allow|deny>",
+                         false);
+            return 0;
+        }
+
+        int uid = atoi(argv[2]);
+        FirewallRule rule = parseRule(argv[3]);
+
+        int res = sFirewallCtrl->setUidRule(uid, rule);
+        return sendGenericOkFail(cli, res);
+    }
+
+    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown command", false);
     return 0;
 }

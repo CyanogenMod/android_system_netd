@@ -29,6 +29,7 @@
 #include "IdletimerController.h"
 #include "ResolverController.h"
 #include "SecondaryTableController.h"
+#include "FirewallController.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
@@ -40,6 +41,7 @@ class CommandListener : public FrameworkListener {
     static IdletimerController *sIdletimerCtrl;
     static ResolverController *sResolverCtrl;
     static SecondaryTableController *sSecondaryTableCtrl;
+    static FirewallController *sFirewallCtrl;
 
 public:
     CommandListener();
@@ -130,6 +132,16 @@ private:
         ResolverCmd();
         virtual ~ResolverCmd() {}
         int runCommand(SocketClient *c, int argc, char ** argv);
+    };
+
+    class FirewallCmd: public NetdCommand {
+    public:
+        FirewallCmd();
+        virtual ~FirewallCmd() {}
+        int runCommand(SocketClient *c, int argc, char ** argv);
+    protected:
+        int sendGenericOkFail(SocketClient *cli, int cond);
+        static FirewallRule parseRule(const char* arg);
     };
 };
 
