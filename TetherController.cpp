@@ -282,8 +282,8 @@ int TetherController::setDnsForwarders(char **servers, int numServers) {
             return -1;
         }
 
-        cmdLen += strlen(servers[i]);
-        if (cmdLen + 2 >= MAX_CMD_SIZE) {
+        cmdLen += (strlen(servers[i]) + 1);
+        if (cmdLen + 1 >= MAX_CMD_SIZE) {
             ALOGD("Too many DNS servers listed");
             break;
         }
