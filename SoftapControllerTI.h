@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2008 The Android Open Source Project
- * Copyright 2001-2010 Texas Instruments, Inc. - http://www.ti.com/
+ * Copyright 2001-2012 Texas Instruments, Inc. - http://www.ti.com/
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,14 +24,6 @@
 #include <net/if.h>
 #include <utils/List.h>
 
-#include <netlink/genl/genl.h>
-#include <netlink/genl/family.h>
-#include <netlink/genl/ctrl.h>
-#include <netlink/msg.h>
-#include <netlink/attr.h>
-
-#include "nl80211.h"
-
 #define HOSTAPD_SERVICE_NAME "hostapd_bin"
 #define HOSTAPD_STATE_PROP "init.svc." HOSTAPD_SERVICE_NAME
 #define AP_WAKE_LOCK "hotspot_wake_lock"
@@ -39,37 +31,19 @@
 #define HOSTAPD_CONF_TEMPLATE_FILE "/system/etc/wifi/hostapd.conf"
 #define HOSTAPD_CONF_FILE "/data/misc/wifi/hostapd.conf"
 
-#define HOSTAPD_START_MAX_RETRIES 20
-#define HOSTAPD_START_DELAY_US  500000
-#define HOSTAPD_STOP_DELAY_US 500000
+#define HOSTAPD_IFUP_WAIT_RETRIES 20
+#define HOSTAPD_START_MAX_RETRIES 100
+#define HOSTAPD_START_DELAY_US  100000
+#define HOSTAPD_STOP_DELAY_US 100000
 
-#define STA_INTERFACE  "wlan0"
-#define AP_INTERFACE   "wlan1"
+#define AP_INTERFACE  "wlan0"
 
 class SoftapController {
     bool mHostapdStarted;
-
-    struct nl_sock *nl_soc;
-    struct nl_cache *nl_cache;
-    struct genl_family *nl80211;
-
-    bool mApMode;
-
 private:
     int stopHostapd();
     int startHostapd();
-
-    int initNl();
-    void deinitNl();
-    int phyLookup();
-    static int NlAckHandler(struct nl_msg *msg, void *arg);
-    static int NlFinishHandler(struct nl_msg *msg, void *arg);
-    static int NlErrorHandler(struct sockaddr_nl *nla, struct nlmsgerr *err, void *arg);
-    int executeNlCmd(const char *iface, enum nl80211_iftype type, uint8_t cmd);
-    int switchInterface(bool apMode);
-    int getStaChanAndMode(int *chan, int *is_g_mode);
-    int executeScanLinkCmd(const char *iface, int *iface_freq);
-    static int linkDumpCbHandler(struct nl_msg *msg, void *arg);
+    int isIfUp(const char *ifname);
 
 public:
     SoftapController();
@@ -86,3 +60,4 @@ public:
 };
 
 #endif
+

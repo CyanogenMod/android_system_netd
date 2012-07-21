@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2008 The Android Open Source Project
- * Copyright 2001-2010 Texas Instruments, Inc. - http://www.ti.com/
+ * Copyright 2001-2012 Texas Instruments, Inc. - http://www.ti.com/
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,17 +33,17 @@
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 
-#define ALOG_TAG "SoftapController"
+#define LOG_TAG "SoftapControllerTI"
 #include <cutils/log.h>
 #include <cutils/properties.h>
 
 #include <hardware_legacy/power.h>
+#include <private/android_filesystem_config.h>
 
 #include "SoftapControllerTI.h"
 
 SoftapController::SoftapController() {
     mHostapdStarted = false;
-    mApMode = false;
 }
 
 SoftapController::~SoftapController() {
@@ -59,227 +59,33 @@ int SoftapController::stopDriver(char *iface) {
     return 0;
 }
 
-int SoftapController::initNl() {
-    int err;
+int SoftapController::isIfUp(const char *ifname) {
+    int sock, ret;
+    struct ifreq ifr;
 
-    nl_soc = nl_socket_alloc();
-    if (!nl_soc) {
-        ALOGE("Failed to allocate netlink socket.");
-        return -ENOMEM;
-    }
-
-    if (genl_connect(nl_soc)) {
-        ALOGE("Failed to connect to generic netlink.");
-        err = -ENOLINK;
-        goto out_handle_destroy;
-    }
-
-    genl_ctrl_alloc_cache(nl_soc, &nl_cache);
-    if (!nl_cache) {
-        ALOGE("Failed to allocate generic netlink cache.");
-        err = -ENOMEM;
-        goto out_handle_destroy;
-    }
-
-    nl80211 = genl_ctrl_search_by_name(nl_cache, "nl80211");
-    if (!nl80211) {
-        ALOGE("nl80211 not found.");
-        err = -ENOENT;
-        goto out_cache_free;
-    }
-
-    return 0;
-
-out_cache_free:
-    nl_cache_free(nl_cache);
-out_handle_destroy:
-    nl_socket_free(nl_soc);
-    return err;
-}
-
-void SoftapController::deinitNl() {
-    genl_family_put(nl80211);
-    nl_cache_free(nl_cache);
-    nl_socket_free(nl_soc);
-}
-
-int SoftapController::executeNlCmd(const char *iface, enum nl80211_iftype type,
-				   uint8_t cmd) {
-    struct nl_cb *cb;
-    struct nl_msg *msg;
-    int devidx = 0;
-    int err;
-    bool add_interface = (cmd == NL80211_CMD_NEW_INTERFACE);
-
-    if (add_interface) {
-        devidx = phyLookup();
-    } else {
-        devidx = if_nametoindex(iface);
-        if (devidx == 0) {
-            ALOGE("failed to translate ifname to idx");
-            return -errno;
-        }
-    }
-
-    msg = nlmsg_alloc();
-    if (!msg) {
-        ALOGE("failed to allocate netlink message");
-        return 2;
-    }
-
-    cb = nl_cb_alloc(NL_CB_DEFAULT);
-    if (!cb) {
-        ALOGE("failed to allocate netlink callbacks");
-        err = 2;
-        goto out_free_msg;
-    }
-
-    genlmsg_put(msg, 0, 0, genl_family_get_id(nl80211), 0, 0, cmd, 0);
-
-    if (add_interface) {
-        NLA_PUT_U32(msg, NL80211_ATTR_WIPHY, devidx);
-    } else {
-        NLA_PUT_U32(msg, NL80211_ATTR_IFINDEX, devidx);
-    }
-
-    if (add_interface) {
-        NLA_PUT_STRING(msg, NL80211_ATTR_IFNAME, iface);
-        NLA_PUT_U32(msg, NL80211_ATTR_IFTYPE, type);
-    }
-
-    err = nl_send_auto_complete(nl_soc, msg);
-    if (err < 0)
-        goto out;
-
-    err = 1;
-
-    nl_cb_err(cb, NL_CB_CUSTOM, NlErrorHandler, &err);
-    nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, NlFinishHandler, &err);
-    nl_cb_set(cb, NL_CB_ACK, NL_CB_CUSTOM, NlAckHandler, &err);
-
-    while (err > 0)
-        nl_recvmsgs(nl_soc, cb);
-out:
-    nl_cb_put(cb);
-out_free_msg:
-    nlmsg_free(msg);
-    return err;
-nla_put_failure:
-    ALOGW("building message failed");
-    return 2;
-}
-
-int SoftapController::NlErrorHandler(struct sockaddr_nl *nla, struct nlmsgerr *err,
-			 void *arg)
-{
-    int *ret = (int *)arg;
-    *ret = err->error;
-    return NL_STOP;
-}
-
-int SoftapController::NlFinishHandler(struct nl_msg *msg, void *arg)
-{
-     int *ret = (int *)arg;
-     *ret = 0;
-     return NL_SKIP;
-}
-
-int SoftapController::NlAckHandler(struct nl_msg *msg, void *arg)
-{
-    int *ret = (int *)arg;
-    *ret = 0;
-    return NL_STOP;
-}
-
-
-// ignore the "." and ".." entries
-static int dir_filter(const struct dirent *name)
-{
-    if (0 == strcmp("..", name->d_name) ||
-        0 == strcmp(".", name->d_name))
-            return 0;
-
-    return 1;
-}
-
-// lookup the only active phy
-int SoftapController::phyLookup()
-{
-    char buf[200];
-    int fd, pos;
-    struct dirent **namelist;
-    int n, i;
-
-    n = scandir("/sys/class/ieee80211", &namelist, dir_filter,
-                (int (*)(const dirent**, const dirent**))alphasort);
-    if (n != 1) {
-        ALOGE("unexpected - found %d phys in /sys/class/ieee80211", n);
-        for (i = 0; i < n; i++)
-            free(namelist[i]);
-        free(namelist);
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if(sock < 0) {
         return -1;
     }
 
-    snprintf(buf, sizeof(buf), "/sys/class/ieee80211/%s/index",
-             namelist[0]->d_name);
-    free(namelist[0]);
-    free(namelist);
+    memset(&ifr, 0, sizeof(struct ifreq));
+    strncpy(ifr.ifr_name, ifname, IFNAMSIZ-1);
+    ret = ioctl(sock, SIOCGIFFLAGS, &ifr);
+    close(sock);
 
-    fd = open(buf, O_RDONLY);
-    if (fd < 0)
-        return -1;
-    pos = read(fd, buf, sizeof(buf) - 1);
-    if (pos < 0) {
-        close(fd);
-        return -1;
+    if(ret == 0) {
+       return ifr.ifr_flags & IFF_UP ? 1 : 0;
     }
-    buf[pos] = '\0';
-    close(fd);
-    return atoi(buf);
+
+    ALOGE("Failed to get interface flags for %s\n", ifname);
+    return -1;
 }
 
-int SoftapController::switchInterface(bool apMode) {
-
-    int ret;
-
-    if (mApMode == apMode) {
-        ALOGD("skipping interface switch. apMode: %d", apMode);
-        return 0;
-    }
-
-    ret = initNl();
-    if (ret != 0)
-        return ret;
-
-    if (apMode) {
-        ret = executeNlCmd(AP_INTERFACE,
-                                NL80211_IFTYPE_AP,
-                                NL80211_CMD_NEW_INTERFACE);
-        if (ret != 0) {
-            ALOGE("could not add AP interface: %d", ret);
-            goto cleanup;
-        }
-    } else {
-        ret = executeNlCmd(AP_INTERFACE,
-                                NL80211_IFTYPE_AP,
-                                NL80211_CMD_DEL_INTERFACE);
-        if (ret != 0) {
-            ALOGE("could not remove STA interface: %d", ret);
-            goto cleanup;
-        }
-    }
-
-    ALOGD("switched interface. apMode: %d", apMode);
-    mApMode = apMode;
-
-cleanup:
-    deinitNl();
-    return ret;
-}
 
 int SoftapController::startHostapd() {
     int i;
-    char svc_property[100];
+    int ifup;
+    char svc_property[PROPERTY_VALUE_MAX] = {'\0'};
 
     if(mHostapdStarted) {
         ALOGE("hostapd is started");
@@ -293,7 +99,7 @@ int SoftapController::startHostapd() {
 
     for(i=0; i < HOSTAPD_START_MAX_RETRIES; i++) {
         usleep(HOSTAPD_START_DELAY_US);
-        if (property_get(HOSTAPD_STATE_PROP, svc_property, "no_such_prop") <= 0)
+        if (property_get(HOSTAPD_STATE_PROP, svc_property, NULL) <= 0)
             continue;
         else if (strcmp(svc_property,"running") != 0)
             continue;
@@ -306,8 +112,20 @@ int SoftapController::startHostapd() {
         return -1;
     }
 
-    // give hostapd some more time to actuallly start (connect to driver)
-    sleep(2);
+    // give hostapd some more time to start and bring interface up
+    for(i=0; i < HOSTAPD_IFUP_WAIT_RETRIES; i++) {
+        ifup = isIfUp(AP_INTERFACE);
+        if(ifup == 1) {
+            break;
+        }
+        usleep(HOSTAPD_START_DELAY_US);
+    }
+
+    if(ifup != 1) {
+        ALOGE("Interface wasn't brought up by hostapd");
+        return -1;
+    }
+
     ALOGD("hostapd started OK");
     mHostapdStarted = true;
 
@@ -315,6 +133,14 @@ int SoftapController::startHostapd() {
 }
 
 int SoftapController::stopHostapd() {
+    char svc_property[PROPERTY_VALUE_MAX] = {'\0'};
+
+    if (property_get(HOSTAPD_STATE_PROP, svc_property, NULL) > 0) {
+        if (strcmp(svc_property, "running") != 0) {
+            ALOGD("hostapd not running!");
+            return 0;
+        }
+    }
 
     if (property_set("ctl.stop", HOSTAPD_SERVICE_NAME) < 0) {
         ALOGE("Failed to stop hostapd service");
@@ -339,7 +165,6 @@ int SoftapController::stopSoftap() {
     }
 
     stopHostapd();
-    switchInterface(false);
     release_wake_lock(AP_WAKE_LOCK);
     return 0;
 }
@@ -353,159 +178,6 @@ bool SoftapController::isSoftapStarted() {
 int SoftapController::clientsSoftap(char **retbuf)
 {
 	return 0;
-}
-
-static struct nla_policy link_bss_policy[NL80211_BSS_MAX + 1];
-
-int SoftapController::linkDumpCbHandler(struct nl_msg *msg, void *arg)
-{
-	struct nlattr *tb[NL80211_ATTR_MAX + 1];
-	struct genlmsghdr *gnlh = (genlmsghdr *)nlmsg_data(nlmsg_hdr(msg));
-	struct nlattr *bss[NL80211_BSS_MAX + 1];
-	int *sta_freq = (int *)arg;
-
-	// bah - cpp doesn't support C99 named initializers. do it manually
-	memset(&link_bss_policy, 0, sizeof(link_bss_policy));
-	link_bss_policy[NL80211_BSS_TSF].type = NLA_U64;
-	link_bss_policy[NL80211_BSS_FREQUENCY].type = NLA_U32;
-	//link_bss_policy[NL80211_BSS_BSSID] = { };
-	link_bss_policy[NL80211_BSS_BEACON_INTERVAL].type = NLA_U16;
-	link_bss_policy[NL80211_BSS_CAPABILITY].type = NLA_U16;
-	//link_bss_policy[NL80211_BSS_INFORMATION_ELEMENTS] = { };
-	link_bss_policy[NL80211_BSS_SIGNAL_MBM].type = NLA_U32;
-	link_bss_policy[NL80211_BSS_SIGNAL_UNSPEC].type = NLA_U8;
-	link_bss_policy[NL80211_BSS_STATUS].type = NLA_U32;
-
-	nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
-		  genlmsg_attrlen(gnlh, 0), NULL);
-
-	if (!tb[NL80211_ATTR_BSS]) {
-		ALOGD("bss info missing!");
-		return NL_SKIP;
-	}
-	if (nla_parse_nested(bss, NL80211_BSS_MAX,
-			     tb[NL80211_ATTR_BSS],
-			     link_bss_policy)) {
-		ALOGD("failed to parse nested attributes!");
-		return NL_SKIP;
-	}
-
-	if (!bss[NL80211_BSS_BSSID])
-		return NL_SKIP;
-
-	if (!bss[NL80211_BSS_STATUS])
-		return NL_SKIP;
-
-	switch (nla_get_u32(bss[NL80211_BSS_STATUS])) {
-	case NL80211_BSS_STATUS_ASSOCIATED:
-		break;
-	case NL80211_BSS_STATUS_AUTHENTICATED:
-	case NL80211_BSS_STATUS_IBSS_JOINED:
-	default:
-		return NL_SKIP;
-	}
-
-	/* only in the assoc case do we want more info from station get */
-	if (bss[NL80211_BSS_FREQUENCY]) {
-		*sta_freq = nla_get_u32(bss[NL80211_BSS_FREQUENCY]);
-		ALOGD("sta freq: %d", *sta_freq);
-	}
-
-	return NL_SKIP;
-}
-
-int SoftapController::executeScanLinkCmd(const char *iface, int *iface_freq)
-{
-    struct nl_cb *cb;
-    struct nl_msg *msg;
-    int devidx = 0;
-    int err;
-
-    // initialize to non-valid freq
-    *iface_freq = 0;
-
-    devidx = if_nametoindex(iface);
-    if (devidx == 0) {
-        ALOGE("failed to translate ifname to idx");
-        return -errno;
-    }
-
-    msg = nlmsg_alloc();
-    if (!msg) {
-        ALOGE("failed to allocate netlink message");
-        return 2;
-    }
-
-    cb = nl_cb_alloc(NL_CB_DEFAULT);
-    if (!cb) {
-        ALOGE("failed to allocate netlink callbacks");
-        err = 2;
-        goto out_free_msg;
-    }
-
-    genlmsg_put(msg, 0, 0, genl_family_get_id(nl80211), 0,
-                NLM_F_DUMP, NL80211_CMD_GET_SCAN, 0);
-
-    NLA_PUT_U32(msg, NL80211_ATTR_IFINDEX, devidx);
-
-    // iface_freq will be filled out by the callback
-    nl_cb_set(cb, NL_CB_VALID, NL_CB_CUSTOM, linkDumpCbHandler, iface_freq);
-
-    err = nl_send_auto_complete(nl_soc, msg);
-    if (err < 0)
-        goto out;
-
-    err = 1;
-    nl_cb_err(cb, NL_CB_CUSTOM, NlErrorHandler, &err);
-    nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, NlFinishHandler, &err);
-    nl_cb_set(cb, NL_CB_ACK, NL_CB_CUSTOM, NlAckHandler, &err);
-
-    while (err > 0)
-        nl_recvmsgs(nl_soc, cb);
-
-out:
-    nl_cb_put(cb);
-out_free_msg:
-    nlmsg_free(msg);
-    return err;
-nla_put_failure:
-    ALOGW("building message failed");
-    return 2;
-}
-
-// a channel value of 0 indicates "no-channel"
-int SoftapController::getStaChanAndMode(int *chan, int *is_g_mode)
-{
-    int ret, sta_freq = -1;
-
-    *chan = 0;
-
-    ret = initNl();
-    if (ret != 0)
-        return ret;
-
-    ret = executeScanLinkCmd(STA_INTERFACE, &sta_freq);
-    if (ret != 0)
-        goto out;
-
-    // if we got 0, the STA is probably not connected
-    if (sta_freq != 0 && sta_freq != -1) {
-        if (sta_freq >= 2412 && sta_freq <= 2472) {
-            *is_g_mode = 1;
-            *chan = (sta_freq - 2407) / 5;
-        } else if ((sta_freq >= 5180 && sta_freq <= 5240) ||
-	           (sta_freq >= 5745 && sta_freq <= 5825)) {
-            *is_g_mode = 0;
-            *chan = (sta_freq - 5000) / 5;
-	} else {
-            ALOGE("frequency %d not supported by SoftApControllerTI", sta_freq);
-	    *chan = 0;
-	}
-    }
-
-out:
-    deinitNl();
-    return ret;
 }
 
 /*
@@ -522,8 +194,6 @@ out:
 int SoftapController::setSoftap(int argc, char *argv[]) {
     int ret = 0;
     char buf[1024];
-    int sta_chan, is_g_mode;
-
 
     ALOGD("%s - %s - %s - %s - %s - %s",argv[2],argv[3],argv[4],argv[5],argv[6],argv[7]);
 
@@ -578,42 +248,38 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         fputs(buf, fp2);
     }
 
-    // Choose the correct channel - based on the current channel of the STA
-    if (getStaChanAndMode(&sta_chan, &is_g_mode) != 0 || sta_chan == 0) {
-        /* default to channel 11 on G */
-        sta_chan = 11;
-        is_g_mode = 1;
-    }
-
-    ALOGD("AP starting on channel %d g_mode: %d", sta_chan, is_g_mode);
-    sprintf(buf, "hw_mode=%s\nchannel=%d\n", is_g_mode ? "g" : "a", sta_chan);
-    fputs(buf, fp2);
-
     fclose(fp);
     fclose(fp2);
+
+    if (chmod(HOSTAPD_CONF_FILE, 0660) < 0) {
+        ALOGE("Error changing permissions of %s to 0660: %s",
+                HOSTAPD_CONF_FILE, strerror(errno));
+        unlink(HOSTAPD_CONF_FILE);
+        return -1;
+    }
+
+    if (chown(HOSTAPD_CONF_FILE, AID_SYSTEM, AID_WIFI) < 0) {
+        ALOGE("Error changing group ownership of %s to %d: %s",
+                HOSTAPD_CONF_FILE, AID_WIFI, strerror(errno));
+        unlink(HOSTAPD_CONF_FILE);
+        return -1;
+    }
 
     // we take the wakelock here because the stop/start is lengthy
     acquire_wake_lock(PARTIAL_WAKE_LOCK, AP_WAKE_LOCK);
 
-    // switch interface to wlan1
-    ret = switchInterface(true);
-    if (ret != 0)
-        goto fail_switch;
-
     // restart hostapd to update configuration
     ret = stopHostapd();
     if (ret != 0)
-        goto fail;
+        goto fail_switch;
 
     ret = startHostapd();
     if (ret != 0)
-        goto fail;
+        goto fail_switch;
 
     ALOGD("hostapd set - Ok");
     return 0;
 
-fail:
-    switchInterface(false);
 fail_switch:
     release_wake_lock(AP_WAKE_LOCK);
     ALOGD("hostapd set - failed. AP is off.");
@@ -630,3 +296,4 @@ int SoftapController::fwReloadSoftap(int argc, char *argv[])
 {
     return 0;
 }
+
