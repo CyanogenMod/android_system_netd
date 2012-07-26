@@ -76,7 +76,7 @@ int NatController::setupIptablesHooks() {
     runCmd(IPTABLES_PATH, "-D FORWARD -j natctrl_FORWARD");
     runCmd(IPTABLES_PATH, "-F natctrl_FORWARD");
     runCmd(IPTABLES_PATH, "-N natctrl_FORWARD");
-    if (runCmd(IPTABLES_PATH, "-A FORWARD -j natctrl_FORWARD"))
+    if (runCmd(IPTABLES_PATH, "-I FORWARD -j natctrl_FORWARD"))
         return -1;
 
     runCmd(IPTABLES_PATH, "-t nat -D POSTROUTING -j natctrl_nat_POSTROUTING");

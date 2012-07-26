@@ -134,10 +134,10 @@ const char *BandwidthController::IPT_CLEANUP_COMMANDS[] = {
 const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
     /* Created needed chains. */
     "-N bw_INPUT",
-    "-A INPUT -j bw_INPUT",
+    "-I INPUT -j bw_INPUT",
 
     "-N bw_OUTPUT",
-    "-A OUTPUT -j bw_OUTPUT",
+    "-I OUTPUT -j bw_OUTPUT",
 
     "-N bw_FORWARD",
     "-I FORWARD -j bw_FORWARD",
