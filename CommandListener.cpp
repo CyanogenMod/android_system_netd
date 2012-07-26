@@ -83,22 +83,22 @@ static const char* FILTER_OUTPUT[] = {
 
 static const char* RAW_PREROUTING[] = {
         BandwidthController::LOCAL_RAW_PREROUTING,
+        IdletimerController::LOCAL_RAW_PREROUTING,
         NULL,
 };
 
 static const char* MANGLE_POSTROUTING[] = {
         BandwidthController::LOCAL_MANGLE_POSTROUTING,
+        IdletimerController::LOCAL_MANGLE_POSTROUTING,
         NULL,
 };
 
 static const char* NAT_PREROUTING[] = {
         OEM_IPTABLES_NAT_PREROUTING,
-        IdletimerController::LOCAL_NAT_PREROUTING,
         NULL,
 };
 
 static const char* NAT_POSTROUTING[] = {
-        IdletimerController::LOCAL_NAT_POSTROUTING,
         NatController::LOCAL_NAT_POSTROUTING,
         NULL,
 };
