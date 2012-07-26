@@ -27,6 +27,7 @@
 #include "SoftapController.h"
 #include "BandwidthController.h"
 #include "IdletimerController.h"
+#include "InterfaceController.h"
 #include "ResolverController.h"
 #include "SecondaryTableController.h"
 #include "FirewallController.h"
@@ -39,6 +40,7 @@ class CommandListener : public FrameworkListener {
     static SoftapController *sSoftapCtrl;
     static BandwidthController *sBandwidthCtrl;
     static IdletimerController *sIdletimerCtrl;
+    static InterfaceController *sInterfaceCtrl;
     static ResolverController *sResolverCtrl;
     static SecondaryTableController *sSecondaryTableCtrl;
     static FirewallController *sFirewallCtrl;

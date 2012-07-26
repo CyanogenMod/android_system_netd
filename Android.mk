@@ -8,6 +8,7 @@ LOCAL_SRC_FILES:=                                      \
                   DnsProxyListener.cpp                 \
                   FirewallController.cpp               \
                   IdletimerController.cpp              \
+                  InterfaceController.cpp              \
                   MDnsSdListener.cpp                   \
                   NatController.cpp                    \
                   NetdCommand.cpp                      \

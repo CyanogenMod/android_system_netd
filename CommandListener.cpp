@@ -50,6 +50,7 @@ PanController *CommandListener::sPanCtrl = NULL;
 SoftapController *CommandListener::sSoftapCtrl = NULL;
 BandwidthController * CommandListener::sBandwidthCtrl = NULL;
 IdletimerController * CommandListener::sIdletimerCtrl = NULL;
+InterfaceController *CommandListener::sInterfaceCtrl = NULL;
 ResolverController *CommandListener::sResolverCtrl = NULL;
 SecondaryTableController *CommandListener::sSecondaryTableCtrl = NULL;
 FirewallController *CommandListener::sFirewallCtrl = NULL;
@@ -158,6 +159,8 @@ CommandListener::CommandListener() :
         sResolverCtrl = new ResolverController();
     if (!sFirewallCtrl)
         sFirewallCtrl = new FirewallController();
+    if (!sInterfaceCtrl)
+        sInterfaceCtrl = new InterfaceController();
 
     /*
      * This is the only time we touch top-level chains in iptables; controllers
@@ -315,6 +318,22 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             cli->sendMsg(ResponseCode::OperationFailed, "Failed to set throttle", true);
         } else {
             cli->sendMsg(ResponseCode::CommandOkay, "Interface throttling set", false);
+        }
+        return 0;
+    } else if (!strcmp(argv[1], "driver")) {
+        int rc;
+        char *rbuf;
+
+        if (argc < 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Usage: interface driver <interface> <cmd> <args>", false);
+            return 0;
+        }
+        rc = sInterfaceCtrl->interfaceCommand(argc, argv, &rbuf);
+        if (rc) {
+            cli->sendMsg(ResponseCode::OperationFailed, "Failed to execute command", true);
+        } else {
+            cli->sendMsg(ResponseCode::CommandOkay, rbuf, false);
         }
         return 0;
     } else {
