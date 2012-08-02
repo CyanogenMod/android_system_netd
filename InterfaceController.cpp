@@ -5,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *	  http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
+
+#include <dlfcn.h>
 
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -34,74 +36,66 @@
 
 #include "InterfaceController.h"
 
-InterfaceController::InterfaceController() {
-    iSock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (iSock < 0)
-        ALOGE("Failed to open socket");
-    iBuf = (char *)malloc(INTERFACE_MAX_BUFFER_SIZE);
-    if (!iBuf)
-        ALOGE("Failed to allocate buffer");
+char if_cmd_lib_file_name[] = "/system/lib/libnetcmdiface.so";
+char set_cmd_func_name[] = "net_iface_send_command";
+char set_cmd_init_func_name[] = "net_iface_send_command_init";
+char set_cmd_fini_func_name[] = "net_iface_send_command_fini";
+
+InterfaceController::InterfaceController()
+	: sendCommand_(NULL) {
+	libh_ = dlopen(if_cmd_lib_file_name, RTLD_NOW | RTLD_LOCAL);
+	if (libh_ == NULL) {
+		const char *err_str = dlerror();
+		ALOGE("Error (%s) while opening the net interface command library", err_str ? err_str : "unknown");
+	} else {
+		sendCommandInit_ = (int (*)(void))dlsym(libh_, set_cmd_init_func_name);
+		if (sendCommandInit_ == NULL) {
+			const char *err_str = dlerror();
+			ALOGW("Error (%s) while searching for the interface command init function", err_str ? err_str : "unknown");
+		} else if (sendCommandInit_()) {
+			ALOGE("Can't init the interface command API");
+			return;
+		}
+		sendCommandFini_ = (int (*)(void))dlsym(libh_, set_cmd_fini_func_name);
+		if (sendCommandFini_ == NULL) {
+			const char *err_str = dlerror();
+			ALOGW("Error (%s) while searching for the interface command fini function", err_str ? err_str : "unknown");
+		}
+		sendCommand_ = (int (*)(int, char **, char **))dlsym(libh_, set_cmd_func_name);
+		if (sendCommand_ == NULL) {
+			const char *err_str = dlerror();
+			ALOGE("Error (%s) while searching for the interface command function", err_str ? err_str : "unknown");
+			return;
+		}
+	}
 }
 
 InterfaceController::~InterfaceController() {
-    if (iSock >= 0)
-        close(iSock);
-    if (iBuf)
-        free(iBuf);
-}
-
-int InterfaceController::sendCommand(char *iface, char *cmd, char *buf, int buf_len) {
-    struct ifreq ifr;
-    android_wifi_priv_cmd priv_cmd;
-    int ret;
-
-    if (!iface || !cmd)
-        return -1;
-
-    memset(&ifr, 0, sizeof(ifr));
-    memset(&priv_cmd, 0, sizeof(priv_cmd));
-    strncpy(ifr.ifr_name, iface, IFNAMSIZ);
-    memcpy(buf, cmd, strlen(cmd) + 1);
-
-    priv_cmd.buf = buf;
-    priv_cmd.used_len = buf_len;
-    priv_cmd.total_len = buf_len;
-    ifr.ifr_data = &priv_cmd;
-
-    if ((ret = ioctl(iSock, SIOCDEVPRIVATE + 1, &ifr)) < 0) {
-        ALOGE("Failed to execute command: %s", cmd);
-    } else {
-        if (buf[0] == '\0') {
-            snprintf(buf, buf_len, "OK");
-        }
-    }
-    return ret;
+	if (sendCommandFini_) {
+		if (sendCommandFini_()) {
+			ALOGE("Can't shutdown the interface command API");
+		}
+	}
+	if (libh_) {
+		int err = dlclose(libh_);
+		if (err) {
+			const char *err_str = dlerror();
+			ALOGE("Error (%s) while closing the net interface command library", err_str ? err_str : "unknown");
+		}
+	}
 }
 
 /*
  * Arguments:
- *      argv[2] - wlan interface
- *      argv[3] - command
- *      argv[4] - argument
- *      rbuf    - returned buffer
+ *	  argv[2] - wlan interface
+ *	  argv[3] - command
+ *	  argv[4] - argument
+ *	  rbuf	- returned buffer
  */
 int InterfaceController::interfaceCommand(int argc, char *argv[], char **rbuf) {
-    char cmd[INTERFACE_MAX_BUFFER_SIZE];
-    unsigned int bc = 0;
-    int ret;
-    int i;
+	int ret = -ENOSYS;
+	if (sendCommand_)
+		ret = sendCommand_(argc, argv, rbuf);
 
-    if ((iSock < 0) || !iBuf || (argc < 4))
-        return -1;
-
-    for (i=3; i < argc; i++) {
-        bc += snprintf(&cmd[bc], sizeof(cmd) - bc, "%s ", argv[i]);
-    }
-    if (bc >= sizeof(cmd))
-        bc = sizeof(cmd) - 1;
-    cmd[bc] = '\0';
-    ret = sendCommand(argv[2], cmd, iBuf, INTERFACE_MAX_BUFFER_SIZE);
-    if (rbuf)
-        *rbuf = iBuf;
-    return ret;
+	return ret;
 }

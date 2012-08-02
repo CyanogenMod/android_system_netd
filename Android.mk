@@ -42,7 +42,7 @@ LOCAL_C_INCLUDES := $(KERNEL_HEADERS) \
 LOCAL_CFLAGS := -Werror=format
 
 LOCAL_SHARED_LIBRARIES := libstlport libsysutils libcutils libnetutils \
-                          libcrypto libhardware_legacy libmdnssd
+                          libcrypto libhardware_legacy libmdnssd libdl
 
 ifeq ($(BOARD_HAVE_BLUETOOTH),true)
   LOCAL_SHARED_LIBRARIES := $(LOCAL_SHARED_LIBRARIES) libbluedroid
