@@ -158,8 +158,7 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
             ALOGE("execl failed (%s)", strerror(errno));
         }
         ALOGE("Should never get here!");
-        free(args);
-        return 0;
+        _exit(-1);
     } else {
         close(pipefd[0]);
         mDaemonPid = pid;
@@ -233,7 +232,7 @@ int TetherController::startReverseTethering(const char* iface) {
         // TODO(BT) inform parent of the failure.
         //          Parent process need wait for child to report error status
         //          before it set mDhcpcdPid and return 0.
-        exit(-1);
+        _exit(-1);
     } else {
         mDhcpcdPid = pid;
         ALOGD("Reverse Tethering running, pid:%d", pid);
