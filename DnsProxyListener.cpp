@@ -24,6 +24,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <string.h>
+#include <pthread.h>
 
 #define LOG_TAG "DnsProxyListener"
 #define DBG 0
@@ -47,7 +48,8 @@ DnsProxyListener::GetAddrInfoHandler::~GetAddrInfoHandler() {
 }
 
 void DnsProxyListener::GetAddrInfoHandler::start() {
-    pthread_create(&mThread, NULL,
+    pthread_t thread;
+    pthread_create(&thread, NULL,
                    DnsProxyListener::GetAddrInfoHandler::threadStart, this);
 }
 
@@ -215,7 +217,8 @@ DnsProxyListener::GetHostByAddrHandler::~GetHostByAddrHandler() {
 }
 
 void DnsProxyListener::GetHostByAddrHandler::start() {
-    pthread_create(&mThread, NULL,
+    pthread_t thread;
+    pthread_create(&thread, NULL,
                    DnsProxyListener::GetHostByAddrHandler::threadStart, this);
 }
 
