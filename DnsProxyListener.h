@@ -17,7 +17,6 @@
 #ifndef _DNSPROXYLISTENER_H__
 #define _DNSPROXYLISTENER_H__
 
-#include <pthread.h>
 #include <sysutils/FrameworkListener.h>
 
 #include "NetdCommand.h"
@@ -53,7 +52,6 @@ private:
 
     private:
         void run();
-        pthread_t mThread;
         SocketClient* mClient;  // ref counted
         char* mHost;    // owned
         char* mService; // owned
@@ -85,7 +83,6 @@ private:
 
     private:
         void run();
-        pthread_t mThread;
         SocketClient* mClient;  // ref counted
         void* mAddress;    // address to lookup; owned
         int   mAddressLen; // length of address to look up
