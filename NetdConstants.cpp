@@ -16,6 +16,8 @@
 
 #include <string.h>
 
+#define LOG_TAG "Netd"
+
 #include <cutils/log.h>
 
 #include "NetdConstants.h"
