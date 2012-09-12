@@ -17,7 +17,7 @@
 #ifndef _TETHER_CONTROLLER_H
 #define _TETHER_CONTROLLER_H
 
-#include <linux/in.h>
+#include <netinet/in.h>
 
 #include "List.h"
 
