@@ -53,6 +53,7 @@ InterfaceController *CommandListener::sInterfaceCtrl = NULL;
 ResolverController *CommandListener::sResolverCtrl = NULL;
 SecondaryTableController *CommandListener::sSecondaryTableCtrl = NULL;
 FirewallController *CommandListener::sFirewallCtrl = NULL;
+ClatdController *CommandListener::sClatdCtrl = NULL;
 
 /**
  * List of module chains to be created, along with explicit ordering. ORDERING
@@ -136,6 +137,7 @@ CommandListener::CommandListener() :
     registerCmd(new IdletimerControlCmd());
     registerCmd(new ResolverCmd());
     registerCmd(new FirewallCmd());
+    registerCmd(new ClatdCmd());
 
     if (!sSecondaryTableCtrl)
         sSecondaryTableCtrl = new SecondaryTableController();
@@ -157,6 +159,8 @@ CommandListener::CommandListener() :
         sFirewallCtrl = new FirewallController();
     if (!sInterfaceCtrl)
         sInterfaceCtrl = new InterfaceController();
+    if (!sClatdCtrl)
+        sClatdCtrl = new ClatdController();
 
     /*
      * This is the only time we touch top-level chains in iptables; controllers
@@ -1437,5 +1441,45 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
     }
 
     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown command", false);
+    return 0;
+}
+
+CommandListener::ClatdCmd::ClatdCmd() : NetdCommand("clatd") {
+}
+
+int CommandListener::ClatdCmd::runCommand(SocketClient *cli, int argc, char **argv) {
+    int rc = 0;
+    if (argc < 2) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+        return 0;
+    }
+
+    if(!strcmp(argv[1], "stop")) {
+        rc = sClatdCtrl->stopClatd();
+    } else if (!strcmp(argv[1], "status")) {
+        char *tmp = NULL;
+
+        asprintf(&tmp, "Clatd status: %s", (sClatdCtrl->isClatdRunning() ?
+                                                        "running" : "stopped"));
+        cli->sendMsg(ResponseCode::ClatdStatusResult, tmp, false);
+        free(tmp);
+        return 0;
+    } else if(!strcmp(argv[1], "start")) {
+        if (argc < 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Usage: clatd start <interface>", false);
+            return 0;
+        }
+        rc = sClatdCtrl->startClatd(argv[2]);
+    } else {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown clatd cmd", false);
+        return 0;
+    }
+
+    if (!rc) {
+        cli->sendMsg(ResponseCode::CommandOkay, "Clatd operation succeeded", false);
+    } else {
+        cli->sendMsg(ResponseCode::OperationFailed, "Clatd operation failed", false);
+    }
+
     return 0;
 }
