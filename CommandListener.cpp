@@ -887,9 +887,10 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
                     "Wrong number of arguments to resolver setdefaultif", false);
             return 0;
         }
-    } else if (!strcmp(argv[1], "setifdns")) { // "resolver setifdns <iface> <dns1> <dns2> ..."
-        if (argc >= 4) {
-            rc = sResolverCtrl->setInterfaceDnsServers(argv[2], &argv[3], argc - 3);
+    } else if (!strcmp(argv[1], "setifdns")) {
+        // "resolver setifdns <iface> <domains> <dns1> <dns2> ..."
+        if (argc >= 5) {
+            rc = sResolverCtrl->setInterfaceDnsServers(argv[2], argv[3], &argv[4], argc - 4);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver setifdns", false);
