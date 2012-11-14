@@ -4,6 +4,7 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:=                                      \
                   BandwidthController.cpp              \
+                  ClatdController.cpp                  \
                   CommandListener.cpp                  \
                   DnsProxyListener.cpp                 \
                   FirewallController.cpp               \
