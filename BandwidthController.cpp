@@ -51,6 +51,11 @@ extern "C" int system_nosh(const char *command);
 #define ALERT_IPT_TEMPLATE "%s %s %s -m quota2 ! --quota %lld --name %s"
 const int  BandwidthController::ALERT_RULE_POS_IN_COSTLY_CHAIN = 4;
 const char BandwidthController::ALERT_GLOBAL_NAME[] = "globalAlert";
+const char* BandwidthController::LOCAL_INPUT = "bw_INPUT";
+const char* BandwidthController::LOCAL_FORWARD = "bw_FORWARD";
+const char* BandwidthController::LOCAL_OUTPUT = "bw_OUTPUT";
+const char* BandwidthController::LOCAL_RAW_PREROUTING = "bw_raw_PREROUTING";
+const char* BandwidthController::LOCAL_MANGLE_POSTROUTING = "bw_mangle_POSTROUTING";
 const int  BandwidthController::MAX_CMD_ARGS = 32;
 const int  BandwidthController::MAX_CMD_LEN = 1024;
 const int  BandwidthController::MAX_IFACENAME_LEN = 64;
@@ -113,42 +118,13 @@ const char *BandwidthController::IPT_FLUSH_COMMANDS[] = {
 
 /* The cleanup commands assume flushing has been done. */
 const char *BandwidthController::IPT_CLEANUP_COMMANDS[] = {
-    /* Delete hooks to custom chains. */
-    "-D INPUT -j bw_INPUT",
-    "-D OUTPUT -j bw_OUTPUT",
-    "-D FORWARD -j bw_FORWARD",
-
-    "-t raw -D bw_raw_PREROUTING",
-    "-t mangle -D bw_mangle_POSTROUTING",
-
-    "-X bw_INPUT",
-    "-X bw_OUTPUT",
-    "-X bw_FORWARD",
     "-X penalty_box",
     "-X costly_shared",
-
-    "-t raw -X bw_raw_PREROUTING",
-    "-t mangle -X bw_mangle_POSTROUTING",
 };
 
 const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
-    /* Created needed chains. */
-    "-N bw_INPUT",
-    "-A INPUT -j bw_INPUT",
-
-    "-N bw_OUTPUT",
-    "-A OUTPUT -j bw_OUTPUT",
-
-    "-N bw_FORWARD",
-    "-I FORWARD -j bw_FORWARD",
-
     "-N costly_shared",
     "-N penalty_box",
-
-    "-t raw -N bw_raw_PREROUTING",
-    "-t raw -A PREROUTING -j bw_raw_PREROUTING",
-    "-t mangle -N bw_mangle_POSTROUTING",
-    "-t mangle -A POSTROUTING -j bw_mangle_POSTROUTING",
 };
 
 const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
@@ -253,7 +229,6 @@ int BandwidthController::setupIptablesHooks(void) {
             IPT_SETUP_COMMANDS, RunCmdFailureBad);
 
     return 0;
-
 }
 
 int BandwidthController::enableBandwidthControl(bool force) {

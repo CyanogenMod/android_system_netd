@@ -24,15 +24,21 @@ public:
 
     int enableIdletimerControl();
     int disableIdletimerControl();
-    int addInterfaceIdletimer(const char *iface, uint32_t timeout);
-    int removeInterfaceIdletimer(const char *iface, uint32_t timeout);
+    int addInterfaceIdletimer(const char *iface, uint32_t timeout,
+                              const char *classLabel);
+    int removeInterfaceIdletimer(const char *iface, uint32_t timeout,
+                                 const char *classLabel);
     bool setupIptablesHooks();
+
+    static const char* LOCAL_RAW_PREROUTING;
+    static const char* LOCAL_MANGLE_POSTROUTING;
 
  private:
     enum IptOp { IptOpAdd, IptOpDelete };
     int setDefaults();
     int runIpxtablesCmd(const char *cmd);
-    int modifyInterfaceIdletimer(IptOp op, const char *iface, uint32_t timeout);
+    int modifyInterfaceIdletimer(IptOp op, const char *iface, uint32_t timeout,
+                                 const char *classLabel);
 };
 
 #endif

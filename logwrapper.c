@@ -160,17 +160,14 @@ int logwrap(int argc, const char* argv[])
     return 0;
 }
 
+int fork_and_execve(const char*, char*[]);
+
 /*
  * The following is based off of bionic/libc/unistd/system.c with
  *  modifications to avoid calling /system/bin/sh -c
  */
-extern char **environ;
 int system_nosh(const char *command)
 {
-    pid_t pid;
-    sig_t intsave, quitsave;
-    sigset_t mask, omask;
-    int pstat;
     char buffer[255];
     char *argp[32];
     char *next = buffer;
@@ -200,6 +197,15 @@ int system_nosh(const char *command)
     }
     argp[i] = NULL;
 
+    return fork_and_execve(argp[0], argp);
+}
+
+extern char **environ;
+int fork_and_execve(const char* filename, char* argv[]) {
+    pid_t pid;
+    sig_t intsave, quitsave;
+    sigset_t mask, omask;
+    int pstat;
 
     sigemptyset(&mask);
     sigaddset(&mask, SIGCHLD);
@@ -210,7 +216,7 @@ int system_nosh(const char *command)
         return(-1);
     case 0:                                 /* child */
         sigprocmask(SIG_SETMASK, &omask, NULL);
-        execve(argp[0], argp, environ);
+        execve(filename, argv, environ);
         _exit(127);
     }
 

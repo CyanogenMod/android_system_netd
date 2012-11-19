@@ -17,6 +17,10 @@
 #ifndef _OEM_IPTABLES_HOOK_H
 #define _OEM_IPTABLES_HOOK_H
 
+#define OEM_IPTABLES_FILTER_OUTPUT "oem_out"
+#define OEM_IPTABLES_FILTER_FORWARD "oem_fwd"
+#define OEM_IPTABLES_NAT_PREROUTING "oem_nat_pre"
+
 void setupOemIptablesHook();
 
 #endif

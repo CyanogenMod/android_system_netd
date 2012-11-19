@@ -23,23 +23,25 @@
 #include "TetherController.h"
 #include "NatController.h"
 #include "PppController.h"
-#include "PanController.h"
 #include "SoftapController.h"
 #include "BandwidthController.h"
 #include "IdletimerController.h"
+#include "InterfaceController.h"
 #include "ResolverController.h"
 #include "SecondaryTableController.h"
+#include "FirewallController.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
     static NatController *sNatCtrl;
     static PppController *sPppCtrl;
-    static PanController *sPanCtrl;
     static SoftapController *sSoftapCtrl;
     static BandwidthController *sBandwidthCtrl;
     static IdletimerController *sIdletimerCtrl;
+    static InterfaceController *sInterfaceCtrl;
     static ResolverController *sResolverCtrl;
     static SecondaryTableController *sSecondaryTableCtrl;
+    static FirewallController *sFirewallCtrl;
 
 public:
     CommandListener();
@@ -100,13 +102,6 @@ private:
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
 
-    class PanCmd : public NetdCommand {
-    public:
-        PanCmd();
-        virtual ~PanCmd() {}
-        int runCommand(SocketClient *c, int argc, char ** argv);
-    };
-
     class BandwidthControlCmd : public NetdCommand {
     public:
         BandwidthControlCmd();
@@ -130,6 +125,16 @@ private:
         ResolverCmd();
         virtual ~ResolverCmd() {}
         int runCommand(SocketClient *c, int argc, char ** argv);
+    };
+
+    class FirewallCmd: public NetdCommand {
+    public:
+        FirewallCmd();
+        virtual ~FirewallCmd() {}
+        int runCommand(SocketClient *c, int argc, char ** argv);
+    protected:
+        int sendGenericOkFail(SocketClient *cli, int cond);
+        static FirewallRule parseRule(const char* arg);
     };
 };
 

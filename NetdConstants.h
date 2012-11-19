@@ -17,6 +17,9 @@
 #ifndef _NETD_CONSTANTS_H
 #define _NETD_CONSTANTS_H
 
+#include <string>
+#include <list>
+#include <stdarg.h>
 
 extern const char * const IPTABLES_PATH;
 extern const char * const IP6TABLES_PATH;
@@ -25,5 +28,12 @@ extern const char * const TC_PATH;
 extern const char * const OEM_SCRIPT_PATH;
 extern const char * const ADD;
 extern const char * const DEL;
+
+extern "C" int fork_and_execve(const char*, const char*[]);
+
+enum IptablesTarget { V4, V6, V4V6 };
+
+int execIptables(IptablesTarget target, ...);
+int execIptablesSilently(IptablesTarget target, ...);
 
 #endif

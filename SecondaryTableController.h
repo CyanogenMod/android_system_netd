@@ -19,7 +19,7 @@
 
 #include <sysutils/FrameworkListener.h>
 
-#include <linux/if.h>
+#include <net/if.h>
 
 #ifndef IFNAMSIZ
 #define IFNAMSIZ 16

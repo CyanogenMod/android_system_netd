@@ -65,25 +65,40 @@ int main(int argc, char **argv) {
 }
 
 static int do_cmd(int sock, int argc, char **argv) {
-    char final_cmd[255] = { '0', ' ', '\0' };
+    char *final_cmd = strdup("0 ");
+    if (final_cmd == NULL) {
+        perror("strdup");
+        return errno;
+    }
+
     int i;
 
     for (i = 1; i < argc; i++) {
+        if (index(argv[i], '"')) {
+            perror("argument with embedded quotes not allowed");
+            free(final_cmd);
+            return 1;
+        }
+        bool needs_quoting = index(argv[i], ' ');
+        const char *format = needs_quoting ? "%s\"%s\"%s" : "%s%s%s";
         char *cmp;
 
-        if (!index(argv[i], ' '))
-            asprintf(&cmp, "%s%s", argv[i], (i == (argc -1)) ? "" : " ");
-        else
-            asprintf(&cmp, "\"%s\"%s", argv[i], (i == (argc -1)) ? "" : " ");
-
-        strcat(final_cmd, cmp);
-        free(cmp);
+        if (asprintf(&cmp, format, final_cmd, argv[i],
+                     (i == (argc -1)) ? "" : " ") < 0) {
+            perror("malloc");
+            free(final_cmd);
+            return errno;
+        }
+        free(final_cmd);
+        final_cmd = cmp;
     }
 
     if (write(sock, final_cmd, strlen(final_cmd) + 1) < 0) {
         perror("write");
+        free(final_cmd);
         return errno;
     }
+    free(final_cmd);
 
     return do_monitor(sock, 1);
 }

@@ -40,17 +40,88 @@
 #include "IdletimerController.h"
 #include "SecondaryTableController.h"
 #include "oem_iptables_hook.h"
-
+#include "NetdConstants.h"
+#include "FirewallController.h"
 
 TetherController *CommandListener::sTetherCtrl = NULL;
 NatController *CommandListener::sNatCtrl = NULL;
 PppController *CommandListener::sPppCtrl = NULL;
-PanController *CommandListener::sPanCtrl = NULL;
 SoftapController *CommandListener::sSoftapCtrl = NULL;
 BandwidthController * CommandListener::sBandwidthCtrl = NULL;
 IdletimerController * CommandListener::sIdletimerCtrl = NULL;
+InterfaceController *CommandListener::sInterfaceCtrl = NULL;
 ResolverController *CommandListener::sResolverCtrl = NULL;
 SecondaryTableController *CommandListener::sSecondaryTableCtrl = NULL;
+FirewallController *CommandListener::sFirewallCtrl = NULL;
+
+/**
+ * List of module chains to be created, along with explicit ordering. ORDERING
+ * IS CRITICAL, AND SHOULD BE TRIPLE-CHECKED WITH EACH CHANGE.
+ */
+static const char* FILTER_INPUT[] = {
+        // Bandwidth should always be early in input chain, to make sure we
+        // correctly count incoming traffic against data plan.
+        BandwidthController::LOCAL_INPUT,
+        FirewallController::LOCAL_INPUT,
+        NULL,
+};
+
+static const char* FILTER_FORWARD[] = {
+        OEM_IPTABLES_FILTER_FORWARD,
+        FirewallController::LOCAL_FORWARD,
+        BandwidthController::LOCAL_FORWARD,
+        NatController::LOCAL_FORWARD,
+        NULL,
+};
+
+static const char* FILTER_OUTPUT[] = {
+        OEM_IPTABLES_FILTER_OUTPUT,
+        FirewallController::LOCAL_OUTPUT,
+        BandwidthController::LOCAL_OUTPUT,
+        NULL,
+};
+
+static const char* RAW_PREROUTING[] = {
+        BandwidthController::LOCAL_RAW_PREROUTING,
+        IdletimerController::LOCAL_RAW_PREROUTING,
+        NULL,
+};
+
+static const char* MANGLE_POSTROUTING[] = {
+        BandwidthController::LOCAL_MANGLE_POSTROUTING,
+        IdletimerController::LOCAL_MANGLE_POSTROUTING,
+        NULL,
+};
+
+static const char* NAT_PREROUTING[] = {
+        OEM_IPTABLES_NAT_PREROUTING,
+        NULL,
+};
+
+static const char* NAT_POSTROUTING[] = {
+        NatController::LOCAL_NAT_POSTROUTING,
+        NULL,
+};
+
+static void createChildChains(IptablesTarget target, const char* table, const char* parentChain,
+        const char** childChains) {
+    const char** childChain = childChains;
+    do {
+        // Order is important:
+        // -D to delete any pre-existing jump rule (removes references
+        //    that would prevent -X from working)
+        // -F to flush any existing chain
+        // -X to delete any existing chain
+        // -N to create the chain
+        // -A to append the chain to parent
+
+        execIptablesSilently(target, "-t", table, "-D", parentChain, "-j", *childChain, NULL);
+        execIptablesSilently(target, "-t", table, "-F", *childChain, NULL);
+        execIptablesSilently(target, "-t", table, "-X", *childChain, NULL);
+        execIptables(target, "-t", table, "-N", *childChain, NULL);
+        execIptables(target, "-t", table, "-A", parentChain, "-j", *childChain, NULL);
+    } while (*(++childChain) != NULL);
+}
 
 CommandListener::CommandListener() :
                  FrameworkListener("netd", true) {
@@ -60,11 +131,11 @@ CommandListener::CommandListener() :
     registerCmd(new NatCmd());
     registerCmd(new ListTtysCmd());
     registerCmd(new PppdCmd());
-    registerCmd(new PanCmd());
     registerCmd(new SoftapCmd());
     registerCmd(new BandwidthControlCmd());
     registerCmd(new IdletimerControlCmd());
     registerCmd(new ResolverCmd());
+    registerCmd(new FirewallCmd());
 
     if (!sSecondaryTableCtrl)
         sSecondaryTableCtrl = new SecondaryTableController();
@@ -74,8 +145,6 @@ CommandListener::CommandListener() :
         sNatCtrl = new NatController(sSecondaryTableCtrl);
     if (!sPppCtrl)
         sPppCtrl = new PppController();
-    if (!sPanCtrl)
-        sPanCtrl = new PanController();
     if (!sSoftapCtrl)
         sSoftapCtrl = new SoftapController();
     if (!sBandwidthCtrl)
@@ -84,16 +153,36 @@ CommandListener::CommandListener() :
         sIdletimerCtrl = new IdletimerController();
     if (!sResolverCtrl)
         sResolverCtrl = new ResolverController();
+    if (!sFirewallCtrl)
+        sFirewallCtrl = new FirewallController();
+    if (!sInterfaceCtrl)
+        sInterfaceCtrl = new InterfaceController();
 
     /*
-     * This is the only time controllers are allowed to touch
-     * top-level chains in iptables.
-     * Each controller should setup custom chains and hook them into
-     * the top-level ones.
-     * THE ORDER IS IMPORTANT. TRIPPLE CHECK EACH setup function.
+     * This is the only time we touch top-level chains in iptables; controllers
+     * should only mutate rules inside of their children chains, as created by
+     * the constants above.
+     *
+     * Modules should never ACCEPT packets (except in well-justified cases);
+     * they should instead defer to any remaining modules using RETURN, or
+     * otherwise DROP/REJECT.
      */
-    /* Does DROP in nat: PREROUTING, FORWARD, OUTPUT */
+
+    // Create chains for children modules
+    createChildChains(V4V6, "filter", "INPUT", FILTER_INPUT);
+    createChildChains(V4V6, "filter", "FORWARD", FILTER_FORWARD);
+    createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT);
+    createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING);
+    createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING);
+    createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING);
+    createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING);
+
+    // Let each module setup their child chains
     setupOemIptablesHook();
+
+    /* When enabled, DROPs all packets except those matching rules. */
+    sFirewallCtrl->setupIptablesHooks();
+
     /* Does DROPs in FORWARD by default */
     sNatCtrl->setupIptablesHooks();
     /*
@@ -227,6 +316,22 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             cli->sendMsg(ResponseCode::CommandOkay, "Interface throttling set", false);
         }
         return 0;
+    } else if (!strcmp(argv[1], "driver")) {
+        int rc;
+        char *rbuf;
+
+        if (argc < 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Usage: interface driver <interface> <cmd> <args>", false);
+            return 0;
+        }
+        rc = sInterfaceCtrl->interfaceCommand(argc, argv, &rbuf);
+        if (rc) {
+            cli->sendMsg(ResponseCode::OperationFailed, "Failed to execute command", true);
+        } else {
+            cli->sendMsg(ResponseCode::CommandOkay, rbuf, false);
+        }
+        return 0;
     } else {
         /*
          * These commands take a minimum of 3 arguments
@@ -335,8 +440,8 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             ifc_close();
             return 0;
         } else if (!strcmp(argv[1], "setcfg")) {
-            // arglist: iface addr prefixLength flags
-            if (argc < 5) {
+            // arglist: iface [addr prefixLength] flags
+            if (argc < 4) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                 return 0;
             }
@@ -344,28 +449,30 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
 
             struct in_addr addr;
             unsigned flags = 0;
-
-            if (!inet_aton(argv[3], &addr)) {
-                cli->sendMsg(ResponseCode::CommandParameterError, "Invalid address", false);
-                return 0;
-            }
+            int index = 5;
 
             ifc_init();
-            if (ifc_set_addr(argv[2], addr.s_addr)) {
-                cli->sendMsg(ResponseCode::OperationFailed, "Failed to set address", true);
-                ifc_close();
-                return 0;
-            }
 
-            //Set prefix length on a non zero address
-            if (addr.s_addr != 0 && ifc_set_prefixLength(argv[2], atoi(argv[4]))) {
-                cli->sendMsg(ResponseCode::OperationFailed, "Failed to set prefixLength", true);
-                ifc_close();
-                return 0;
+            if (!inet_aton(argv[3], &addr)) {
+                // Handle flags only case
+                index = 3;
+            } else {
+                if (ifc_set_addr(argv[2], addr.s_addr)) {
+                    cli->sendMsg(ResponseCode::OperationFailed, "Failed to set address", true);
+                    ifc_close();
+                    return 0;
+                }
+
+                // Set prefix length on a non zero address
+                if (addr.s_addr != 0 && ifc_set_prefixLength(argv[2], atoi(argv[4]))) {
+                   cli->sendMsg(ResponseCode::OperationFailed, "Failed to set prefixLength", true);
+                   ifc_close();
+                   return 0;
+               }
             }
 
             /* Process flags */
-            for (int i = 5; i < argc; i++) {
+            for (int i = index; i < argc; i++) {
                 char *flag = argv[i];
                 if (!strcmp(flag, "up")) {
                     ALOGD("Trying to bring up %s", argv[2]);
@@ -532,6 +639,12 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
 
     if (!strcmp(argv[1], "stop")) {
         rc = sTetherCtrl->stopTethering();
+    } else if(!strcmp(argv[1], "start-reverse")) {
+        ALOGD("CommandListener::TetherCmd::run, call startReverseTethering, iface:%s", argv[2]);
+        sTetherCtrl->startReverseTethering(argv[2]);
+    } else if (!strcmp(argv[1], "stop-reverse")) {
+        ALOGD("CommandListener::TetherCmd::run, call stopReverseTethering");
+        rc = sTetherCtrl->stopReverseTethering();
     } else if (!strcmp(argv[1], "status")) {
         char *tmp = NULL;
 
@@ -712,45 +825,6 @@ int CommandListener::PppdCmd::runCommand(SocketClient *cli,
     return 0;
 }
 
-CommandListener::PanCmd::PanCmd() :
-                 NetdCommand("pan") {
-}
-
-int CommandListener::PanCmd::runCommand(SocketClient *cli,
-                                        int argc, char **argv) {
-    int rc = 0;
-
-    if (argc < 2) {
-        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-        return 0;
-    }
-
-    if (!strcmp(argv[1], "start")) {
-        rc = sPanCtrl->startPan();
-    } else if (!strcmp(argv[1], "stop")) {
-        rc = sPanCtrl->stopPan();
-    } else if (!strcmp(argv[1], "status")) {
-        char *tmp = NULL;
-
-        asprintf(&tmp, "Pan services %s",
-                 (sPanCtrl->isPanStarted() ? "started" : "stopped"));
-        cli->sendMsg(ResponseCode::PanStatusResult, tmp, false);
-        free(tmp);
-        return 0;
-    } else {
-        cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown pan cmd", false);
-        return 0;
-    }
-
-    if (!rc) {
-        cli->sendMsg(ResponseCode::CommandOkay, "Pan operation succeeded", false);
-    } else {
-        cli->sendMsg(ResponseCode::OperationFailed, "Pan operation failed", true);
-    }
-
-    return 0;
-}
-
 CommandListener::SoftapCmd::SoftapCmd() :
                  NetdCommand("softap") {
 }
@@ -765,11 +839,7 @@ int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
         return 0;
     }
 
-    if (!strcmp(argv[1], "start")) {
-        rc = sSoftapCtrl->startDriver(argv[2]);
-    } else if (!strcmp(argv[1], "stop")) {
-        rc = sSoftapCtrl->stopDriver(argv[2]);
-    } else if (!strcmp(argv[1], "startap")) {
+    if (!strcmp(argv[1], "startap")) {
         rc = sSoftapCtrl->startSoftap();
     } else if (!strcmp(argv[1], "stopap")) {
         rc = sSoftapCtrl->stopSoftap();
@@ -1240,11 +1310,12 @@ int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc
       return 0;
     }
     if (!strcmp(argv[1], "add")) {
-        if (argc != 4) {
+        if (argc != 5) {
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
             return 0;
         }
-        if(0 != sIdletimerCtrl->addInterfaceIdletimer(argv[2], atoi(argv[3]))) {
+        if(0 != sIdletimerCtrl->addInterfaceIdletimer(
+                                        argv[2], atoi(argv[3]), argv[4])) {
           cli->sendMsg(ResponseCode::OperationFailed, "Failed to add interface", false);
         } else {
           cli->sendMsg(ResponseCode::CommandOkay,  "Add success", false);
@@ -1252,12 +1323,13 @@ int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc
         return 0;
     }
     if (!strcmp(argv[1], "remove")) {
-        if (argc != 4) {
+        if (argc != 5) {
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
             return 0;
         }
         // ashish: fixme timeout
-        if (0 != sIdletimerCtrl->removeInterfaceIdletimer(argv[2], atoi(argv[3]))) {
+        if (0 != sIdletimerCtrl->removeInterfaceIdletimer(
+                                        argv[2], atoi(argv[3]), argv[4])) {
           cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove interface", false);
         } else {
           cli->sendMsg(ResponseCode::CommandOkay, "Remove success", false);
@@ -1266,5 +1338,112 @@ int CommandListener::IdletimerControlCmd::runCommand(SocketClient *cli, int argc
     }
 
     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown idletimer cmd", false);
+    return 0;
+}
+
+CommandListener::FirewallCmd::FirewallCmd() :
+    NetdCommand("firewall") {
+}
+
+int CommandListener::FirewallCmd::sendGenericOkFail(SocketClient *cli, int cond) {
+    if (!cond) {
+        cli->sendMsg(ResponseCode::CommandOkay, "Firewall command succeeded", false);
+    } else {
+        cli->sendMsg(ResponseCode::OperationFailed, "Firewall command failed", false);
+    }
+    return 0;
+}
+
+FirewallRule CommandListener::FirewallCmd::parseRule(const char* arg) {
+    if (!strcmp(arg, "allow")) {
+        return ALLOW;
+    } else {
+        return DENY;
+    }
+}
+
+int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
+        char **argv) {
+    if (argc < 2) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing command", false);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "enable")) {
+        int res = sFirewallCtrl->enableFirewall();
+        return sendGenericOkFail(cli, res);
+    }
+    if (!strcmp(argv[1], "disable")) {
+        int res = sFirewallCtrl->disableFirewall();
+        return sendGenericOkFail(cli, res);
+    }
+    if (!strcmp(argv[1], "is_enabled")) {
+        int res = sFirewallCtrl->isFirewallEnabled();
+        return sendGenericOkFail(cli, res);
+    }
+
+    if (!strcmp(argv[1], "set_interface_rule")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: firewall set_interface_rule <rmnet0> <allow|deny>", false);
+            return 0;
+        }
+
+        const char* iface = argv[2];
+        FirewallRule rule = parseRule(argv[3]);
+
+        int res = sFirewallCtrl->setInterfaceRule(iface, rule);
+        return sendGenericOkFail(cli, res);
+    }
+
+    if (!strcmp(argv[1], "set_egress_source_rule")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: firewall set_egress_source_rule <192.168.0.1> <allow|deny>",
+                         false);
+            return 0;
+        }
+
+        const char* addr = argv[2];
+        FirewallRule rule = parseRule(argv[3]);
+
+        int res = sFirewallCtrl->setEgressSourceRule(addr, rule);
+        return sendGenericOkFail(cli, res);
+    }
+
+    if (!strcmp(argv[1], "set_egress_dest_rule")) {
+        if (argc != 5) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: firewall set_egress_dest_rule <192.168.0.1> <80> <allow|deny>",
+                         false);
+            return 0;
+        }
+
+        const char* addr = argv[2];
+        int port = atoi(argv[3]);
+        FirewallRule rule = parseRule(argv[4]);
+
+        int res = 0;
+        res |= sFirewallCtrl->setEgressDestRule(addr, PROTOCOL_TCP, port, rule);
+        res |= sFirewallCtrl->setEgressDestRule(addr, PROTOCOL_UDP, port, rule);
+        return sendGenericOkFail(cli, res);
+    }
+
+    if (!strcmp(argv[1], "set_uid_rule")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: firewall set_uid_rule <1000> <allow|deny>",
+                         false);
+            return 0;
+        }
+
+        int uid = atoi(argv[2]);
+        FirewallRule rule = parseRule(argv[3]);
+
+        int res = sFirewallCtrl->setUidRule(uid, rule);
+        return sendGenericOkFail(cli, res);
+    }
+
+    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown command", false);
     return 0;
 }

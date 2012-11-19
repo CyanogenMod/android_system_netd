@@ -17,7 +17,7 @@
 #ifndef _TETHER_CONTROLLER_H
 #define _TETHER_CONTROLLER_H
 
-#include <linux/in.h>
+#include <netinet/in.h>
 
 #include "List.h"
 
@@ -34,6 +34,7 @@ class TetherController {
     InterfaceCollection  *mInterfaces;
     NetAddressCollection *mDnsForwarders;
     pid_t                 mDaemonPid;
+    pid_t                 mDhcpcdPid;
     int                   mDaemonFd;
 
 public:
@@ -47,6 +48,9 @@ public:
 
     int stopTethering();
     bool isTetheringStarted();
+
+    int startReverseTethering(const char* iface);
+    int stopReverseTethering();
 
     int setDnsForwarders(char **servers, int numServers);
     NetAddressCollection *getDnsForwarders();

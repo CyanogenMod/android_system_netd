@@ -76,10 +76,14 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
 
     } else if (!strcmp(subsys, "xt_idletimer")) {
         int action = evt->getAction();
-        const char *iface = evt->findParam("INTERFACE");
+        const char *label = evt->findParam("LABEL");
         const char *state = evt->findParam("STATE");
+        // if no LABEL, use INTERFACE instead
+        if (label == NULL) {
+            label = evt->findParam("INTERFACE");
+        }
         if (state)
-            notifyInterfaceActivity(iface, !strcmp("active", state));
+            notifyInterfaceClassActivity(label, !strcmp("active", state));
 
 #if !LOG_NDEBUG
     } else if (strcmp(subsys, "platform") && strcmp(subsys, "backlight")) {
@@ -131,12 +135,13 @@ void NetlinkHandler::notifyQuotaLimitReached(const char *name, const char *iface
             msg, false);
 }
 
-void NetlinkHandler::notifyInterfaceActivity(const char *name, bool isActive) {
+void NetlinkHandler::notifyInterfaceClassActivity(const char *name,
+                                                  bool isActive) {
     char msg[255];
 
-    snprintf(msg, sizeof(msg), "Iface %s %s", name, isActive ? "active" : "idle");
+    snprintf(msg, sizeof(msg), "IfaceClass %s %s",
+             isActive ? "active" : "idle", name);
     ALOGV("Broadcasting interface activity msg: %s", msg);
-    mNm->getBroadcaster()->sendBroadcast(isActive ? ResponseCode::InterfaceActive
-            : ResponseCode::InterfaceIdle,
-            msg, false);
+    mNm->getBroadcaster()->sendBroadcast(
+        ResponseCode::InterfaceClassActivity, msg, false);
 }

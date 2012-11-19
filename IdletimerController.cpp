@@ -24,41 +24,64 @@
  *
  * iptables -F
  *
- * iptables -t nat -F idletimer_PREROUTING
- * iptables -t nat -F idletimer_POSTROUTING
+ * iptables -t raw -F idletimer_PREROUTING
+ * iptables -t mangle -F idletimer_POSTROUTING
  *
  *
- * iptables -t nat -N idletimer_PREROUTING
- * iptables -t nat -N idletimer_POSTROUTING
+ * iptables -t raw -N idletimer_PREROUTING
+ * iptables -t mangle -N idletimer_POSTROUTING
  *
- * iptables -t nat -D PREROUTING -j idletimer_PREROUTING
- * iptables -t nat -D POSTROUTING -j idletimer_POSTROUTING
+ * iptables -t raw -D PREROUTING -j idletimer_PREROUTING
+ * iptables -t mangle -D POSTROUTING -j idletimer_POSTROUTING
  *
  *
- * iptables -t nat -I PREROUTING -j idletimer_PREROUTING
- * iptables -t nat -I POSTROUTING -j idletimer_POSTROUTING
+ * iptables -t raw -I PREROUTING -j idletimer_PREROUTING
+ * iptables -t mangle -I POSTROUTING -j idletimer_POSTROUTING
  *
  * # For notifications to work the lable name must match the name of a valid interface.
  * # If the label name does match an interface, the rules will be a no-op.
  *
- * iptables -t nat -A idletimer_PREROUTING -i rmnet0 -j IDLETIMER  --timeout 5 --label test-chain --send_nl_msg 1
- * iptables -t nat -A idletimer_POSTROUTING -o rmnet0 -j IDLETIMER  --timeout 5 --label test-chain --send_nl_msg 1
+ * iptables -t raw -A idletimer_PREROUTING -i rmnet0 -j IDLETIMER  --timeout 5 --label test-chain --send_nl_msg 1
+ * iptables -t mangle -A idletimer_POSTROUTING -o rmnet0 -j IDLETIMER  --timeout 5 --label test-chain --send_nl_msg 1
  *
- * iptables -nxvL -t nat
+ * iptables -nxvL -t raw
+ * iptables -nxvL -t mangle
  *
  * =================
  *
  * ndc command sequence
  * ------------------
  * ndc idletimer enable
- * ndc idletimer add <iface> <timeout>
- * ndc idletimer remove <iface> <timeout>
+ * ndc idletimer add <iface> <timeout> <class label>
+ * ndc idletimer remove <iface> <timeout> <class label>
  *
  * Monitor effect on the iptables chains after each step using:
- *     iptables -nxvL -t nat
+ *     iptables -nxvL -t raw
+ *     iptables -nxvL -t mangle
  *
  * Remember that the timeout value has to be same at the time of the
  * removal.
+ *
+ * =================
+ *
+ * Verifying the iptables rule
+ * ---------------------------
+ * We want to make sure the iptable rules capture every packet. It can be
+ * verified with tcpdump. First take a note of the pkts count for the two rules:
+ *
+ * adb shell iptables -t mangle -L idletimer_mangle_POSTROUTING -v && adb shell iptables -t raw -L idletimer_raw_PREROUTING -v
+ *
+ * And then, before any network traffics happen on the device, run tcpdump:
+ *
+ * adb shell tcpdump | tee tcpdump.log
+ *
+ * After a while run iptables commands again, you could then count the number
+ * of incoming and outgoing packets captured by tcpdump, and compare that with
+ * the numbers reported by iptables command. There shouldn't be too much
+ * difference on these numbers, i.e., with 2000 packets captured it should
+ * differ by less than 5.
+ *
+ * =================
  *
  * Note that currently if the name of the iface is incorrect, iptables
  * will setup rules without checking if it is the name of a valid
@@ -90,6 +113,9 @@
 
 extern "C" int system_nosh(const char *command);
 
+const char* IdletimerController::LOCAL_RAW_PREROUTING = "idletimer_raw_PREROUTING";
+const char* IdletimerController::LOCAL_MANGLE_POSTROUTING = "idletimer_mangle_POSTROUTING";
+
 IdletimerController::IdletimerController() {
 }
 
@@ -115,26 +141,23 @@ int IdletimerController::runIpxtablesCmd(const char *cmd) {
 }
 
 bool IdletimerController::setupIptablesHooks() {
-    runIpxtablesCmd("-t nat -D PREROUTING -j idletimer_nat_PREROUTING");
-    runIpxtablesCmd("-t nat -F idletimer_nat_PREROUTING");
-    runIpxtablesCmd("-t nat -N idletimer_nat_PREROUTING");
-
-    runIpxtablesCmd("-t nat -D POSTROUTING -j idletimer_nat_POSTROUTING");
-    runIpxtablesCmd("-t nat -F idletimer_nat_POSTROUTING");
-    runIpxtablesCmd("-t nat -N idletimer_nat_POSTROUTING");
-
-    if (runIpxtablesCmd("-t nat -I PREROUTING -j idletimer_nat_PREROUTING")
-        || runIpxtablesCmd("-t nat -I POSTROUTING -j idletimer_nat_POSTROUTING")) {
-        return false;
-    }
     return true;
 }
 
 int IdletimerController::setDefaults() {
-  if (runIpxtablesCmd("-t nat -F idletimer_nat_PREROUTING")
-      || runIpxtablesCmd("-t nat -F idletimer_nat_POSTROUTING") )
-      return -1;
-  return 0;
+  int res;
+  char *buffer;
+  asprintf(&buffer, "-t raw -F %s", LOCAL_RAW_PREROUTING);
+  res = runIpxtablesCmd(buffer);
+  free(buffer);
+
+  if (res)
+    return res;
+
+  asprintf(&buffer, "-t mangle -F %s", LOCAL_MANGLE_POSTROUTING);
+  res = runIpxtablesCmd(buffer);
+  free(buffer);
+  return res;
 }
 
 int IdletimerController::enableIdletimerControl() {
@@ -148,28 +171,36 @@ int IdletimerController::disableIdletimerControl() {
 }
 
 int IdletimerController::modifyInterfaceIdletimer(IptOp op, const char *iface,
-                                                  uint32_t timeout) {
+                                                  uint32_t timeout,
+                                                  const char *classLabel) {
   int res;
   char *buffer;
-  asprintf(&buffer, "-t nat -%c idletimer_nat_PREROUTING -i %s -j IDLETIMER"
+  asprintf(&buffer, "-t raw -%c %s -i %s -j IDLETIMER"
            " --timeout %u --label %s --send_nl_msg 1",
-           (op == IptOpAdd) ? 'A' : 'D', iface, timeout, iface);
+           (op == IptOpAdd) ? 'A' : 'D', LOCAL_RAW_PREROUTING, iface, timeout, classLabel);
   res = runIpxtablesCmd(buffer);
   free(buffer);
 
-  asprintf(&buffer, "-t nat -%c idletimer_nat_POSTROUTING -o %s -j IDLETIMER"
+  if (res)
+    return res;
+
+  asprintf(&buffer, "-t mangle -%c %s -o %s -j IDLETIMER"
            " --timeout %u --label %s --send_nl_msg 1",
-           (op == IptOpAdd) ? 'A' : 'D', iface, timeout, iface);
-  res |= runIpxtablesCmd(buffer);
+           (op == IptOpAdd) ? 'A' : 'D', LOCAL_MANGLE_POSTROUTING, iface, timeout, classLabel);
+  res = runIpxtablesCmd(buffer);
   free(buffer);
 
   return res;
 }
 
-int IdletimerController::addInterfaceIdletimer(const char *iface, uint32_t timeout) {
-  return modifyInterfaceIdletimer(IptOpAdd, iface, timeout);
+int IdletimerController::addInterfaceIdletimer(const char *iface,
+                                               uint32_t timeout,
+                                               const char *classLabel) {
+  return modifyInterfaceIdletimer(IptOpAdd, iface, timeout, classLabel);
 }
 
-int IdletimerController::removeInterfaceIdletimer(const char *iface, uint32_t timeout) {
-  return modifyInterfaceIdletimer(IptOpDelete, iface, timeout);
+int IdletimerController::removeInterfaceIdletimer(const char *iface,
+                                                  uint32_t timeout,
+                                                  const char *classLabel) {
+  return modifyInterfaceIdletimer(IptOpDelete, iface, timeout, classLabel);
 }

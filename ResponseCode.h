@@ -34,7 +34,6 @@ public:
     static const int CommandOkay               = 200;
     static const int TetherStatusResult        = 210;
     static const int IpFwdStatusResult         = 211;
-    static const int PanStatusResult           = 212;
     static const int InterfaceGetCfgResult     = 213;
     static const int SoftapStatusResult        = 214;
     static const int UsbRNDISStatusResult      = 215;
@@ -72,7 +71,6 @@ public:
     static const int ServiceSetHostnameSuccess      = 610;
     static const int ServiceGetAddrInfoFailed       = 611;
     static const int ServiceGetAddrInfoSuccess      = 612;
-    static const int InterfaceActive                = 613;
-    static const int InterfaceIdle                  = 614;
+    static const int InterfaceClassActivity         = 613;
 };
 #endif
