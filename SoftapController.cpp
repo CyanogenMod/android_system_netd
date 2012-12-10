@@ -156,7 +156,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
     }
 
     asprintf(&wbuf, "interface=%s\ndriver=" HOSTAPD_DRIVER_NAME "\nctrl_interface="
-            "/data/misc/wifi/hostapd\nssid=%s\nchannel=6\n", iface, ssid);
+            "/data/misc/wifi/hostapd\nssid=%s\nchannel=6\nieee80211n=1\n", iface, ssid);
 
     if (argc > 4) {
         if (!strcmp(argv[4], "wpa-psk")) {
