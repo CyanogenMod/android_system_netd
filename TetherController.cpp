@@ -163,6 +163,7 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
         close(pipefd[0]);
         mDaemonPid = pid;
         mDaemonFd = pipefd[1];
+        applyDnsInterfaces();
         ALOGD("Tethering services running");
     }
 
@@ -216,11 +217,11 @@ int TetherController::startReverseTethering(const char* iface) {
 
         char *args[10];
         int argc = 0;
-        args[argc++] = "/system/bin/dhcpcd";
+        args[argc++] = (char *)"/system/bin/dhcpcd";
         char host_name[128];
         if (property_get("net.hostname", host_name, NULL) && (host_name[0] != '\0'))
         {
-            args[argc++] = "-h";
+            args[argc++] = (char *)"-h";
             args[argc++] = host_name;
         }
         args[argc++] = (char*)iface;
@@ -307,19 +308,67 @@ NetAddressCollection *TetherController::getDnsForwarders() {
     return mDnsForwarders;
 }
 
-int TetherController::tetherInterface(const char *interface) {
-    mInterfaces->push_back(strdup(interface));
+int TetherController::applyDnsInterfaces() {
+    int i;
+    char daemonCmd[MAX_CMD_SIZE];
+
+    strcpy(daemonCmd, "update_ifaces");
+    int cmdLen = strlen(daemonCmd);
+    InterfaceCollection::iterator it;
+    bool haveInterfaces = false;
+
+    for (it = mInterfaces->begin(); it != mInterfaces->end(); ++it) {
+        cmdLen += (strlen(*it) + 1);
+        if (cmdLen + 1 >= MAX_CMD_SIZE) {
+            ALOGD("Too many DNS ifaces listed");
+            break;
+        }
+
+        strcat(daemonCmd, ":");
+        strcat(daemonCmd, *it);
+        haveInterfaces = true;
+    }
+
+    if ((mDaemonFd != -1) && haveInterfaces) {
+        ALOGD("Sending update msg to dnsmasq [%s]", daemonCmd);
+        if (write(mDaemonFd, daemonCmd, strlen(daemonCmd) +1) < 0) {
+            ALOGE("Failed to send update command to dnsmasq (%s)", strerror(errno));
+            return -1;
+        }
+    }
     return 0;
+}
+
+int TetherController::tetherInterface(const char *interface) {
+    ALOGD("tetherInterface(%s)", interface);
+    mInterfaces->push_back(strdup(interface));
+
+    if (applyDnsInterfaces()) {
+        InterfaceCollection::iterator it;
+        for (it = mInterfaces->begin(); it != mInterfaces->end(); ++it) {
+            if (!strcmp(interface, *it)) {
+                free(*it);
+                mInterfaces->erase(it);
+                break;
+            }
+        }
+        return -1;
+    } else {
+        return 0;
+    }
 }
 
 int TetherController::untetherInterface(const char *interface) {
     InterfaceCollection::iterator it;
 
+    ALOGD("untetherInterface(%s)", interface);
+
     for (it = mInterfaces->begin(); it != mInterfaces->end(); ++it) {
         if (!strcmp(interface, *it)) {
             free(*it);
             mInterfaces->erase(it);
-            return 0;
+
+            return applyDnsInterfaces();
         }
     }
     errno = ENOENT;

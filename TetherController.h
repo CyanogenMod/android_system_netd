@@ -52,6 +52,9 @@ public:
     int tetherInterface(const char *interface);
     int untetherInterface(const char *interface);
     InterfaceCollection *getTetheredInterfaceList();
+
+private:
+    int applyDnsInterfaces();
 };
 
 #endif
