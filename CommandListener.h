@@ -88,6 +88,14 @@ private:
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
 
+    class V6RtrAdvCmd: public NetdCommand {
+    public:
+        V6RtrAdvCmd();
+        virtual ~V6RtrAdvCmd() {}
+        int runCommand(SocketClient *c, int argc, char ** argv);
+    };
+
+
     class NatCmd : public NetdCommand {
     public:
         NatCmd();

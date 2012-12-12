@@ -542,6 +542,8 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
                                                       int argc, char **argv) {
     int rc = 0;
 
+    ALOGD("TetherCmd::runCommand. argc: %d. argv[0]: %s", argc, argv[0]);
+
     if (argc < 2) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
         return 0;
@@ -613,7 +615,18 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
                 rc = sTetherCtrl->tetherInterface(argv[3]);
             } else if (!strcmp(argv[2], "remove")) {
                 rc = sTetherCtrl->untetherInterface(argv[3]);
-            /* else if (!strcmp(argv[2], "list")) handled above */
+            } else if (!strcmp(argv[2], "list")) {
+                InterfaceCollection *ilist = sTetherCtrl->getTetheredInterfaceList();
+                InterfaceCollection::iterator it;
+
+                for (it = ilist->begin(); it != ilist->end(); ++it) {
+                    cli->sendMsg(ResponseCode::TetherInterfaceListResult, *it, false);
+                }
+            } else if (!strcmp(argv[2], "add_upstream")) {
+                ALOGD("command %s %s %s %s", argv[0], argv[1], argv[2], argv[3]);
+                rc = sTetherCtrl->addUpstreamInterface(argv[3]);
+            } else if (!strcmp(argv[2], "remove_upstream")) {
+                rc = sTetherCtrl->removeUpstreamInterface(argv[3]);
             } else {
                 cli->sendMsg(ResponseCode::CommandParameterError,
                              "Unknown tether interface operation", false);
@@ -642,6 +655,78 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
 
     return 0;
 }
+
+
+
+CommandListener::V6RtrAdvCmd::V6RtrAdvCmd() :
+                 NetdCommand("v6rtradv") {
+}
+
+int CommandListener::V6RtrAdvCmd::runCommand(SocketClient *cli,
+                                                      int argc, char **argv) {
+    int rc = 0;
+
+    if (argc < 2) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "stop")) {
+        rc = sTetherCtrl->stopV6RtrAdv();
+    } else if (!strcmp(argv[1], "status")) {
+        char *tmp = NULL;
+
+        asprintf(&tmp, "IPv6 Router Advertisement service %s",
+                 (sTetherCtrl->isV6RtrAdvStarted() ? "started" : "stopped"));
+        cli->sendMsg(ResponseCode::V6RtrAdvResult, tmp, false);
+        free(tmp);
+        return 0;
+    } else {
+        /*
+         * These commands take a minimum of 4 arguments
+         */
+        if (argc < 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+            return 0;
+        }
+
+        if (!strcmp(argv[1], "start")) {
+
+            int num_ifaces = argc - 2;
+            int arg_index = 2;
+            rc = sTetherCtrl->startV6RtrAdv(num_ifaces, &argv[arg_index]);
+        } else if (!strcmp(argv[1], "interface")) {
+            if (!strcmp(argv[2], "add")) {
+                rc = sTetherCtrl->tetherInterface(argv[3]);
+            } else if (!strcmp(argv[2], "remove")) {
+                rc = sTetherCtrl->untetherInterface(argv[3]);
+            } else if (!strcmp(argv[2], "list")) {
+                InterfaceCollection *ilist = sTetherCtrl->getTetheredInterfaceList();
+                InterfaceCollection::iterator it;
+
+                for (it = ilist->begin(); it != ilist->end(); ++it) {
+                    cli->sendMsg(ResponseCode::TetherInterfaceListResult, *it, false);
+                }
+            } else {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                             "Unknown tether interface operation", false);
+                return 0;
+            }
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown v6rtradv cmd", false);
+            return 0;
+        }
+    }
+
+    if (!rc) {
+        cli->sendMsg(ResponseCode::CommandOkay, "V6RtrAdv operation succeeded", false);
+    } else {
+        cli->sendMsg(ResponseCode::OperationFailed, "V6RtrAdv operation failed", true);
+    }
+
+    return 0;
+}
+
 
 CommandListener::NatCmd::NatCmd() :
                  NetdCommand("nat") {
