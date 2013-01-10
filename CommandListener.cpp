@@ -827,11 +827,17 @@ CommandListener::SoftapCmd::SoftapCmd() :
 
 int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
                                         int argc, char **argv) {
-    int rc = 0, flag = 0;
+    int rc = ResponseCode::SoftapStatusResult;
+    int flag = 0;
     char *retbuf = NULL;
 
+    if (sSoftapCtrl == NULL) {
+      cli->sendMsg(ResponseCode::ServiceStartFailed, "SoftAP is not available", false);
+      return -1;
+    }
     if (argc < 2) {
-        cli->sendMsg(ResponseCode::CommandSyntaxError, "Softap Missing argument", false);
+        cli->sendMsg(ResponseCode::CommandSyntaxError,
+                     "Missing argument in a SoftAP command", false);
         return 0;
     }
 
@@ -841,31 +847,23 @@ int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
         rc = sSoftapCtrl->stopSoftap();
     } else if (!strcmp(argv[1], "fwreload")) {
         rc = sSoftapCtrl->fwReloadSoftap(argc, argv);
-    } else if (!strcmp(argv[1], "clients")) {
-        rc = sSoftapCtrl->clientsSoftap(&retbuf);
-        if (!rc) {
-            cli->sendMsg(ResponseCode::CommandOkay, retbuf, false);
-            free(retbuf);
-            return 0;
-        }
     } else if (!strcmp(argv[1], "status")) {
-        asprintf(&retbuf, "Softap service %s",
-                 (sSoftapCtrl->isSoftapStarted() ? "started" : "stopped"));
-        cli->sendMsg(ResponseCode::SoftapStatusResult, retbuf, false);
+        asprintf(&retbuf, "Softap service %s running",
+                 (sSoftapCtrl->isSoftapStarted() ? "is" : "is not"));
+        cli->sendMsg(rc, retbuf, false);
         free(retbuf);
         return 0;
     } else if (!strcmp(argv[1], "set")) {
         rc = sSoftapCtrl->setSoftap(argc, argv);
     } else {
-        cli->sendMsg(ResponseCode::CommandSyntaxError, "Softap Unknown cmd", false);
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Unrecognized SoftAP command", false);
         return 0;
     }
 
-    if (!rc) {
-        cli->sendMsg(ResponseCode::CommandOkay, "Softap operation succeeded", false);
-    } else {
-        cli->sendMsg(ResponseCode::OperationFailed, "Softap operation failed", true);
-    }
+    if (rc >= 400 && rc < 600)
+      cli->sendMsg(rc, "SoftAP command has failed", false);
+    else
+      cli->sendMsg(rc, "Ok", false);
 
     return 0;
 }

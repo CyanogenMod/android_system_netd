@@ -27,11 +27,6 @@
 #define AP_DRIVER_START_DELAY	800000
 
 class SoftapController {
-    pid_t mPid;
-    int mSock;
-
-    int addParam(int pos, const char *cmd, const char *arg);
-    int setCommand(char *iface, const char *fname, unsigned buflen=0);
 public:
     SoftapController();
     virtual ~SoftapController();
@@ -40,9 +35,10 @@ public:
     int stopSoftap();
     bool isSoftapStarted();
     int setSoftap(int argc, char *argv[]);
-    void generatePsk(char *ssid, char *passphrase, char *psk);
     int fwReloadSoftap(int argc, char *argv[]);
-    int clientsSoftap(char **retbuf);
+private:
+    pid_t mPid;
+    void generatePsk(char *ssid, char *passphrase, char *psk);
 };
 
 #endif
