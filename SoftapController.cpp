@@ -169,7 +169,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         asprintf(&fbuf, "%s", wbuf);
     }
 
-    fd = open(HOSTAPD_CONF_FILE, O_CREAT | O_TRUNC | O_WRONLY, 0660);
+    fd = open(HOSTAPD_CONF_FILE, O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW, 0660);
     if (fd < 0) {
         ALOGE("Cannot update \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
         free(wbuf);
@@ -180,25 +180,27 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         ALOGE("Cannot write to \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
         ret = -1;
     }
-    close(fd);
     free(wbuf);
     free(fbuf);
 
     /* Note: apparently open can fail to set permissions correctly at times */
-    if (chmod(HOSTAPD_CONF_FILE, 0660) < 0) {
+    if (fchmod(fd, 0660) < 0) {
         ALOGE("Error changing permissions of %s to 0660: %s",
                 HOSTAPD_CONF_FILE, strerror(errno));
+        close(fd);
         unlink(HOSTAPD_CONF_FILE);
         return -1;
     }
 
-    if (chown(HOSTAPD_CONF_FILE, AID_SYSTEM, AID_WIFI) < 0) {
+    if (fchown(fd, AID_SYSTEM, AID_WIFI) < 0) {
         ALOGE("Error changing group ownership of %s to %d: %s",
                 HOSTAPD_CONF_FILE, AID_WIFI, strerror(errno));
+        close(fd);
         unlink(HOSTAPD_CONF_FILE);
         return -1;
     }
 
+    close(fd);
     return ret;
 }
 
