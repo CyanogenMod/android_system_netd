@@ -35,7 +35,6 @@
 
 #include "CommandListener.h"
 #include "ResponseCode.h"
-#include "ThrottleController.h"
 #include "BandwidthController.h"
 #include "IdletimerController.h"
 #include "SecondaryTableController.h"
@@ -281,44 +280,6 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
         asprintf(&msg, "%lu", tx);
         cli->sendMsg(ResponseCode::InterfaceTxCounterResult, msg, false);
         free(msg);
-        return 0;
-    } else if (!strcmp(argv[1], "getthrottle")) {
-        if (argc != 4 || (argc == 4 && (strcmp(argv[3], "rx") && (strcmp(argv[3], "tx"))))) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Usage: interface getthrottle <interface> <rx|tx>", false);
-            return 0;
-        }
-        int val = 0;
-        int rc = 0;
-        int voldRc = ResponseCode::InterfaceRxThrottleResult;
-
-        if (!strcmp(argv[3], "rx")) {
-            rc = ThrottleController::getInterfaceRxThrottle(argv[2], &val);
-        } else {
-            rc = ThrottleController::getInterfaceTxThrottle(argv[2], &val);
-            voldRc = ResponseCode::InterfaceTxThrottleResult;
-        }
-        if (rc) {
-            cli->sendMsg(ResponseCode::OperationFailed, "Failed to get throttle", true);
-        } else {
-            char *msg = NULL;
-            asprintf(&msg, "%u", val);
-            cli->sendMsg(voldRc, msg, false);
-            free(msg);
-            return 0;
-        }
-        return 0;
-    } else if (!strcmp(argv[1], "setthrottle")) {
-        if (argc != 5) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Usage: interface setthrottle <interface> <rx_kbps> <tx_kbps>", false);
-            return 0;
-        }
-        if (ThrottleController::setInterfaceThrottle(argv[2], atoi(argv[3]), atoi(argv[4]))) {
-            cli->sendMsg(ResponseCode::OperationFailed, "Failed to set throttle", true);
-        } else {
-            cli->sendMsg(ResponseCode::CommandOkay, "Interface throttling set", false);
-        }
         return 0;
     } else if (!strcmp(argv[1], "driver")) {
         int rc;
