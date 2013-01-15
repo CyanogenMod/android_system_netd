@@ -41,6 +41,10 @@
 #include "NetdConstants.h"
 #include "FirewallController.h"
 
+#ifdef QCOM_WLAN
+#include "qsap_api.h"
+#endif
+
 TetherController *CommandListener::sTetherCtrl = NULL;
 NatController *CommandListener::sNatCtrl = NULL;
 PppController *CommandListener::sPppCtrl = NULL;
@@ -130,7 +134,11 @@ CommandListener::CommandListener() :
     registerCmd(new NatCmd());
     registerCmd(new ListTtysCmd());
     registerCmd(new PppdCmd());
+#ifdef QCOM_WLAN
+    registerCmd(new QualcommSoftapCmd());
+#else /* QCOM_WLAN */
     registerCmd(new SoftapCmd());
+#endif /* QCOM_WLAN */
     registerCmd(new BandwidthControlCmd());
     registerCmd(new IdletimerControlCmd());
     registerCmd(new ResolverCmd());

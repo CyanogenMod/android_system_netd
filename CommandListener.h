@@ -58,6 +58,15 @@ private:
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
 
+#ifdef QCOM_WLAN
+    class QualcommSoftapCmd : public SoftapCmd {
+    public:
+        QualcommSoftapCmd();
+        virtual ~QualcommSoftapCmd() {}
+        int runCommand(SocketClient *c, int argc, char ** argv);
+    };
+#endif
+
     class InterfaceCmd : public NetdCommand {
     public:
         InterfaceCmd();
