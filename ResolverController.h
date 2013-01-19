@@ -31,8 +31,6 @@ public:
     int setInterfaceAddress(const char* iface, struct in_addr* addr);
     int flushDefaultDnsCache();
     int flushInterfaceDnsCache(const char* iface);
-    int setDnsIfaceForPid(const char* iface, int pid);
-    int clearDnsIfaceForPid(int pid);
 };
 
 #endif /* _RESOLVER_CONTROLLER_H_ */

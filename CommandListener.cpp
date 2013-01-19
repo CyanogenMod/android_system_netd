@@ -924,22 +924,6 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
                     "Wrong number of arguments to resolver setdefaultif", false);
             return 0;
         }
-    } else if (!strcmp(argv[1], "setifaceforpid")) { // resolver setifaceforpid <iface> <pid>
-        if (argc == 4) {
-            rc = sResolverCtrl->setDnsIfaceForPid(argv[2], atoi(argv[3]));
-        } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver setifaceforpid", false);
-            return 0;
-        }
-    } else if (!strcmp(argv[1], "clearifaceforpid")) { // resolver clearifaceforpid <pid>
-        if (argc == 3) {
-            rc = sResolverCtrl->clearDnsIfaceForPid(atoi(argv[2]));
-        } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver clearifaceforpid", false);
-            return 0;
-        }
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError,"Resolver unknown command", false);
         return 0;
