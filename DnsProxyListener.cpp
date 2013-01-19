@@ -25,12 +25,9 @@
 #include <sys/types.h>
 #include <string.h>
 #include <pthread.h>
-#include <resolv_iface.h>
-#include <net/if.h>
 
 #define LOG_TAG "DnsProxyListener"
 #define DBG 0
-#define VDBG 0
 
 #include <cutils/log.h>
 #include <sysutils/SocketClient.h>
@@ -42,14 +39,12 @@ DnsProxyListener::DnsProxyListener() :
                  FrameworkListener("dnsproxyd") {
     registerCmd(new GetAddrInfoCmd());
     registerCmd(new GetHostByAddrCmd());
-    registerCmd(new GetHostByNameCmd());
 }
 
 DnsProxyListener::GetAddrInfoHandler::~GetAddrInfoHandler() {
     free(mHost);
     free(mService);
     free(mHints);
-    free(mIface);
 }
 
 void DnsProxyListener::GetAddrInfoHandler::start() {
@@ -74,47 +69,13 @@ static bool sendLenAndData(SocketClient *c, const int len, const void* data) {
         (len == 0 || c->sendData(data, len) == 0);
 }
 
-// Returns true on success
-static bool sendhostent(SocketClient *c, struct hostent *hp) {
-    bool success = true;
-    int i;
-    if (hp->h_name != NULL) {
-        success &= sendLenAndData(c, strlen(hp->h_name)+1, hp->h_name);
-    } else {
-        success &= sendLenAndData(c, 0, "") == 0;
-    }
-
-    for (i=0; hp->h_aliases[i] != NULL; i++) {
-        success &= sendLenAndData(c, strlen(hp->h_aliases[i])+1, hp->h_aliases[i]);
-    }
-    success &= sendLenAndData(c, 1, ""); // null to indicate we're done
-
-    uint32_t buf = htonl(hp->h_addrtype);
-    success &= c->sendData(&buf, sizeof(buf)) == 0;
-
-    buf = htonl(hp->h_length);
-    success &= c->sendData(&buf, sizeof(buf)) == 0;
-
-    for (i=0; hp->h_addr_list[i] != NULL; i++) {
-        success &= c->sendData(hp->h_addr_list[i], hp->h_length) == 0;
-    }
-    success &= sendLenAndData(c, 1, ""); // null to indicate we're done
-    return success;
-}
-
 void DnsProxyListener::GetAddrInfoHandler::run() {
     if (DBG) {
-        ALOGD("GetAddrInfoHandler, now for %s / %s / %s", mHost, mService, mIface);
-    }
-
-    char tmp[IF_NAMESIZE + 1];
-    if (mIface == NULL) {
-        _resolv_get_pids_associated_interface(mPid, tmp, sizeof(tmp));
+        ALOGD("GetAddrInfoHandler, now for %s / %s", mHost, mService);
     }
 
     struct addrinfo* result = NULL;
-    uint32_t rv = android_getaddrinfoforiface(mHost, mService, mHints, mIface ? mIface : tmp,
-            &result);
+    uint32_t rv = getaddrinfo(mHost, mService, mHints, &result);
     if (rv) {
         // getaddrinfo failed
         mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, &rv, sizeof(rv));
@@ -151,7 +112,7 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
             ALOGD("argv[%i]=%s", i, argv[i]);
         }
     }
-    if (argc != 9) {
+    if (argc != 7) {
         char* msg = NULL;
         asprintf( &msg, "Invalid number of arguments to getaddrinfo: %i", argc);
         ALOGW("%s", msg);
@@ -174,20 +135,11 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
         service = strdup(service);
     }
 
-    char* iface = argv[7];
-    if (strcmp(iface, "^") == 0) {
-        iface = NULL;
-    } else {
-        iface = strdup(iface);
-    }
-
     struct addrinfo* hints = NULL;
     int ai_flags = atoi(argv[3]);
     int ai_family = atoi(argv[4]);
     int ai_socktype = atoi(argv[5]);
     int ai_protocol = atoi(argv[6]);
-    int pid = atoi(argv[8]);
-
     if (ai_flags != -1 || ai_family != -1 ||
         ai_socktype != -1 || ai_protocol != -1) {
         hints = (struct addrinfo*) calloc(1, sizeof(struct addrinfo));
@@ -198,128 +150,21 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     }
 
     if (DBG) {
-        ALOGD("GetAddrInfoHandler for %s / %s / %s / %d",
+        ALOGD("GetAddrInfoHandler for %s / %s",
              name ? name : "[nullhost]",
-             service ? service : "[nullservice]",
-             iface ? iface : "[nulliface]",
-             pid);
+             service ? service : "[nullservice]");
     }
 
     cli->incRef();
     DnsProxyListener::GetAddrInfoHandler* handler =
-        new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints, iface, pid);
+        new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints);
     handler->start();
 
     return 0;
 }
 
 /*******************************************************
- *                  GetHostByName                      *
- *******************************************************/
-DnsProxyListener::GetHostByNameCmd::GetHostByNameCmd() :
-        NetdCommand("gethostbyname") {
-}
-
-int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
-                                            int argc, char **argv) {
-    if (DBG) {
-        for (int i = 0; i < argc; i++) {
-            ALOGD("argv[%i]=%s", i, argv[i]);
-        }
-    }
-    if (argc != 5) {
-        char* msg = NULL;
-        asprintf(&msg, "Invalid number of arguments to gethostbyname: %i", argc);
-        ALOGW("%s", msg);
-        cli->sendMsg(ResponseCode::CommandParameterError, msg, false);
-        free(msg);
-        return -1;
-    }
-
-    int pid = atoi(argv[1]);
-    char* iface = argv[2];
-    char* name = argv[3];
-    int af = atoi(argv[4]);
-
-    if (strcmp(iface, "^") == 0) {
-        iface = NULL;
-    } else {
-        iface = strdup(iface);
-    }
-
-    if (strcmp(name, "^") == 0) {
-        name = NULL;
-    } else {
-        name = strdup(name);
-    }
-
-    cli->incRef();
-    DnsProxyListener::GetHostByNameHandler* handler =
-            new DnsProxyListener::GetHostByNameHandler(cli, pid, iface, name, af);
-    handler->start();
-
-    return 0;
-}
-
-DnsProxyListener::GetHostByNameHandler::~GetHostByNameHandler() {
-    free(mIface);
-    free(mName);
-}
-
-void DnsProxyListener::GetHostByNameHandler::start() {
-    pthread_t thread;
-    pthread_create(&thread, NULL,
-            DnsProxyListener::GetHostByNameHandler::threadStart, this);
-}
-
-void* DnsProxyListener::GetHostByNameHandler::threadStart(void* obj) {
-    GetHostByNameHandler* handler = reinterpret_cast<GetHostByNameHandler*>(obj);
-    handler->run();
-    delete handler;
-    pthread_exit(NULL);
-    return NULL;
-}
-
-void DnsProxyListener::GetHostByNameHandler::run() {
-    if (DBG) {
-        ALOGD("DnsProxyListener::GetHostByNameHandler::run\n");
-    }
-
-    char iface[IF_NAMESIZE + 1];
-    if (mIface == NULL) {
-        _resolv_get_pids_associated_interface(mPid, iface, sizeof(iface));
-    }
-
-    struct hostent* hp;
-
-    hp = android_gethostbynameforiface(mName, mAf, (mIface == NULL) ? mIface : iface);
-
-    if (DBG) {
-        ALOGD("GetHostByNameHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %d\n",
-                hp ? "success" : strerror(errno),
-                (hp && hp->h_name) ? hp->h_name: "null",
-                (hp && hp->h_name) ? strlen(hp->h_name)+ 1 : 0);
-    }
-
-    bool success = true;
-    if (hp) {
-        success = mClient->sendCode(ResponseCode::DnsProxyQueryResult) == 0;
-        success &= sendhostent(mClient, hp);
-    } else {
-        uint32_t error = h_errno;
-        success = mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed,
-                &error, sizeof(error)) == 0;
-    }
-
-    if (!success) {
-        ALOGW("GetHostByNameHandler: Error writing DNS result to client\n");
-    }
-    mClient->decRef();
-}
-
-
-/*******************************************************
- *                  GetHostByAddr                      *
+ *                  GetHostByAddr                       *
  *******************************************************/
 DnsProxyListener::GetHostByAddrCmd::GetHostByAddrCmd() :
         NetdCommand("gethostbyaddr") {
@@ -332,7 +177,8 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
             ALOGD("argv[%i]=%s", i, argv[i]);
         }
     }
-    if (argc != 6) {
+
+    if (argc != 4) {
         char* msg = NULL;
         asprintf(&msg, "Invalid number of arguments to gethostbyaddr: %i", argc);
         ALOGW("%s", msg);
@@ -344,14 +190,6 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
     char* addrStr = argv[1];
     int addrLen = atoi(argv[2]);
     int addrFamily = atoi(argv[3]);
-    int pid = atoi(argv[4]);
-
-    char* iface = argv[5];
-    if (strcmp(iface, "^") == 0) {
-        iface = NULL;
-    } else {
-        iface = strdup(iface);
-    }
 
     void* addr = malloc(sizeof(struct in6_addr));
     errno = 0;
@@ -368,7 +206,7 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
 
     cli->incRef();
     DnsProxyListener::GetHostByAddrHandler* handler =
-            new DnsProxyListener::GetHostByAddrHandler(cli, addr, addrLen, addrFamily, iface ,pid);
+            new DnsProxyListener::GetHostByAddrHandler(cli, addr, addrLen, addrFamily);
     handler->start();
 
     return 0;
@@ -376,7 +214,6 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
 
 DnsProxyListener::GetHostByAddrHandler::~GetHostByAddrHandler() {
     free(mAddress);
-    free(mIface);
 }
 
 void DnsProxyListener::GetHostByAddrHandler::start() {
@@ -398,16 +235,10 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
         ALOGD("DnsProxyListener::GetHostByAddrHandler::run\n");
     }
 
-    char tmp[IF_NAMESIZE + 1];
-    if (mIface == NULL) {
-        _resolv_get_pids_associated_interface(mPid, tmp, sizeof(tmp));
-    }
-
     struct hostent* hp;
 
     // NOTE gethostbyaddr should take a void* but bionic thinks it should be char*
-    hp = android_gethostbyaddrforiface((char*)mAddress, mAddressLen, mAddressFamily,
-            mIface ? mIface : tmp);
+    hp = gethostbyaddr((char*)mAddress, mAddressLen, mAddressFamily);
 
     if (DBG) {
         ALOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %d\n",
