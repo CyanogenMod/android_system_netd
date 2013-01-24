@@ -26,7 +26,7 @@
 #include "private/android_filesystem_config.h"
 #include "cutils/log.h"
 
-int fork_and_execve(const char*, char*[]);
+#include <logwrap/logwrap.h>
 
 /*
  * The following is based off of bionic/libc/unistd/system.c with
@@ -39,6 +39,8 @@ int system_nosh(const char *command)
     char *next = buffer;
     char *tmp;
     int i = 0;
+    int rc;
+    int status;
 
     if (!command)           /* just checking... */
         return(1);
@@ -63,34 +65,10 @@ int system_nosh(const char *command)
     }
     argp[i] = NULL;
 
-    return fork_and_execve(argp[0], argp);
-}
-
-extern char **environ;
-int fork_and_execve(const char* filename, char* argv[]) {
-    pid_t pid;
-    sig_t intsave, quitsave;
-    sigset_t mask, omask;
-    int pstat;
-
-    sigemptyset(&mask);
-    sigaddset(&mask, SIGCHLD);
-    sigprocmask(SIG_BLOCK, &mask, &omask);
-    switch (pid = vfork()) {
-    case -1:                        /* error */
-        sigprocmask(SIG_SETMASK, &omask, NULL);
-        return(-1);
-    case 0:                                 /* child */
-        sigprocmask(SIG_SETMASK, &omask, NULL);
-        execve(filename, argv, environ);
-        _exit(127);
-    }
-
-    intsave = (sig_t)  bsd_signal(SIGINT, SIG_IGN);
-    quitsave = (sig_t) bsd_signal(SIGQUIT, SIG_IGN);
-    pid = waitpid(pid, (int *)&pstat, 0);
-    sigprocmask(SIG_SETMASK, &omask, NULL);
-    (void)bsd_signal(SIGINT, intsave);
-    (void)bsd_signal(SIGQUIT, quitsave);
-    return (pid == -1 ? -1 : pstat);
+    rc = android_fork_execvp(i, argp, &status, false, false);
+    if (rc)
+        return rc;
+    if (!WIFEXITED(status))
+        return -ECHILD;
+    return WEXITSTATUS(status);
 }
