@@ -40,9 +40,7 @@
 #define LOG_TAG "BandwidthController"
 #include <cutils/log.h>
 #include <cutils/properties.h>
-
-extern "C" int logwrap(int argc, const char **argv);
-extern "C" int system_nosh(const char *command);
+#include <logwrap/logwrap.h>
 
 #include "NetdConstants.h"
 #include "BandwidthController.h"
@@ -60,8 +58,6 @@ const int  BandwidthController::MAX_CMD_ARGS = 32;
 const int  BandwidthController::MAX_CMD_LEN = 1024;
 const int  BandwidthController::MAX_IFACENAME_LEN = 64;
 const int  BandwidthController::MAX_IPT_OUTPUT_LINE_LEN = 256;
-
-bool BandwidthController::useLogwrapCall = false;
 
 /**
  * Some comments about the rules:
@@ -141,10 +137,6 @@ const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
 };
 
 BandwidthController::BandwidthController(void) {
-    char value[PROPERTY_VALUE_MAX];
-
-    property_get("persist.bandwidth.uselogwrap", value, "0");
-    useLogwrapCall = !strcmp(value, "1");
 }
 
 int BandwidthController::runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling,
@@ -172,6 +164,7 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
     char *next = buffer;
     char *tmp;
     int res;
+    int status = 0;
 
     std::string fullCmd = cmd;
 
@@ -190,28 +183,28 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
     fullCmd.insert(0, " ");
     fullCmd.insert(0, iptVer == IptIpV4 ? IPTABLES_PATH : IP6TABLES_PATH);
 
-    if (!useLogwrapCall) {
-        res = system_nosh(fullCmd.c_str());
-    } else {
-        if (StrncpyAndCheck(buffer, fullCmd.c_str(), sizeof(buffer))) {
-            ALOGE("iptables command too long");
+    if (StrncpyAndCheck(buffer, fullCmd.c_str(), sizeof(buffer))) {
+        ALOGE("iptables command too long");
+        return -1;
+    }
+
+    argc = 0;
+    while ((tmp = strsep(&next, " "))) {
+        argv[argc++] = tmp;
+        if (argc >= MAX_CMD_ARGS) {
+            ALOGE("iptables argument overflow");
             return -1;
         }
-
-        argc = 0;
-        while ((tmp = strsep(&next, " "))) {
-            argv[argc++] = tmp;
-            if (argc >= MAX_CMD_ARGS) {
-                ALOGE("iptables argument overflow");
-                return -1;
-            }
-        }
-
-        argv[argc] = NULL;
-        res = logwrap(argc, argv);
     }
-    if (res && failureHandling == IptFailShow) {
-        ALOGE("runIptablesCmd(): failed %s res=%d", fullCmd.c_str(), res);
+
+    argv[argc] = NULL;
+    res = android_fork_execvp(argc, (char **)argv, &status, false,
+            failureHandling == IptFailShow);
+
+    if ((res || !WIFEXITED(status) || WEXITSTATUS(status)) &&
+            failureHandling == IptFailShow) {
+        ALOGE("runIptablesCmd(): failed %s res=%d status=%d", fullCmd.c_str(),
+                res, status);
     }
     return res;
 }

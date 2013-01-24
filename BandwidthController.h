@@ -175,11 +175,6 @@ private:
     static const int  MAX_CMD_LEN;
     static const int  MAX_IFACENAME_LEN;
     static const int  MAX_IPT_OUTPUT_LINE_LEN;
-
-    /*
-     * When false, it will directly use system() instead of logwrap()
-     */
-    static bool useLogwrapCall;
 };
 
 #endif
