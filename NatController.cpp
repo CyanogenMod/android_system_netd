@@ -84,6 +84,32 @@ int NatController::setDefaults() {
         }
     }
 
+    const char *cmd1[] = {
+        IPTABLES_PATH,
+        "-F",
+        "natctrl_FORWARD"
+    };
+    if (runCmd(ARRAY_SIZE(cmd1), cmd1))
+        return -1;
+
+    const char *cmd2[] = {
+        IPTABLES_PATH,
+        "-t",
+        "nat",
+        "-F",
+        "natctrl_nat_POSTROUTING"
+    };
+    if (runCmd(ARRAY_SIZE(cmd2), cmd2))
+        return -1;
+
+    const char *cmd3[] = {
+        IP_PATH,
+        "route",
+        "flush",
+        "cache"
+    };
+    runCmd(ARRAY_SIZE(cmd3), cmd3);
+
     natCount = 0;
 
     return 0;

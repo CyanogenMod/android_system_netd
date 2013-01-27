@@ -22,7 +22,7 @@ LOCAL_SRC_FILES:=                                      \
                   TetherController.cpp                 \
                   oem_iptables_hook.cpp                \
                   main.cpp                             \
-
+                  RouteController.cpp
 
 LOCAL_MODULE:= netd
 
