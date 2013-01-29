@@ -29,6 +29,9 @@
 
 #include "qsap_api.h"
 
+#include <cutils/properties.h>
+static char ath6kl_supported[PROPERTY_VALUE_MAX];
+
 CommandListener::QualcommSoftapCmd::QualcommSoftapCmd() :
   SoftapCmd::SoftapCmd() {
 }
@@ -134,6 +137,13 @@ int CommandListener::QualcommSoftapCmd::runCommand(SocketClient *cli,
             return 0;
         }
     } else if (!strcmp(argv[1], "set")) {
+        /* When the WLAN is AR6004, use the Android native
+           SoftapController command. */
+        property_get("wlan.driver.ath", ath6kl_supported, 0);
+        if (*ath6kl_supported == '2') {
+            return SoftapCmd::runCommand(cli, argc, argv);
+        }
+
         /* override processing of the "softap set" command.  The
            default class will install a hostapd.conf which contains
            just the settings supported by the Android framework, and
