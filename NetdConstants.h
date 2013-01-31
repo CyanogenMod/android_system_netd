@@ -34,4 +34,6 @@ enum IptablesTarget { V4, V6, V4V6 };
 int execIptables(IptablesTarget target, ...);
 int execIptablesSilently(IptablesTarget target, ...);
 
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
+
 #endif
