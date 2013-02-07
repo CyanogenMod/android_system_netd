@@ -46,7 +46,7 @@
 #include "BandwidthController.h"
 
 /* Alphabetical */
-#define ALERT_IPT_TEMPLATE "%s %s %s -m quota2 ! --quota %lld --name %s"
+#define ALERT_IPT_TEMPLATE "%s %s -m quota2 ! --quota %lld --name %s"
 const int  BandwidthController::ALERT_RULE_POS_IN_COSTLY_CHAIN = 4;
 const char BandwidthController::ALERT_GLOBAL_NAME[] = "globalAlert";
 const char* BandwidthController::LOCAL_INPUT = "bw_INPUT";
@@ -124,16 +124,14 @@ const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
 };
 
 const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
-    "-A bw_INPUT -i lo --jump RETURN",
     "-A bw_INPUT -m owner --socket-exists", /* This is a tracking rule. */
 
-    "-A bw_OUTPUT -o lo --jump RETURN",
     "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
 
     "-A costly_shared --jump penalty_box",
 
-    "-t raw -A bw_raw_PREROUTING ! -i lo+ -m owner --socket-exists", /* This is a tracking rule. */
-    "-t mangle -A bw_mangle_POSTROUTING ! -o lo+ -m owner --socket-exists", /* This is a tracking rule. */
+    "-t raw -A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
+    "-t mangle -A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
 };
 
 BandwidthController::BandwidthController(void) {
@@ -733,7 +731,6 @@ int BandwidthController::updateQuota(const char *quotaName, int64_t bytes) {
 int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, int64_t bytes) {
     int res = 0;
     const char *opFlag;
-    const char *ifaceLimiting;
     char *alertQuotaCmd;
 
     switch (op) {
@@ -749,13 +746,11 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
         break;
     }
 
-    ifaceLimiting = "! -i lo+";
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, ifaceLimiting, opFlag, "bw_INPUT",
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_INPUT",
         bytes, alertName);
     res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
     free(alertQuotaCmd);
-    ifaceLimiting = "! -o lo+";
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, ifaceLimiting, opFlag, "bw_OUTPUT",
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_OUTPUT",
         bytes, alertName);
     res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
     free(alertQuotaCmd);
@@ -765,7 +760,6 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
 int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName, int64_t bytes) {
     int res = 0;
     const char *opFlag;
-    const char *ifaceLimiting;
     char *alertQuotaCmd;
 
     switch (op) {
@@ -781,8 +775,7 @@ int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName,
         break;
     }
 
-    ifaceLimiting = "! -i lo+";
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, ifaceLimiting, opFlag, "bw_FORWARD",
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_FORWARD",
         bytes, alertName);
     res = runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
     free(alertQuotaCmd);
@@ -939,7 +932,7 @@ int BandwidthController::setCostlyAlert(const char *costName, int64_t bytes, int
         res = updateQuota(alertName, *alertBytes);
     } else {
         asprintf(&chainNameAndPos, "costly_%s %d", costName, ALERT_RULE_POS_IN_COSTLY_CHAIN);
-        asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "", "-I", chainNameAndPos, bytes, alertName);
+        asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-I", chainNameAndPos, bytes, alertName);
         res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
         free(alertQuotaCmd);
         free(chainNameAndPos);
@@ -962,7 +955,7 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
     }
 
     asprintf(&chainName, "costly_%s", costName);
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "", "-D", chainName, *alertBytes, alertName);
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-D", chainName, *alertBytes, alertName);
     res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
     free(alertQuotaCmd);
     free(chainName);
