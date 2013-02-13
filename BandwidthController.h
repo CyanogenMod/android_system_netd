@@ -97,7 +97,7 @@ protected:
     };
 
     enum IptIpVer { IptIpV4, IptIpV6 };
-    enum IptOp { IptOpInsert, IptOpReplace, IptOpDelete };
+    enum IptOp { IptOpInsert, IptOpReplace, IptOpDelete, IptOpAppend };
     enum IptRejectOp { IptRejectAdd, IptRejectNoAdd };
     enum NaughtyAppOp { NaughtyAppOpAdd, NaughtyAppOpRemove };
     enum QuotaType { QuotaUnique, QuotaShared };
@@ -169,7 +169,6 @@ private:
     static const char *IPT_BASIC_ACCOUNTING_COMMANDS[];
 
     /* Alphabetical */
-    static const int  ALERT_RULE_POS_IN_COSTLY_CHAIN;
     static const char ALERT_GLOBAL_NAME[];
     static const int  MAX_CMD_ARGS;
     static const int  MAX_CMD_LEN;

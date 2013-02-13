@@ -47,7 +47,6 @@
 
 /* Alphabetical */
 #define ALERT_IPT_TEMPLATE "%s %s -m quota2 ! --quota %lld --name %s"
-const int  BandwidthController::ALERT_RULE_POS_IN_COSTLY_CHAIN = 4;
 const char BandwidthController::ALERT_GLOBAL_NAME[] = "globalAlert";
 const char* BandwidthController::LOCAL_INPUT = "bw_INPUT";
 const char* BandwidthController::LOCAL_FORWARD = "bw_FORWARD";
@@ -280,6 +279,9 @@ std::string BandwidthController::makeIptablesNaughtyCmd(IptOp op, int uid) {
     case IptOpInsert:
         opFlag = "-I";
         break;
+    case IptOpAppend:
+        opFlag = "-A";
+        break;
     case IptOpReplace:
         opFlag = "-R";
         break;
@@ -381,6 +383,9 @@ std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *cost
     switch (op) {
     case IptOpInsert:
         opFlag = "-I";
+        break;
+    case IptOpAppend:
+        opFlag = "-A";
         break;
     case IptOpReplace:
         opFlag = "-R";
@@ -625,8 +630,14 @@ int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) 
     }
 
     if (it == quotaIfaces.end()) {
+        /* Preparing the iface adds a penalty_box check */
         res |= prepCostlyIface(ifn, QuotaUnique);
-        quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
+	/*
+	 * The rejecting quota limit should go after the penalty box checks
+	 * or else a naughty app could just eat up the quota.
+	 * So we append here.
+	 */
+        quotaCmd = makeIptablesQuotaCmd(IptOpAppend, costName, maxBytes);
         res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
         if (res) {
             ALOGE("Failed set quota rule");
@@ -736,6 +747,9 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
     case IptOpInsert:
         opFlag = "-I";
         break;
+    case IptOpAppend:
+        opFlag = "-A";
+        break;
     case IptOpReplace:
         opFlag = "-R";
         break;
@@ -764,6 +778,9 @@ int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName,
     switch (op) {
     case IptOpInsert:
         opFlag = "-I";
+        break;
+    case IptOpAppend:
+        opFlag = "-A";
         break;
     case IptOpReplace:
         opFlag = "-R";
@@ -918,7 +935,7 @@ int BandwidthController::removeInterfaceAlert(const char *iface) {
 
 int BandwidthController::setCostlyAlert(const char *costName, int64_t bytes, int64_t *alertBytes) {
     char *alertQuotaCmd;
-    char *chainNameAndPos;
+    char *chainName;
     int res = 0;
     char *alertName;
 
@@ -930,11 +947,11 @@ int BandwidthController::setCostlyAlert(const char *costName, int64_t bytes, int
     if (*alertBytes) {
         res = updateQuota(alertName, *alertBytes);
     } else {
-        asprintf(&chainNameAndPos, "costly_%s %d", costName, ALERT_RULE_POS_IN_COSTLY_CHAIN);
-        asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-I", chainNameAndPos, bytes, alertName);
+        asprintf(&chainName, "costly_%s", costName);
+        asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-A", chainName, bytes, alertName);
         res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
         free(alertQuotaCmd);
-        free(chainNameAndPos);
+        free(chainName);
     }
     *alertBytes = bytes;
     free(alertName);
