@@ -198,11 +198,10 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
     argv[argc] = NULL;
     res = android_fork_execvp(argc, (char **)argv, &status, false,
             failureHandling == IptFailShow);
-
-    if ((res || !WIFEXITED(status) || WEXITSTATUS(status)) &&
-            failureHandling == IptFailShow) {
-        ALOGE("runIptablesCmd(): failed %s res=%d status=%d", fullCmd.c_str(),
-                res, status);
+    res = res || !WIFEXITED(status) || WEXITSTATUS(status);
+    if (res && failureHandling == IptFailShow) {
+      ALOGE("runIptablesCmd(): res=%d status=%d failed %s", res, status,
+            fullCmd.c_str());
     }
     return res;
 }
