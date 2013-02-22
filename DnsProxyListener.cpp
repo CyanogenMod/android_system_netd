@@ -50,7 +50,7 @@ DnsProxyListener::GetAddrInfoHandler::GetAddrInfoHandler(SocketClient *c,
                                                          char* service,
                                                          struct addrinfo* hints,
                                                          char* iface,
-                                                         int pid)
+                                                         pid_t pid)
         : mClient(c),
           mHost(host),
           mService(service),
@@ -166,7 +166,7 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
             ALOGD("argv[%i]=%s", i, argv[i]);
         }
     }
-    if (argc != 9) {
+    if (argc != 8) {
         char* msg = NULL;
         asprintf( &msg, "Invalid number of arguments to getaddrinfo: %i", argc);
         ALOGW("%s", msg);
@@ -201,7 +201,7 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     int ai_family = atoi(argv[4]);
     int ai_socktype = atoi(argv[5]);
     int ai_protocol = atoi(argv[6]);
-    int pid = atoi(argv[8]);
+    pid_t pid = cli->getPid();
 
     if (ai_flags != -1 || ai_family != -1 ||
         ai_socktype != -1 || ai_protocol != -1) {
@@ -242,7 +242,7 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
             ALOGD("argv[%i]=%s", i, argv[i]);
         }
     }
-    if (argc != 5) {
+    if (argc != 4) {
         char* msg = NULL;
         asprintf(&msg, "Invalid number of arguments to gethostbyname: %i", argc);
         ALOGW("%s", msg);
@@ -251,10 +251,10 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
         return -1;
     }
 
-    int pid = atoi(argv[1]);
-    char* iface = argv[2];
-    char* name = argv[3];
-    int af = atoi(argv[4]);
+    pid_t pid = cli->getPid();
+    char* iface = argv[1];
+    char* name = argv[2];
+    int af = atoi(argv[3]);
 
     if (strcmp(iface, "^") == 0) {
         iface = NULL;
@@ -277,7 +277,7 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
 }
 
 DnsProxyListener::GetHostByNameHandler::GetHostByNameHandler(SocketClient* c,
-                                                             int pid,
+                                                             pid_t pid,
                                                              char* iface,
                                                              char* name,
                                                              int af)
@@ -358,7 +358,7 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
             ALOGD("argv[%i]=%s", i, argv[i]);
         }
     }
-    if (argc != 6) {
+    if (argc != 5) {
         char* msg = NULL;
         asprintf(&msg, "Invalid number of arguments to gethostbyaddr: %i", argc);
         ALOGW("%s", msg);
@@ -370,8 +370,8 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
     char* addrStr = argv[1];
     int addrLen = atoi(argv[2]);
     int addrFamily = atoi(argv[3]);
-    int pid = atoi(argv[4]);
-    char* iface = argv[5];
+    pid_t pid = cli->getPid();
+    char* iface = argv[4];
 
     if (strcmp(iface, "^") == 0) {
         iface = NULL;
@@ -405,7 +405,7 @@ DnsProxyListener::GetHostByAddrHandler::GetHostByAddrHandler(SocketClient* c,
                                                              int   addressLen,
                                                              int   addressFamily,
                                                              char* iface,
-                                                             int   pid)
+                                                             pid_t pid)
         : mClient(c),
           mAddress(address),
           mAddressLen(addressLen),

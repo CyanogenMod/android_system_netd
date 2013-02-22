@@ -42,7 +42,7 @@ private:
                            char* service,
                            struct addrinfo* hints,
                            char* iface,
-                           int pid);
+                           pid_t pid);
         ~GetAddrInfoHandler();
 
         static void* threadStart(void* handler);
@@ -55,7 +55,7 @@ private:
         char* mService; // owned
         struct addrinfo* mHints;  // owned
         char* mIface; // owned
-        int mPid;
+        pid_t mPid;
     };
 
     /* ------ gethostbyname ------*/
@@ -69,7 +69,7 @@ private:
     class GetHostByNameHandler {
     public:
         GetHostByNameHandler(SocketClient *c,
-                            int pid,
+                            pid_t pid,
                             char *iface,
                             char *name,
                             int af);
@@ -79,7 +79,7 @@ private:
     private:
         void run();
         SocketClient* mClient; //ref counted
-        int mPid;
+        pid_t mPid;
         char* mIface; // owned
         char* mName; // owned
         int mAf;
@@ -100,7 +100,7 @@ private:
                             int   addressLen,
                             int   addressFamily,
                             char* iface,
-                            int   pid);
+                            pid_t pid);
         ~GetHostByAddrHandler();
 
         static void* threadStart(void* handler);
@@ -113,7 +113,7 @@ private:
         int   mAddressLen; // length of address to look up
         int   mAddressFamily;  // address family
         char* mIface; // owned
-        int   mPid;
+        pid_t mPid;
     };
 };
 
