@@ -246,41 +246,6 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
         closedir(d);
         cli->sendMsg(ResponseCode::CommandOkay, "Interface list completed", false);
         return 0;
-    } else if (!strcmp(argv[1], "readrxcounter")) {
-        if (argc != 3) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Usage: interface readrxcounter <interface>", false);
-            return 0;
-        }
-        unsigned long rx = 0, tx = 0;
-        if (readInterfaceCounters(argv[2], &rx, &tx)) {
-            cli->sendMsg(ResponseCode::OperationFailed, "Failed to read counters", true);
-            return 0;
-        }
-
-        char *msg;
-        asprintf(&msg, "%lu", rx);
-        cli->sendMsg(ResponseCode::InterfaceRxCounterResult, msg, false);
-        free(msg);
-
-        return 0;
-    } else if (!strcmp(argv[1], "readtxcounter")) {
-        if (argc != 3) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Usage: interface readtxcounter <interface>", false);
-            return 0;
-        }
-        unsigned long rx = 0, tx = 0;
-        if (readInterfaceCounters(argv[2], &rx, &tx)) {
-            cli->sendMsg(ResponseCode::OperationFailed, "Failed to read counters", true);
-            return 0;
-        }
-
-        char *msg = NULL;
-        asprintf(&msg, "%lu", tx);
-        cli->sendMsg(ResponseCode::InterfaceTxCounterResult, msg, false);
-        free(msg);
-        return 0;
     } else if (!strcmp(argv[1], "driver")) {
         int rc;
         char *rbuf;
@@ -912,47 +877,6 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
         cli->sendMsg(ResponseCode::OperationFailed, "Resolver command failed", true);
     }
 
-    return 0;
-}
-
-int CommandListener::readInterfaceCounters(const char *iface, unsigned long *rx, unsigned long *tx) {
-    FILE *fp = fopen("/proc/net/dev", "r");
-    if (!fp) {
-        ALOGE("Failed to open /proc/net/dev (%s)", strerror(errno));
-        return -1;
-    }
-
-    char buffer[512];
-
-    fgets(buffer, sizeof(buffer), fp); // Header 1
-    fgets(buffer, sizeof(buffer), fp); // Header 2
-    while(fgets(buffer, sizeof(buffer), fp)) {
-        buffer[strlen(buffer)-1] = '\0';
-
-        char name[31];
-        unsigned long d;
-        sscanf(buffer, "%30s %lu %lu %lu %lu %lu %lu %lu %lu %lu",
-                name, rx, &d, &d, &d, &d, &d, &d, &d, tx);
-        char *rxString = strchr(name, ':');
-        *rxString = '\0';
-        rxString++;
-        // when the rx count gets too big it changes from "name: 999" to "name:1000"
-        // and the sscanf munge the two together.  Detect that and fix
-        // note that all the %lu will be off by one and the real tx value will be in d
-        if (*rxString != '\0') {
-            *tx = d;
-            sscanf(rxString, "%20lu", rx);
-        }
-        if (strcmp(name, iface)) {
-            continue;
-        }
-        fclose(fp);
-        return 0;
-    }
-
-    fclose(fp);
-    *rx = 0;
-    *tx = 0;
     return 0;
 }
 

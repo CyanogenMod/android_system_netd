@@ -53,8 +53,6 @@ private:
 
     static int writeFile(const char *path, const char *value, int size);
 
-    static int readInterfaceCounters(const char *iface, unsigned long *rx, unsigned long *tx);
-
     class SoftapCmd : public NetdCommand {
     public:
         SoftapCmd();
