@@ -38,7 +38,7 @@ int ResolverController::setDefaultInterface(const char* iface) {
 }
 
 int ResolverController::setInterfaceDnsServers(const char* iface, const char* domains,
-        char** servers, int numservers) {
+        const char** servers, int numservers) {
     if (DBG) {
         ALOGD("setInterfaceDnsServers iface = %s\n", iface);
     }

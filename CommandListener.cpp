@@ -798,9 +798,10 @@ CommandListener::ResolverCmd::ResolverCmd() :
         NetdCommand("resolver") {
 }
 
-int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char **argv) {
+int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char **margv) {
     int rc = 0;
     struct in_addr addr;
+    const char **argv = const_cast<const char **>(margv);
 
     if (argc < 2) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Resolver missing arguments", false);
