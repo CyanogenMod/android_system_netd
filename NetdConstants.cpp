@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <fcntl.h>
 #include <string.h>
 #include <sys/wait.h>
 
@@ -104,4 +105,20 @@ int execIptablesSilently(IptablesTarget target, ...) {
     int res = execIptables(target, true, args);
     va_end(args);
     return res;
+}
+
+int writeFile(const char *path, const char *value, int size) {
+    int fd = open(path, O_WRONLY);
+    if (fd < 0) {
+        ALOGE("Failed to open %s: %s", path, strerror(errno));
+        return -1;
+    }
+
+    if (write(fd, value, size) != size) {
+        ALOGE("Failed to write %s: %s", path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    close(fd);
+    return 0;
 }

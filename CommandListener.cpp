@@ -24,7 +24,6 @@
 #include <dirent.h>
 #include <errno.h>
 #include <string.h>
-#include <fcntl.h>
 #include <linux/if.h>
 
 #define LOG_TAG "CommandListener"
@@ -204,22 +203,6 @@ CommandListener::CommandListener() :
 
 CommandListener::InterfaceCmd::InterfaceCmd() :
                  NetdCommand("interface") {
-}
-
-int CommandListener::writeFile(const char *path, const char *value, int size) {
-    int fd = open(path, O_WRONLY);
-    if (fd < 0) {
-        ALOGE("Failed to open %s: %s", path, strerror(errno));
-        return -1;
-    }
-
-    if (write(fd, value, size) != size) {
-        ALOGE("Failed to write %s: %s", path, strerror(errno));
-        close(fd);
-        return -1;
-    }
-    close(fd);
-    return 0;
 }
 
 int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
@@ -455,19 +438,13 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                         false);
                 return 0;
             }
-
-            char *tmp;
-            asprintf(&tmp, "/proc/sys/net/ipv6/conf/%s/use_tempaddr", argv[2]);
-
-            if (writeFile(tmp, !strncmp(argv[3], "enable", 7) ? "2" : "0", 1) < 0) {
-                free(tmp);
+            int enable = !strncmp(argv[3], "enable", 7);
+            if (sInterfaceCtrl->setIPv6PrivacyExtensions(argv[2], enable) == 0) {
+                cli->sendMsg(ResponseCode::CommandOkay, "IPv6 privacy extensions changed", false);
+            } else {
                 cli->sendMsg(ResponseCode::OperationFailed,
                         "Failed to set ipv6 privacy extensions", true);
-                return 0;
             }
-
-            free(tmp);
-            cli->sendMsg(ResponseCode::CommandOkay, "IPv6 privacy extensions changed", false);
             return 0;
         } else if (!strcmp(argv[1], "ipv6")) {
             if (argc != 4) {
@@ -477,18 +454,13 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 return 0;
             }
 
-            char *tmp;
-            asprintf(&tmp, "/proc/sys/net/ipv6/conf/%s/disable_ipv6", argv[2]);
-
-            if (writeFile(tmp, !strncmp(argv[3], "enable", 7) ? "0" : "1", 1) < 0) {
-                free(tmp);
+            int enable = !strncmp(argv[3], "enable", 7);
+            if (sInterfaceCtrl->setEnableIPv6(argv[2], enable) == 0) {
+                cli->sendMsg(ResponseCode::CommandOkay, "IPv6 state changed", false);
+            } else {
                 cli->sendMsg(ResponseCode::OperationFailed,
                         "Failed to change IPv6 state", true);
-                return 0;
             }
-
-            free(tmp);
-            cli->sendMsg(ResponseCode::CommandOkay, "IPv6 state changed", false);
             return 0;
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown interface cmd", false);
