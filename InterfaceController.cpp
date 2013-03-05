@@ -111,6 +111,13 @@ int InterfaceController::writeIPv6ProcPath(const char *interface, const char *se
 }
 
 int InterfaceController::setEnableIPv6(const char *interface, const int on) {
+	// When IPv6 is on, accept RAs regardless of forwarding state.
+	// When IPv6 is off, accept RAs only if forwarding is off (the default).
+	const char *accept_ra = on ? "2" : "1";
+	if (writeIPv6ProcPath(interface, "accept_ra", accept_ra)) {
+		return -1;
+	}
+
 	// When disable_ipv6 changes from 1 to 0, the kernel starts autoconf.
 	// When disable_ipv6 changes from 0 to 1, the kernel clears all autoconf
 	// addresses and routes and disables IPv6 on the interface.
