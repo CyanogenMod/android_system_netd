@@ -34,6 +34,8 @@
 #include <netutils/ifc.h>
 #include <private/android_filesystem_config.h>
 
+#include "NetdConstants.h"
+
 #include "InterfaceController.h"
 
 char if_cmd_lib_file_name[] = "/system/lib/libnetcmdiface.so";
@@ -98,4 +100,26 @@ int InterfaceController::interfaceCommand(int argc, char *argv[], char **rbuf) {
 		ret = sendCommand_(argc, argv, rbuf);
 
 	return ret;
+}
+
+int InterfaceController::writeIPv6ProcPath(const char *interface, const char *setting, const char *value) {
+	char *path;
+	asprintf(&path, "/proc/sys/net/ipv6/conf/%s/%s", interface, setting);
+	int success = writeFile(path, value, strlen(value));
+	free(path);
+	return success;
+}
+
+int InterfaceController::setEnableIPv6(const char *interface, const int on) {
+	// When disable_ipv6 changes from 1 to 0, the kernel starts autoconf.
+	// When disable_ipv6 changes from 0 to 1, the kernel clears all autoconf
+	// addresses and routes and disables IPv6 on the interface.
+	const char *disable_ipv6 = on ? "0" : "1";
+	return writeIPv6ProcPath(interface, "disable_ipv6", disable_ipv6);
+}
+
+int InterfaceController::setIPv6PrivacyExtensions(const char *interface, const int on) {
+	// 0: disable IPv6 privacy addresses
+	// 0: enable IPv6 privacy addresses and prefer them over non-privacy ones.
+	return writeIPv6ProcPath(interface, "use_tempaddr", on ? "2" : "0");
 }

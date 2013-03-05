@@ -51,8 +51,6 @@ public:
 
 private:
 
-    static int writeFile(const char *path, const char *value, int size);
-
     class SoftapCmd : public NetdCommand {
     public:
         SoftapCmd();
