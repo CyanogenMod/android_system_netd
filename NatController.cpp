@@ -67,6 +67,7 @@ int NatController::setupIptablesHooks() {
 int NatController::setDefaults() {
     struct CommandsAndArgs defaultCommands[] = {
         {{IPTABLES_PATH, "-F", "natctrl_FORWARD",}, 1},
+        {{IPTABLES_PATH, "-A", "natctrl_FORWARD", "-j", "DROP"}, 1},
         {{IPTABLES_PATH, "-t", "nat", "-F", "natctrl_nat_POSTROUTING"}, 1},
         {{IP_PATH, "rule", "flush"}, 0},
         {{IP_PATH, "-6", "rule", "flush"}, 0},
@@ -123,7 +124,6 @@ int NatController::routesOp(bool add, const char *intIface, const char *extIface
 int NatController::enableNat(const int argc, char **argv) {
     int i;
     int addrCount = atoi(argv[4]);
-    int ret = 0;
     const char *intIface = argv[2];
     const char *extIface = argv[3];
     int tableNumber;
@@ -139,10 +139,42 @@ int NatController::enableNat(const int argc, char **argv) {
         errno = EINVAL;
         return -1;
     }
-    ret = routesOp(true, intIface, extIface, argv, addrCount);
-    if (ret != 0 || setForwardRules(true, intIface, extIface) != 0) {
+    if (routesOp(true, intIface, extIface, argv, addrCount)) {
+        ALOGE("Error setting route rules");
+        routesOp(false, intIface, extIface, argv, addrCount);
+        errno = ENODEV;
+        return -1;
+    }
+
+    // add this if we are the first added nat
+    if (natCount == 0) {
+        const char *cmd[] = {
+                IPTABLES_PATH,
+                "-t",
+                "nat",
+                "-A",
+                "natctrl_nat_POSTROUTING",
+                "-o",
+                extIface,
+                "-j",
+                "MASQUERADE"
+        };
+        if (runCmd(ARRAY_SIZE(cmd), cmd)) {
+            ALOGE("Error seting postroute rule: iface=%s", extIface);
+            // unwind what's been done, but don't care about success - what more could we do?
+            routesOp(false, intIface, extIface, argv, addrCount);
+            setDefaults();
+            return -1;
+        }
+    }
+
+
+    if (setForwardRules(true, intIface, extIface) != 0) {
         ALOGE("Error setting forward rules");
         routesOp(false, intIface, extIface, argv, addrCount);
+        if (natCount == 0) {
+            setDefaults();
+        }
         errno = ENODEV;
         return -1;
     }
@@ -165,30 +197,7 @@ int NatController::enableNat(const int argc, char **argv) {
     };
     runCmd(ARRAY_SIZE(cmd2), cmd2);
 
-
     natCount++;
-    // add this if we are the first added nat
-    if (natCount == 1) {
-        const char *cmd[] = {
-                IPTABLES_PATH,
-                "-t",
-                "nat",
-                "-A",
-                "natctrl_nat_POSTROUTING",
-                "-o",
-                extIface,
-                "-j",
-                "MASQUERADE"
-        };
-        if (runCmd(ARRAY_SIZE(cmd), cmd)) {
-            ALOGE("Error seting postroute rule: iface=%s", extIface);
-            // unwind what's been done, but don't care about success - what more could we do?
-            routesOp(false, intIface, extIface, argv, addrCount);
-            setDefaults();
-            return -1;
-        }
-    }
-
     return 0;
 }
 
