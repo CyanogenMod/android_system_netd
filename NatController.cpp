@@ -45,6 +45,12 @@ NatController::NatController(SecondaryTableController *ctrl) {
 NatController::~NatController() {
 }
 
+struct CommandsAndArgs {
+    /* The array size doesn't really matter as the compiler will barf if too many initializers are specified. */
+    const char *cmd[32];
+    bool checkRes;
+};
+
 int NatController::runCmd(int argc, const char **argv) {
     int res;
 
@@ -59,100 +65,23 @@ int NatController::setupIptablesHooks() {
 }
 
 int NatController::setDefaults() {
-    const char *cmd1[] = {
-            IPTABLES_PATH,
-            "-F",
-            "natctrl_FORWARD"
+    struct CommandsAndArgs defaultCommands[] = {
+        {{IPTABLES_PATH, "-F", "natctrl_FORWARD",}, 1},
+        {{IPTABLES_PATH, "-t", "nat", "-F", "natctrl_nat_POSTROUTING"}, 1},
+        {{IP_PATH, "rule", "flush"}, 0},
+        {{IP_PATH, "-6", "rule", "flush"}, 0},
+        {{IP_PATH, "rule", "add", "from", "all", "lookup", "default", "prio", "32767"}, 0},
+        {{IP_PATH, "rule", "add", "from", "all", "lookup", "main", "prio", "32766"}, 0},
+        {{IP_PATH, "-6", "rule", "add", "from", "all", "lookup", "default", "prio", "32767"}, 0},
+        {{IP_PATH, "-6", "rule", "add", "from", "all", "lookup", "main", "prio", "32766"}, 0},
+        {{IP_PATH, "route", "flush", "cache"}, 0},
     };
-    if (runCmd(ARRAY_SIZE(cmd1), cmd1))
-        return -1;
-
-    const char *cmd2[] = {
-            IPTABLES_PATH,
-            "-t",
-            "nat",
-            "-F",
-            "natctrl_nat_POSTROUTING"
-    };
-    if (runCmd(ARRAY_SIZE(cmd2), cmd2))
-        return -1;
-
-    const char *cmd3[] = {
-            IP_PATH,
-            "rule",
-            "flush"
-    };
-    runCmd(ARRAY_SIZE(cmd3), cmd3);
-
-    const char *cmd4[] = {
-            IP_PATH,
-            "-6",
-            "rule",
-            "flush"
-    };
-    runCmd(ARRAY_SIZE(cmd4), cmd4);
-
-    const char *cmd5[] = {
-            IP_PATH,
-            "rule",
-            "add",
-            "from",
-            "all",
-            "lookup",
-            "default",
-            "prio",
-            "32767"
-    };
-    runCmd(ARRAY_SIZE(cmd5), cmd5);
-
-    const char *cmd6[] = {
-            IP_PATH,
-            "rule",
-            "add",
-            "from",
-            "all",
-            "lookup",
-            "main",
-            "prio",
-            "32766"
-    };
-    runCmd(ARRAY_SIZE(cmd6), cmd6);
-
-    const char *cmd7[] = {
-            IP_PATH,
-            "-6",
-            "rule",
-            "add",
-            "from",
-            "all",
-            "lookup",
-            "default",
-            "prio",
-            "32767"
-    };
-    runCmd(ARRAY_SIZE(cmd7), cmd7);
-
-    const char *cmd8[] = {
-            IP_PATH,
-            "-6",
-            "rule",
-            "add",
-            "from",
-            "all",
-            "lookup",
-            "main",
-            "prio",
-            "32766"
-    };
-    runCmd(ARRAY_SIZE(cmd8), cmd8);
-
-    const char *cmd9[] = {
-            IP_PATH,
-            "route",
-            "flush",
-            "cache"
-    };
-    runCmd(ARRAY_SIZE(cmd9), cmd9);
+    for (unsigned int cmdNum = 0; cmdNum < ARRAY_SIZE(defaultCommands); cmdNum++) {
+        if (runCmd(ARRAY_SIZE(defaultCommands[cmdNum].cmd), defaultCommands[cmdNum].cmd) &&
+            defaultCommands[cmdNum].checkRes) {
+                return -1;
+        }
+    }
 
     natCount = 0;
 
@@ -162,6 +91,31 @@ int NatController::setDefaults() {
 bool NatController::checkInterface(const char *iface) {
     if (strlen(iface) > IFNAMSIZ) return false;
     return true;
+}
+
+int NatController::routesOp(bool add, const char *intIface, const char *extIface, char **argv, int addrCount) {
+    int tableNumber = secondaryTableCtrl->findTableNumber(extIface);
+    int ret = 0;
+
+    if (tableNumber != -1) {
+        for (int i = 0; i < addrCount; i++) {
+            if (add) {
+                ret |= secondaryTableCtrl->modifyFromRule(tableNumber, ADD, argv[5+i]);
+                ret |= secondaryTableCtrl->modifyLocalRoute(tableNumber, ADD, intIface, argv[5+i]);
+            } else {
+                ret |= secondaryTableCtrl->modifyLocalRoute(tableNumber, DEL, intIface, argv[5+i]);
+                ret |= secondaryTableCtrl->modifyFromRule(tableNumber, DEL, argv[5+i]);
+            }
+        }
+        const char *cmd[] = {
+                IP_PATH,
+                "route",
+                "flush",
+                "cache"
+        };
+        runCmd(ARRAY_SIZE(cmd), cmd);
+    }
+    return ret;
 }
 
 //  0    1       2       3       4            5
@@ -185,39 +139,10 @@ int NatController::enableNat(const int argc, char **argv) {
         errno = EINVAL;
         return -1;
     }
-
-    tableNumber = secondaryTableCtrl->findTableNumber(extIface);
-    if (tableNumber != -1) {
-        for(i = 0; i < addrCount; i++) {
-            ret |= secondaryTableCtrl->modifyFromRule(tableNumber, ADD, argv[5+i]);
-
-            ret |= secondaryTableCtrl->modifyLocalRoute(tableNumber, ADD, intIface, argv[5+i]);
-        }
-        const char *cmd[] = {
-                IP_PATH,
-                "route",
-                "flush",
-                "cache"
-        };
-        runCmd(ARRAY_SIZE(cmd), cmd);
-    }
-
+    ret = routesOp(true, intIface, extIface, argv, addrCount);
     if (ret != 0 || setForwardRules(true, intIface, extIface) != 0) {
-        if (tableNumber != -1) {
-            for (i = 0; i < addrCount; i++) {
-                secondaryTableCtrl->modifyLocalRoute(tableNumber, DEL, intIface, argv[5+i]);
-
-                secondaryTableCtrl->modifyFromRule(tableNumber, DEL, argv[5+i]);
-            }
-            const char *cmd[] = {
-                    IP_PATH,
-                    "route",
-                    "flush",
-                    "cache"
-            };
-            runCmd(ARRAY_SIZE(cmd), cmd);
-        }
         ALOGE("Error setting forward rules");
+        routesOp(false, intIface, extIface, argv, addrCount);
         errno = ENODEV;
         return -1;
     }
@@ -258,11 +183,7 @@ int NatController::enableNat(const int argc, char **argv) {
         if (runCmd(ARRAY_SIZE(cmd), cmd)) {
             ALOGE("Error seting postroute rule: iface=%s", extIface);
             // unwind what's been done, but don't care about success - what more could we do?
-            for (i = 0; i < addrCount; i++) {
-                secondaryTableCtrl->modifyLocalRoute(tableNumber, DEL, intIface, argv[5+i]);
-
-                secondaryTableCtrl->modifyFromRule(tableNumber, DEL, argv[5+i]);
-            }
+            routesOp(false, intIface, extIface, argv, addrCount);
             setDefaults();
             return -1;
         }
@@ -367,24 +288,7 @@ int NatController::disableNat(const int argc, char **argv) {
     }
 
     setForwardRules(false, intIface, extIface);
-
-    tableNumber = secondaryTableCtrl->findTableNumber(extIface);
-    if (tableNumber != -1) {
-        for (i = 0; i < addrCount; i++) {
-            secondaryTableCtrl->modifyLocalRoute(tableNumber, DEL, intIface, argv[5+i]);
-
-            secondaryTableCtrl->modifyFromRule(tableNumber, DEL, argv[5+i]);
-        }
-
-        const char *cmd[] = {
-                IP_PATH,
-                "route",
-                "flush",
-                "cache"
-        };
-        runCmd(ARRAY_SIZE(cmd), cmd);
-    }
-
+    routesOp(false, intIface, extIface, argv, addrCount);
     if (--natCount <= 0) {
         // handle decrement to 0 case (do reset to defaults) and erroneous dec below 0
         setDefaults();
