@@ -555,6 +555,12 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
         cli->sendMsg(ResponseCode::TetherStatusResult, tmp, false);
         free(tmp);
         return 0;
+    } else if (argc >= 3 && !strcmp(argv[1], "interface") && !strcmp(argv[2], "list")) {
+        InterfaceCollection *ilist = sTetherCtrl->getTetheredInterfaceList();
+        InterfaceCollection::iterator it;
+        for (it = ilist->begin(); it != ilist->end(); ++it) {
+            cli->sendMsg(ResponseCode::TetherInterfaceListResult, *it, false);
+        }
     } else {
         /*
          * These commands take a minimum of 4 arguments
@@ -588,13 +594,7 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
                 rc = sTetherCtrl->tetherInterface(argv[3]);
             } else if (!strcmp(argv[2], "remove")) {
                 rc = sTetherCtrl->untetherInterface(argv[3]);
-            } else if (!strcmp(argv[2], "list")) {
-                InterfaceCollection *ilist = sTetherCtrl->getTetheredInterfaceList();
-                InterfaceCollection::iterator it;
-
-                for (it = ilist->begin(); it != ilist->end(); ++it) {
-                    cli->sendMsg(ResponseCode::TetherInterfaceListResult, *it, false);
-                }
+            /* else if (!strcmp(argv[2], "list")) handled above */
             } else {
                 cli->sendMsg(ResponseCode::CommandParameterError,
                              "Unknown tether interface operation", false);
