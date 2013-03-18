@@ -555,11 +555,20 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
         cli->sendMsg(ResponseCode::TetherStatusResult, tmp, false);
         free(tmp);
         return 0;
-    } else if (argc >= 3 && !strcmp(argv[1], "interface") && !strcmp(argv[2], "list")) {
-        InterfaceCollection *ilist = sTetherCtrl->getTetheredInterfaceList();
-        InterfaceCollection::iterator it;
-        for (it = ilist->begin(); it != ilist->end(); ++it) {
-            cli->sendMsg(ResponseCode::TetherInterfaceListResult, *it, false);
+    } else if (argc == 3) {
+        if (!strcmp(argv[1], "interface") && !strcmp(argv[2], "list")) {
+            InterfaceCollection *ilist = sTetherCtrl->getTetheredInterfaceList();
+            InterfaceCollection::iterator it;
+            for (it = ilist->begin(); it != ilist->end(); ++it) {
+                cli->sendMsg(ResponseCode::TetherInterfaceListResult, *it, false);
+            }
+        } else if (!strcmp(argv[1], "dns") && !strcmp(argv[2], "list")) {
+            NetAddressCollection *dlist = sTetherCtrl->getDnsForwarders();
+            NetAddressCollection::iterator it;
+
+            for (it = dlist->begin(); it != dlist->end(); ++it) {
+                cli->sendMsg(ResponseCode::TetherDnsFwdTgtListResult, inet_ntoa(*it), false);
+            }
         }
     } else {
         /*
@@ -603,13 +612,7 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
         } else if (!strcmp(argv[1], "dns")) {
             if (!strcmp(argv[2], "set")) {
                 rc = sTetherCtrl->setDnsForwarders(&argv[3], argc - 3);
-            } else if (!strcmp(argv[2], "list")) {
-                NetAddressCollection *dlist = sTetherCtrl->getDnsForwarders();
-                NetAddressCollection::iterator it;
-
-                for (it = dlist->begin(); it != dlist->end(); ++it) {
-                    cli->sendMsg(ResponseCode::TetherDnsFwdTgtListResult, inet_ntoa(*it), false);
-                }
+            /* else if (!strcmp(argv[2], "list")) handled above */
             } else {
                 cli->sendMsg(ResponseCode::CommandParameterError,
                              "Unknown tether interface operation", false);
