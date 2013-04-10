@@ -37,7 +37,7 @@ LOCAL_C_INCLUDES := $(KERNEL_HEADERS) \
 
 LOCAL_CFLAGS := -Werror=format
 
-LOCAL_SHARED_LIBRARIES := libstlport libsysutils libcutils libnetutils \
+LOCAL_SHARED_LIBRARIES := libstlport libsysutils liblog libcutils libnetutils \
                           libcrypto libhardware_legacy libmdnssd libdl \
                           liblogwrap
 
