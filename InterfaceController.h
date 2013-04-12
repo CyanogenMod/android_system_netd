@@ -43,6 +43,8 @@ class InterfaceController {
 	int (*sendCommandFini_)(void);
 	int writeIPv6ProcPath(const char *interface, const char *setting,
 			      const char *value);
+        int isInterfaceName(const char *name);
+        int setAcceptRA(const char *value);
 };
 
 #endif
