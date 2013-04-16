@@ -106,36 +106,43 @@ bool SoftapController::isSoftapStarted() {
  * Arguments:
  *  argv[2] - wlan interface
  *  argv[3] - SSID
- *  argv[4] - Security
- *  argv[5] - Key
+ *  argv[4] - Broadcast/Hidden
+ *  argv[5] - Security
+ *  argv[6] - Key
  */
 int SoftapController::setSoftap(int argc, char *argv[]) {
     char psk_str[2*SHA256_DIGEST_LENGTH+1];
     int ret = ResponseCode::SoftapStatusResult;
     int i = 0;
     int fd;
-
-    if (argc < 4) {
-        ALOGE("Softap set is missing arguments. Please use: softap <wlan iface> <SSID> <wpa2?-psk|open> <passphrase>");
-        return ResponseCode::CommandSyntaxError;
-    }
-
+    int hidden = 0;
     char *wbuf = NULL;
     char *fbuf = NULL;
 
+    if (argc < 5) {
+        ALOGE("Softap set is missing arguments. Please use:");
+        ALOGE("softap <wlan iface> <SSID> <hidden/broadcast> <wpa2?-psk|open> <passphrase>");
+        return ResponseCode::CommandSyntaxError;
+    }
+
+    if (!strcasecmp(argv[4], "hidden"))
+        hidden = 1;
+
     asprintf(&wbuf, "interface=%s\ndriver=nl80211\nctrl_interface="
             "/data/misc/wifi/hostapd\nssid=%s\nchannel=6\nieee80211n=1\n"
-            "hw_mode=g\n",
-            argv[2], argv[3]);
+            "hw_mode=g\nignore_broadcast_ssid=%d\n",
+            argv[2], argv[3], hidden);
 
-    if (argc > 4) {
-        if (!strcmp(argv[4], "wpa-psk")) {
-            generatePsk(argv[3], argv[5], psk_str);
+    if (argc > 6) {
+        if (!strcmp(argv[5], "wpa-psk")) {
+            generatePsk(argv[3], argv[6], psk_str);
             asprintf(&fbuf, "%swpa=1\nwpa_pairwise=TKIP CCMP\nwpa_psk=%s\n", wbuf, psk_str);
-        } else if (!strcmp(argv[4], "wpa2-psk")) {
-            generatePsk(argv[3], argv[5], psk_str);
+        } else if (!strcmp(argv[5], "wpa2-psk")) {
+            generatePsk(argv[3], argv[6], psk_str);
             asprintf(&fbuf, "%swpa=2\nrsn_pairwise=CCMP\nwpa_psk=%s\n", wbuf, psk_str);
-        } else if (!strcmp(argv[4], "open")) {
+        }
+    } else if (argc > 5) {
+        if (!strcmp(argv[5], "open")) {
             asprintf(&fbuf, "%s", wbuf);
         }
     } else {
