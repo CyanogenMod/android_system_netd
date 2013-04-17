@@ -140,6 +140,8 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         } else if (!strcmp(argv[5], "wpa2-psk")) {
             generatePsk(argv[3], argv[6], psk_str);
             asprintf(&fbuf, "%swpa=2\nrsn_pairwise=CCMP\nwpa_psk=%s\n", wbuf, psk_str);
+        } else if (!strcmp(argv[5], "open")) {
+            asprintf(&fbuf, "%s", wbuf);
         }
     } else if (argc > 5) {
         if (!strcmp(argv[5], "open")) {
