@@ -33,6 +33,8 @@ public:
     int flushInterfaceDnsCache(const char* iface);
     int setDnsInterfaceForPid(const char* iface, int pid);
     int clearDnsInterfaceForPid(int pid);
+    int setDnsInterfaceForUidRange(const char* iface, int uid_start, int uid_end);
+    int clearDnsInterfaceForUidRange(int uid_start, int uid_end);
 };
 
 #endif /* _RESOLVER_CONTROLLER_H_ */

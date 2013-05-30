@@ -96,3 +96,19 @@ int ResolverController::clearDnsInterfaceForPid(int pid) {
 
     return 0;
 }
+
+int ResolverController::setDnsInterfaceForUidRange(const char* iface, int uid_start, int uid_end) {
+    if (DBG) {
+        ALOGD("setDnsIfaceForUidRange iface = %s, range = [%d,%d]\n", iface, uid_start, uid_end);
+    }
+
+    return _resolv_set_iface_for_uid_range(iface, uid_start, uid_end);
+}
+
+int ResolverController::clearDnsInterfaceForUidRange(int uid_start, int uid_end) {
+    if (DBG) {
+        ALOGD("clearDnsIfaceForUidRange range = [%d,%d]\n", uid_start, uid_end);
+    }
+
+    return _resolv_clear_iface_for_uid_range(uid_start, uid_end);
+}
