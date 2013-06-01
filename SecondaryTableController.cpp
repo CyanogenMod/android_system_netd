@@ -36,6 +36,8 @@
 #include "NetdConstants.h"
 #include "SecondaryTableController.h"
 
+const char* SecondaryTableController::LOCAL_MANGLE_OUTPUT = "st_mangle_OUTPUT";
+
 SecondaryTableController::SecondaryTableController() {
     int i;
     for (i=0; i < INTERFACES_TRACKED; i++) {
@@ -231,6 +233,37 @@ int SecondaryTableController::modifyLocalRoute(int tableIndex, const char *actio
     };
 
     return runCmd(ARRAY_SIZE(cmd), cmd);
+}
+
+int SecondaryTableController::addUidRule(const char *iface, const char *uid) {
+    return setUidRule(iface, uid, true);
+}
+
+int SecondaryTableController::removeUidRule(const char *iface, const char *uid) {
+    return setUidRule(iface, uid, false);
+}
+
+int SecondaryTableController::setUidRule(const char *iface, const char *uid, bool add) {
+    int tableIndex = findTableNumber(iface);
+    if (tableIndex == -1) {
+        return -1;
+    }
+    char tableIndex_str[11] = {0};
+    snprintf(tableIndex_str, sizeof(tableIndex_str), "%d", tableIndex + BASE_TABLE_NUMBER);
+    return execIptables(V4V6,
+            "-t",
+            "mangle",
+            add ? "-A" : "-D",
+            LOCAL_MANGLE_OUTPUT,
+            "-m",
+            "owner",
+            "--uid-owner",
+            uid,
+            "-j",
+            "MARK",
+            "--set-mark",
+            tableIndex_str,
+            NULL);
 }
 
 int SecondaryTableController::runCmd(int argc, const char **argv) {

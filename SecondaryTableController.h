@@ -40,8 +40,14 @@ public:
     int findTableNumber(const char *iface);
     int modifyFromRule(int tableIndex, const char *action, const char *addr);
     int modifyLocalRoute(int tableIndex, const char *action, const char *iface, const char *addr);
+    int addUidRule(const char *iface, const char *uid);
+    int removeUidRule(const char *iface, const char *uid);
+
+    static const char* LOCAL_MANGLE_OUTPUT;
+
 
 private:
+    int setUidRule(const char* iface, const char *uid, bool add);
     int modifyRoute(SocketClient *cli, const char *action, char *iface, char *dest, int prefix,
             char *gateway, int tableIndex);
 
