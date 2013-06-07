@@ -112,3 +112,14 @@ int ResolverController::clearDnsInterfaceForUidRange(int uid_start, int uid_end)
 
     return _resolv_clear_iface_for_uid_range(uid_start, uid_end);
 }
+
+int ResolverController::clearDnsInterfaceMappings()
+{
+    if (DBG) {
+        ALOGD("clearInterfaceMappings\n");
+    }
+    _resolv_clear_iface_uid_range_mapping();
+    _resolv_clear_iface_pid_mapping();
+
+    return 0;
+}

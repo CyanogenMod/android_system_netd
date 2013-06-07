@@ -35,6 +35,7 @@ public:
     int clearDnsInterfaceForPid(int pid);
     int setDnsInterfaceForUidRange(const char* iface, int uid_start, int uid_end);
     int clearDnsInterfaceForUidRange(int uid_start, int uid_end);
+    int clearDnsInterfaceMappings();
 };
 
 #endif /* _RESOLVER_CONTROLLER_H_ */

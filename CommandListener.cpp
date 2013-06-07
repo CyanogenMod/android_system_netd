@@ -852,6 +852,13 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
                     "Wrong number of arguments to resolver clearifaceforuid", false);
             return 0;
         }
+    } else if (!strcmp(argv[1], "clearifacemapping")) {
+        if (argc == 2) {
+            rc = sResolverCtrl->clearDnsInterfaceMappings();
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Wrong number of arugments to resolver clearifacemapping", false);
+        }
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError,"Resolver unknown command", false);
         return 0;
