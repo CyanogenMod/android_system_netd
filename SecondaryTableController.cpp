@@ -37,6 +37,7 @@
 #include "SecondaryTableController.h"
 
 const char* SecondaryTableController::LOCAL_MANGLE_OUTPUT = "st_mangle_OUTPUT";
+const char* SecondaryTableController::LOCAL_NAT_POSTROUTING = "st_nat_POSTROUTING";
 
 SecondaryTableController::SecondaryTableController() {
     int i;
@@ -233,6 +234,60 @@ int SecondaryTableController::modifyLocalRoute(int tableIndex, const char *actio
     };
 
     return runCmd(ARRAY_SIZE(cmd), cmd);
+}
+int SecondaryTableController::addFwmarkRule(const char *iface) {
+    return setFwmarkRule(iface, true);
+}
+
+int SecondaryTableController::removeFwmarkRule(const char *iface) {
+    return setFwmarkRule(iface, false);
+}
+
+int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
+    char tableIndex_str[11];
+    int tableIndex = findTableNumber(iface);
+    if (tableIndex == -1) {
+        tableIndex = findTableNumber(""); // look for an empty slot
+        if (tableIndex == -1) {
+            ALOGE("Max number of NATed interfaces reached");
+            errno = ENODEV;
+            return -1;
+        }
+        strncpy(mInterfaceTable[tableIndex], iface, IFNAMSIZ);
+        // Ensure null termination even if truncation happened
+        mInterfaceTable[tableIndex][IFNAMSIZ] = 0;
+    }
+    snprintf(tableIndex_str, sizeof(tableIndex_str), "%d", tableIndex +
+            BASE_TABLE_NUMBER);
+    const char *cmd[] = {
+        IP_PATH,
+        "rule",
+        add ? "add" : "del",
+        "fwmark",
+        tableIndex_str,
+        "table",
+        tableIndex_str
+    };
+    int ret = runCmd(ARRAY_SIZE(cmd), cmd);
+    if (ret) return ret;
+
+    //set up the needed source IP rewriting
+    //NOTE: Without ipv6 NAT in the kernel <3.7 only support V4 NAT
+    return execIptables(V4,
+            "-t",
+            "nat",
+            add ? "-A" : "-D",
+            LOCAL_NAT_POSTROUTING,
+            "-o",
+            iface,
+            "-m",
+            "mark",
+            "--mark",
+            tableIndex_str,
+            "-j",
+            "MASQUERADE",
+            NULL);
+
 }
 
 int SecondaryTableController::addUidRule(const char *iface, const char *uid) {

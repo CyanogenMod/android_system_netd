@@ -42,12 +42,16 @@ public:
     int modifyLocalRoute(int tableIndex, const char *action, const char *iface, const char *addr);
     int addUidRule(const char *iface, const char *uid);
     int removeUidRule(const char *iface, const char *uid);
+    int addFwmarkRule(const char *iface);
+    int removeFwmarkRule(const char *iface);
 
     static const char* LOCAL_MANGLE_OUTPUT;
+    static const char* LOCAL_NAT_POSTROUTING;
 
 
 private:
     int setUidRule(const char* iface, const char *uid, bool add);
+    int setFwmarkRule(const char *iface, bool add);
     int modifyRoute(SocketClient *cli, const char *action, char *iface, char *dest, int prefix,
             char *gateway, int tableIndex);
 

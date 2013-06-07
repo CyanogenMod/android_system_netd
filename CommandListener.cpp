@@ -104,6 +104,7 @@ static const char* NAT_PREROUTING[] = {
 
 static const char* NAT_POSTROUTING[] = {
         NatController::LOCAL_NAT_POSTROUTING,
+        SecondaryTableController::LOCAL_NAT_POSTROUTING,
         NULL,
 };
 
@@ -262,9 +263,36 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
 
         //     0       1       2        3          4           5     6      7
         // interface route add/remove iface default/secondary dest prefix gateway
+        // interface route  fwmark  add/remove   iface
         // interface route    uid   add/remove   iface        uid
         if (!strcmp(argv[1], "route")) {
             int prefix_length = 0;
+            if (!strcmp(argv[2], "fwmark")) {
+                if (argc < 5) {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                    return 0;
+                }
+                if (!strcmp(argv[3], "add")) {
+                    if (!sSecondaryTableCtrl->addFwmarkRule(argv[4])) {
+                        cli->sendMsg(ResponseCode::CommandOkay, "Fwmark rule successfully added",
+                                false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to add fwmark rule",
+                                true);
+                    }
+                } else if (!strcmp(argv[3], "remove")) {
+                    if (!sSecondaryTableCtrl->removeFwmarkRule(argv[4])) {
+                        cli->sendMsg(ResponseCode::CommandOkay, "Fwmark rule successfully removed",
+                                false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove fwmark rule",
+                                true);
+                    }
+                } else {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark cmd", false);
+                }
+                return 0;
+            }
             if (!strcmp(argv[2], "uid")) {
                 if (argc < 6) {
                     cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
