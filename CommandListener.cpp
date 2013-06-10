@@ -92,6 +92,11 @@ static const char* MANGLE_POSTROUTING[] = {
         NULL,
 };
 
+static const char* MANGLE_OUTPUT[] = {
+        SecondaryTableController::LOCAL_MANGLE_OUTPUT,
+        NULL,
+};
+
 static const char* NAT_PREROUTING[] = {
         OEM_IPTABLES_NAT_PREROUTING,
         NULL,
@@ -176,6 +181,7 @@ CommandListener::CommandListener() :
     createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT);
     createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING);
     createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING);
+    createChildChains(V4V6, "mangle", "OUTPUT", MANGLE_OUTPUT);
     createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING);
     createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING);
 
@@ -256,8 +262,34 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
 
         //     0       1       2        3          4           5     6      7
         // interface route add/remove iface default/secondary dest prefix gateway
+        // interface route    uid   add/remove   iface        uid
         if (!strcmp(argv[1], "route")) {
             int prefix_length = 0;
+            if (!strcmp(argv[2], "uid")) {
+                if (argc < 6) {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                    return 0;
+                }
+                if (!strcmp(argv[3], "add")) {
+                    if (!sSecondaryTableCtrl->addUidRule(argv[4],argv[5])) {
+                        cli->sendMsg(ResponseCode::CommandOkay, "uid rule successfully added",
+                                false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to add uid rule", true);
+                    }
+                } else if (!strcmp(argv[3], "remove")) {
+                    if (!sSecondaryTableCtrl->removeUidRule(argv[4], argv[5])) {
+                        cli->sendMsg(ResponseCode::CommandOkay, "uid rule successfully removed",
+                                false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove uid rule",
+                                true);
+                    }
+                } else {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown uid cmd", false);
+                }
+                return 0;
+            }
             if (argc < 8) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                 return 0;
