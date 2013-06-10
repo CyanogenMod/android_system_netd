@@ -107,8 +107,9 @@ bool SoftapController::isSoftapStarted() {
  *  argv[2] - wlan interface
  *  argv[3] - SSID
  *  argv[4] - Broadcast/Hidden
- *  argv[5] - Security
- *  argv[6] - Key
+ *  argv[5] - Channel
+ *  argv[6] - Security
+ *  argv[7] - Key
  */
 int SoftapController::setSoftap(int argc, char *argv[]) {
     char psk_str[2*SHA256_DIGEST_LENGTH+1];
@@ -116,35 +117,42 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
     int i = 0;
     int fd;
     int hidden = 0;
+    int channel = AP_CHANNEL_DEFAULT;
     char *wbuf = NULL;
     char *fbuf = NULL;
 
     if (argc < 5) {
         ALOGE("Softap set is missing arguments. Please use:");
-        ALOGE("softap <wlan iface> <SSID> <hidden/broadcast> <wpa2?-psk|open> <passphrase>");
+        ALOGE("softap <wlan iface> <SSID> <hidden/broadcast> <channel> <wpa2?-psk|open> <passphrase>");
         return ResponseCode::CommandSyntaxError;
     }
 
     if (!strcasecmp(argv[4], "hidden"))
         hidden = 1;
 
-    asprintf(&wbuf, "interface=%s\ndriver=nl80211\nctrl_interface="
-            "/data/misc/wifi/hostapd\nssid=%s\nchannel=6\nieee80211n=1\n"
-            "hw_mode=g\nignore_broadcast_ssid=%d\n",
-            argv[2], argv[3], hidden);
+    if (argc >= 5) {
+        channel = atoi(argv[5]);
+        if (channel <= 0)
+            channel = AP_CHANNEL_DEFAULT;
+    }
 
-    if (argc > 6) {
-        if (!strcmp(argv[5], "wpa-psk")) {
-            generatePsk(argv[3], argv[6], psk_str);
+    asprintf(&wbuf, "interface=%s\ndriver=nl80211\nctrl_interface="
+            "/data/misc/wifi/hostapd\nssid=%s\nchannel=%d\nieee80211n=1\n"
+            "hw_mode=g\nignore_broadcast_ssid=%d\n",
+            argv[2], argv[3], channel, hidden);
+
+    if (argc > 7) {
+        if (!strcmp(argv[6], "wpa-psk")) {
+            generatePsk(argv[3], argv[7], psk_str);
             asprintf(&fbuf, "%swpa=1\nwpa_pairwise=TKIP CCMP\nwpa_psk=%s\n", wbuf, psk_str);
-        } else if (!strcmp(argv[5], "wpa2-psk")) {
-            generatePsk(argv[3], argv[6], psk_str);
+        } else if (!strcmp(argv[6], "wpa2-psk")) {
+            generatePsk(argv[3], argv[7], psk_str);
             asprintf(&fbuf, "%swpa=2\nrsn_pairwise=CCMP\nwpa_psk=%s\n", wbuf, psk_str);
-        } else if (!strcmp(argv[5], "open")) {
+        } else if (!strcmp(argv[6], "open")) {
             asprintf(&fbuf, "%s", wbuf);
         }
-    } else if (argc > 5) {
-        if (!strcmp(argv[5], "open")) {
+    } else if (argc > 6) {
+        if (!strcmp(argv[6], "open")) {
             asprintf(&fbuf, "%s", wbuf);
         }
     } else {
