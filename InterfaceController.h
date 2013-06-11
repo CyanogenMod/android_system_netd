@@ -35,6 +35,8 @@ class InterfaceController {
 	int interfaceCommand(int argc, char *argv[], char **rbuf);
 	int setEnableIPv6(const char *interface, const int on);
 	int setIPv6PrivacyExtensions(const char *interface, const int on);
+	int getMtu(const char *interface, int *mtu);
+	int setMtu(const char *interface, const char *mtu);
 
  private:
 	void *libh_;

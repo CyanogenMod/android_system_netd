@@ -522,6 +522,31 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                         "Failed to change IPv6 state", true);
             }
             return 0;
+        } else if (!strcmp(argv[1], "getmtu")) {
+            char *msg = NULL;
+            int mtu = 0;
+            if (sInterfaceCtrl->getMtu(argv[2], &mtu) == 0) {
+                asprintf(&msg, "MTU = %d", mtu);
+                cli->sendMsg(ResponseCode::InterfaceGetMtuResult, msg, false);
+                free(msg);
+            } else {
+                cli->sendMsg(ResponseCode::OperationFailed,
+                        "Failed to get MTU", true);
+            }
+            return 0;
+        } else if (!strcmp(argv[1], "setmtu")) {
+            if (argc != 4) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError,
+                        "Usage: interface setmtu <interface> <val>", false);
+                return 0;
+            }
+            if (sInterfaceCtrl->setMtu(argv[2], argv[3]) == 0) {
+                cli->sendMsg(ResponseCode::CommandOkay, "MTU changed", false);
+            } else {
+                cli->sendMsg(ResponseCode::OperationFailed,
+                        "Failed to get MTU", true);
+            }
+            return 0;
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown interface cmd", false);
             return 0;
