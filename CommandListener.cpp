@@ -261,10 +261,10 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             return 0;
         }
 
-        //     0       1       2        3          4           5     6      7
-        // interface route add/remove iface default/secondary dest prefix gateway
+        //     0       1       2        3          4           5        6      7
+        // interface route add/remove iface default/secondary dest    prefix gateway
         // interface route  fwmark  add/remove   iface
-        // interface route    uid   add/remove   iface        uid
+        // interface route    uid   add/remove   iface      uid_start  uid_end
         if (!strcmp(argv[1], "route")) {
             int prefix_length = 0;
             if (!strcmp(argv[2], "fwmark")) {
@@ -294,19 +294,20 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 return 0;
             }
             if (!strcmp(argv[2], "uid")) {
-                if (argc < 6) {
+                if (argc < 7) {
                     cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                     return 0;
                 }
                 if (!strcmp(argv[3], "add")) {
-                    if (!sSecondaryTableCtrl->addUidRule(argv[4],argv[5])) {
+                    if (!sSecondaryTableCtrl->addUidRule(argv[4], atoi(argv[5]), atoi(argv[6]))) {
                         cli->sendMsg(ResponseCode::CommandOkay, "uid rule successfully added",
                                 false);
                     } else {
                         cli->sendMsg(ResponseCode::OperationFailed, "Failed to add uid rule", true);
                     }
                 } else if (!strcmp(argv[3], "remove")) {
-                    if (!sSecondaryTableCtrl->removeUidRule(argv[4], argv[5])) {
+                    if (!sSecondaryTableCtrl->removeUidRule(argv[4],
+                                atoi(argv[5]), atoi(argv[6]))) {
                         cli->sendMsg(ResponseCode::CommandOkay, "uid rule successfully removed",
                                 false);
                     } else {
