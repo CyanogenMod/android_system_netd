@@ -290,21 +290,23 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
 
 }
 
-int SecondaryTableController::addUidRule(const char *iface, const char *uid) {
-    return setUidRule(iface, uid, true);
+int SecondaryTableController::addUidRule(const char *iface, int uid_start, int uid_end) {
+    return setUidRule(iface, uid_start, uid_end, true);
 }
 
-int SecondaryTableController::removeUidRule(const char *iface, const char *uid) {
-    return setUidRule(iface, uid, false);
+int SecondaryTableController::removeUidRule(const char *iface, int uid_start, int uid_end) {
+    return setUidRule(iface, uid_start, uid_end, false);
 }
 
-int SecondaryTableController::setUidRule(const char *iface, const char *uid, bool add) {
+int SecondaryTableController::setUidRule(const char *iface, int uid_start, int uid_end, bool add) {
     int tableIndex = findTableNumber(iface);
     if (tableIndex == -1) {
         return -1;
     }
     char tableIndex_str[11] = {0};
     snprintf(tableIndex_str, sizeof(tableIndex_str), "%d", tableIndex + BASE_TABLE_NUMBER);
+    char uid_str[24] = {0};
+    snprintf(uid_str, sizeof(uid_str), "%d-%d", uid_start, uid_end);
     return execIptables(V4V6,
             "-t",
             "mangle",
@@ -313,7 +315,7 @@ int SecondaryTableController::setUidRule(const char *iface, const char *uid, boo
             "-m",
             "owner",
             "--uid-owner",
-            uid,
+            uid_str,
             "-j",
             "MARK",
             "--set-mark",

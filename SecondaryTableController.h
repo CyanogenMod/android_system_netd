@@ -40,8 +40,8 @@ public:
     int findTableNumber(const char *iface);
     int modifyFromRule(int tableIndex, const char *action, const char *addr);
     int modifyLocalRoute(int tableIndex, const char *action, const char *iface, const char *addr);
-    int addUidRule(const char *iface, const char *uid);
-    int removeUidRule(const char *iface, const char *uid);
+    int addUidRule(const char *iface, int uid_start, int uid_end);
+    int removeUidRule(const char *iface, int uid_start, int uid_end);
     int addFwmarkRule(const char *iface);
     int removeFwmarkRule(const char *iface);
 
@@ -50,7 +50,7 @@ public:
 
 
 private:
-    int setUidRule(const char* iface, const char *uid, bool add);
+    int setUidRule(const char* iface, int uid_start, int uid_end, bool add);
     int setFwmarkRule(const char *iface, bool add);
     int modifyRoute(SocketClient *cli, const char *action, char *iface, char *dest, int prefix,
             char *gateway, int tableIndex);
