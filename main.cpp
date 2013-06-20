@@ -22,8 +22,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/capability.h>
-#include <linux/prctl.h>
 
 #include <fcntl.h>
 #include <dirent.h>
@@ -41,42 +39,6 @@ static void coldboot(const char *path);
 static void sigchld_handler(int sig);
 static void blockSigpipe();
 
-static void dropPrivileges() {
-    struct __user_cap_header_struct header;
-    struct __user_cap_data_struct cap[2];
-    int i;
-    int result;
-
-    // First drop unneeded capabilities from our bounding set,
-    // which affects children we exec.
-    for (i = 0; prctl(PR_CAPBSET_READ, i, 0, 0, 0) >= 0; i++) {
-        if (i == CAP_NET_ADMIN || i == CAP_NET_RAW) {
-            continue;
-        }
-        result = prctl(PR_CAPBSET_DROP, i, 0, 0, 0);
-        if (result != 0) {
-            perror("PR_CAPBSET_DROP failed: unable to drop privileges");
-            exit(1);
-        }
-    }
-
-    // Then drop capabilities from the current process.
-    memset(&header, 0, sizeof(header));
-    memset(cap, 0, sizeof(cap));
-
-    header.version = _LINUX_CAPABILITY_VERSION_3;
-    header.pid = 0;
-    cap[CAP_TO_INDEX(CAP_NET_ADMIN)].effective |= CAP_TO_MASK(CAP_NET_ADMIN);
-    cap[CAP_TO_INDEX(CAP_NET_ADMIN)].permitted |= CAP_TO_MASK(CAP_NET_ADMIN);
-    cap[CAP_TO_INDEX(CAP_NET_RAW)].effective   |= CAP_TO_MASK(CAP_NET_RAW);
-    cap[CAP_TO_INDEX(CAP_NET_RAW)].permitted   |= CAP_TO_MASK(CAP_NET_RAW);
-    result = capset(&header, cap);
-    if (result != 0) {
-        perror("capset failed: unable to drop privileges");
-        exit(1);
-    }
-}
-
 int main() {
 
     CommandListener *cl;
@@ -85,7 +47,6 @@ int main() {
     MDnsSdListener *mdnsl;
 
     ALOGI("Netd 1.0 starting");
-    dropPrivileges();
 
 //    signal(SIGCHLD, sigchld_handler);
     blockSigpipe();
