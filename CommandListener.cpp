@@ -128,7 +128,7 @@ static void createChildChains(IptablesTarget target, const char* table, const ch
     } while (*(++childChain) != NULL);
 }
 
-CommandListener::CommandListener() :
+CommandListener::CommandListener(UidMarkMap *map) :
                  FrameworkListener("netd", true) {
     registerCmd(new InterfaceCmd());
     registerCmd(new IpFwdCmd());
@@ -144,7 +144,7 @@ CommandListener::CommandListener() :
     registerCmd(new ClatdCmd());
 
     if (!sSecondaryTableCtrl)
-        sSecondaryTableCtrl = new SecondaryTableController();
+        sSecondaryTableCtrl = new SecondaryTableController(map);
     if (!sTetherCtrl)
         sTetherCtrl = new TetherController();
     if (!sNatCtrl)

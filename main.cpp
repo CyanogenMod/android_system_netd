@@ -34,6 +34,7 @@
 #include "NetlinkManager.h"
 #include "DnsProxyListener.h"
 #include "MDnsSdListener.h"
+#include "UidMarkMap.h"
 
 static void coldboot(const char *path);
 static void sigchld_handler(int sig);
@@ -56,8 +57,9 @@ int main() {
         exit(1);
     };
 
+    UidMarkMap *rangeMap = new UidMarkMap();
 
-    cl = new CommandListener();
+    cl = new CommandListener(rangeMap);
     nm->setBroadcaster((SocketListener *) cl);
 
     if (nm->start()) {
@@ -68,7 +70,7 @@ int main() {
     // Set local DNS mode, to prevent bionic from proxying
     // back to this service, recursively.
     setenv("ANDROID_DNS_MODE", "local", 1);
-    dpl = new DnsProxyListener();
+    dpl = new DnsProxyListener(rangeMap);
     if (dpl->startListener()) {
         ALOGE("Unable to start DnsProxyListener (%s)", strerror(errno));
         exit(1);
