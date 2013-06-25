@@ -33,6 +33,7 @@ public:
 
     static const char* LOCAL_FORWARD;
     static const char* LOCAL_NAT_POSTROUTING;
+    static const char* LOCAL_TETHER_COUNTERS_CHAIN;
 
 private:
     int natCount;
@@ -42,6 +43,7 @@ private:
     int runCmd(int argc, const char **argv);
     bool checkInterface(const char *iface);
     int setForwardRules(bool set, const char *intIface, const char *extIface);
+    int setTetherCountingRules(bool add, const char *intIface, const char *extIface);
     int routesOp(bool add, const char *intIface, const char *extIface, char **argv, int addrCount);
 };
 

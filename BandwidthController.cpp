@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// #define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 
 /*
  * The CommandListener, FrameworkListener don't allow for
@@ -44,6 +44,8 @@
 
 #include "NetdConstants.h"
 #include "BandwidthController.h"
+#include "NatController.h"  /* For LOCAL_TETHER_COUNTERS_CHAIN */
+#include "ResponseCode.h"
 
 /* Alphabetical */
 #define ALERT_IPT_TEMPLATE "%s %s -m quota2 ! --quota %lld --name %s"
@@ -632,11 +634,11 @@ int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) 
     if (it == quotaIfaces.end()) {
         /* Preparing the iface adds a penalty_box check */
         res |= prepCostlyIface(ifn, QuotaUnique);
-	/*
-	 * The rejecting quota limit should go after the penalty box checks
-	 * or else a naughty app could just eat up the quota.
-	 * So we append here.
-	 */
+        /*
+         * The rejecting quota limit should go after the penalty box checks
+         * or else a naughty app could just eat up the quota.
+         * So we append here.
+         */
         quotaCmd = makeIptablesQuotaCmd(IptOpAppend, costName, maxBytes);
         res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
         if (res) {
@@ -983,23 +985,33 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
 
 /*
  * Parse the ptks and bytes out of:
- * Chain FORWARD (policy RETURN 0 packets, 0 bytes)
- *     pkts      bytes target     prot opt in     out     source               destination
- *        0        0 RETURN     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0            state RELATED,ESTABLISHED
- *        0        0 DROP       all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0            state INVALID
- *        0        0 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0
- *
+ *   Chain natctrl_tether_counters (4 references)
+ *       pkts      bytes target     prot opt in     out     source               destination
+ *         26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0            counter wlan0_rmnet0: 0 bytes
+ *         27     2002 RETURN     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0            counter rmnet0_wlan0: 0 bytes
+ *       1040   107471 RETURN     all  --  bt-pan rmnet0  0.0.0.0/0            0.0.0.0/0            counter bt-pan_rmnet0: 0 bytes
+ *       1450  1708806 RETURN     all  --  rmnet0 bt-pan  0.0.0.0/0            0.0.0.0/0            counter rmnet0_bt-pan: 0 bytes
  */
-int BandwidthController::parseForwardChainStats(TetherStats &stats, FILE *fp,
-                                                std::string &extraProcessingInfo) {
+int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherStats filter,
+                                                FILE *fp, std::string &extraProcessingInfo) {
     int res;
     char lineBuffer[MAX_IPT_OUTPUT_LINE_LEN];
     char iface0[MAX_IPT_OUTPUT_LINE_LEN];
     char iface1[MAX_IPT_OUTPUT_LINE_LEN];
     char rest[MAX_IPT_OUTPUT_LINE_LEN];
 
+    TetherStats stats;
     char *buffPtr;
     int64_t packets, bytes;
+    int statsFound = 0;
+
+    bool filterPair = filter.intIface[0] && filter.extIface[0];
+
+    char *filterMsg = filter.getStatsLine();
+    ALOGV("filter: %s",  filterMsg);
+    free(filterMsg);
+
+    stats = filter;
 
     while (NULL != (buffPtr = fgets(lineBuffer, MAX_IPT_OUTPUT_LINE_LEN, fp))) {
         /* Clean up, so a failed parse can still print info */
@@ -1013,38 +1025,83 @@ int BandwidthController::parseForwardChainStats(TetherStats &stats, FILE *fp,
         if (res != 5) {
             continue;
         }
-        if ((stats.ifaceIn == iface0) && (stats.ifaceOut == iface1)) {
-            ALOGV("iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
-            stats.rxPackets = packets;
-            stats.rxBytes = bytes;
-        } else if ((stats.ifaceOut == iface0) && (stats.ifaceIn == iface1)) {
-            ALOGV("iface_in=%s iface_out=%s tx_bytes=%lld tx_packets=%lld ", iface1, iface0, bytes, packets);
-            stats.txPackets = packets;
-            stats.txBytes = bytes;
+        /*
+         * The following assumes that the 1st rule has in:extIface out:intIface,
+         * which is what NatController sets up.
+         * If not filtering, the 1st match rx, and sets up the pair for the tx side.
+         */
+        if (filter.intIface[0] && filter.extIface[0]) {
+            if (filter.intIface == iface0 && filter.extIface == iface1) {
+                ALOGV("2Filter RX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                stats.rxPackets = packets;
+                stats.rxBytes = bytes;
+            } else if (filter.intIface == iface1 && filter.extIface == iface0) {
+                ALOGV("2Filter TX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                stats.txPackets = packets;
+                stats.txBytes = bytes;
+            }
+        } else if (filter.intIface[0] || filter.extIface[0]) {
+            if (filter.intIface == iface0 || filter.extIface == iface1) {
+                ALOGV("1Filter RX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                stats.intIface = iface0;
+                stats.extIface = iface1;
+                stats.rxPackets = packets;
+                stats.rxBytes = bytes;
+            } else if (filter.intIface == iface1 || filter.extIface == iface0) {
+                ALOGV("1Filter TX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                stats.intIface = iface1;
+                stats.extIface = iface0;
+                stats.txPackets = packets;
+                stats.txBytes = bytes;
+            }
+        } else /* if (!filter.intFace[0] && !filter.extIface[0]) */ {
+            if (!stats.intIface[0]) {
+                ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                stats.intIface = iface0;
+                stats.extIface = iface1;
+                stats.rxPackets = packets;
+                stats.rxBytes = bytes;
+            } else if (stats.intIface == iface1 && stats.extIface == iface0) {
+                ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                stats.txPackets = packets;
+                stats.txBytes = bytes;
+            }
+        }
+        if (stats.rxBytes != -1 && stats.txBytes != -1) {
+            ALOGV("rx_bytes=%lld tx_bytes=%lld filterPair=%d", stats.rxBytes, stats.txBytes, filterPair);
+            /* Send out stats, and prep for the next if needed. */
+            char *msg = stats.getStatsLine();
+            if (filterPair) {
+                cli->sendMsg(ResponseCode::TetheringStatsResult, msg, false);
+                return 0;
+            } else {
+                cli->sendMsg(ResponseCode::TetheringStatsListResult, msg, false);
+                stats = filter;
+            }
+            free(msg);
+            statsFound++;
         }
     }
-    /* Failure if rx or tx was not found */
-    return (stats.rxBytes == -1 || stats.txBytes == -1) ? -1 : 0;
+    /* We found some stats, and the last one isn't a partial stats. */
+    if (statsFound && (stats.rxBytes == -1 || stats.txBytes == -1)) {
+        cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
+        return 0;
+    }
+    return -1;
 }
 
-
-char *BandwidthController::TetherStats::getStatsLine(void) {
+char *BandwidthController::TetherStats::getStatsLine(void) const {
     char *msg;
-    asprintf(&msg, "%s %s %lld %lld %lld %lld", ifaceIn.c_str(), ifaceOut.c_str(),
+    asprintf(&msg, "%s %s %lld %lld %lld %lld", intIface.c_str(), extIface.c_str(),
             rxBytes, rxPackets, txBytes, txPackets);
     return msg;
 }
 
-int BandwidthController::getTetherStats(TetherStats &stats, std::string &extraProcessingInfo) {
+int BandwidthController::getTetherStats(SocketClient *cli, TetherStats &stats, std::string &extraProcessingInfo) {
     int res;
     std::string fullCmd;
     FILE *iptOutput;
     const char *cmd;
-
-    if (stats.rxBytes != -1 || stats.txBytes != -1) {
-        ALOGE("Unexpected input stats. Byte counts should be -1.");
-        return -1;
-    }
 
     /*
      * Why not use some kind of lib to talk to iptables?
@@ -1054,14 +1111,15 @@ int BandwidthController::getTetherStats(TetherStats &stats, std::string &extraPr
      * the wanted info.
      */
     fullCmd = IPTABLES_PATH;
-    fullCmd += " -nvx -L natctrl_FORWARD";
+    fullCmd += " -nvx -L ";
+    fullCmd += NatController::LOCAL_TETHER_COUNTERS_CHAIN;
     iptOutput = popen(fullCmd.c_str(), "r");
     if (!iptOutput) {
             ALOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
             extraProcessingInfo += "Failed to run iptables.";
         return -1;
     }
-    res = parseForwardChainStats(stats, iptOutput, extraProcessingInfo);
+    res = parseForwardChainStats(cli, stats, iptOutput, extraProcessingInfo);
     pclose(iptOutput);
 
     /* Currently NatController doesn't do ipv6 tethering, so we are done. */
