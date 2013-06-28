@@ -27,6 +27,7 @@ public:
     bool add(int uid_start, int uid_end, int mark);
     bool remove(int uid_start, int uid_end, int mark);
     int getMark(int uid);
+    bool anyRulesForMark(int mark);
 
 private:
     struct UidMarkEntry {

@@ -37,7 +37,9 @@
 #include "SecondaryTableController.h"
 
 const char* SecondaryTableController::LOCAL_MANGLE_OUTPUT = "st_mangle_OUTPUT";
+const char* SecondaryTableController::LOCAL_MANGLE_IFACE_FORMAT = "st_mangle_%s_OUTPUT";
 const char* SecondaryTableController::LOCAL_NAT_POSTROUTING = "st_nat_POSTROUTING";
+const char* SecondaryTableController::LOCAL_FILTER_OUTPUT = "st_filter_OUTPUT";
 
 SecondaryTableController::SecondaryTableController(UidMarkMap *map) : mUidMarkMap(map) {
     int i;
@@ -49,6 +51,47 @@ SecondaryTableController::SecondaryTableController(UidMarkMap *map) : mUidMarkMa
 }
 
 SecondaryTableController::~SecondaryTableController() {
+}
+
+int SecondaryTableController::setupIptablesHooks() {
+    int res = execIptables(V4V6,
+            "-t",
+            "mangle",
+            "-F",
+            LOCAL_MANGLE_OUTPUT,
+            NULL);
+    //rule for skipping anything marked with the PROTECT_MARK
+    char protect_mark_str[11];
+    snprintf(protect_mark_str, sizeof(protect_mark_str), "%d", PROTECT_MARK);
+    res |= execIptables(V4V6,
+            "-t",
+            "mangle",
+            "-A",
+            LOCAL_MANGLE_OUTPUT,
+            "-m",
+            "mark",
+            "--mark",
+            protect_mark_str,
+            "-j",
+            "RETURN",
+            NULL);
+
+    //protect the legacy VPN daemons from routes.
+    //TODO: Remove this when legacy VPN's are removed.
+    res |= execIptables(V4V6,
+            "-t",
+            "mangle",
+            "-A",
+            LOCAL_MANGLE_OUTPUT,
+            "-m",
+            "owner",
+            "--uid-owner",
+            "vpn",
+            "-j",
+            "RETURN",
+            NULL);
+    return res;
+
 }
 
 int SecondaryTableController::findTableNumber(const char *iface) {
@@ -169,6 +212,14 @@ const char *SecondaryTableController::getVersion(const char *addr) {
     }
 }
 
+IptablesTarget SecondaryTableController::getIptablesTarget(const char *addr) {
+    if (strchr(addr, ':') != NULL) {
+        return V6;
+    } else {
+        return V4;
+    }
+}
+
 int SecondaryTableController::removeRoute(SocketClient *cli, char *iface, char *dest, int prefix,
         char *gateway) {
     int tableIndex = findTableNumber(iface);
@@ -244,7 +295,6 @@ int SecondaryTableController::removeFwmarkRule(const char *iface) {
 }
 
 int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
-    char tableIndex_str[11];
     int tableIndex = findTableNumber(iface);
     if (tableIndex == -1) {
         tableIndex = findTableNumber(""); // look for an empty slot
@@ -257,23 +307,144 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
         // Ensure null termination even if truncation happened
         mInterfaceTable[tableIndex][IFNAMSIZ] = 0;
     }
-    snprintf(tableIndex_str, sizeof(tableIndex_str), "%d", tableIndex +
-            BASE_TABLE_NUMBER);
-    const char *cmd[] = {
+    int mark = tableIndex + BASE_TABLE_NUMBER;
+    char mark_str[11];
+    int ret;
+
+    //fail fast if any rules already exist for this interface
+    if (mUidMarkMap->anyRulesForMark(mark)) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    snprintf(mark_str, sizeof(mark_str), "%d", mark);
+    //add the catch all route to the tun. Route rules will make sure the right packets hit the table
+    const char *route_cmd[] = {
+        IP_PATH,
+        "route",
+        add ? "add" : "del",
+        "default",
+        "dev",
+        iface,
+        "table",
+        mark_str
+    };
+    ret = runCmd(ARRAY_SIZE(route_cmd), route_cmd);
+
+    const char *fwmark_cmd[] = {
         IP_PATH,
         "rule",
         add ? "add" : "del",
         "fwmark",
-        tableIndex_str,
+        mark_str,
         "table",
-        tableIndex_str
+        mark_str
     };
-    int ret = runCmd(ARRAY_SIZE(cmd), cmd);
+    ret = runCmd(ARRAY_SIZE(fwmark_cmd), fwmark_cmd);
     if (ret) return ret;
+
+    //add rules for v6
+    const char *route6_cmd[] = {
+        IP_PATH,
+        "-6",
+        "route",
+        add ? "add" : "del",
+        "default",
+        "dev",
+        iface,
+        "table",
+        mark_str
+    };
+    ret = runCmd(ARRAY_SIZE(route6_cmd), route6_cmd);
+
+    const char *fwmark6_cmd[] = {
+        IP_PATH,
+        "-6",
+        "rule",
+        add ? "add" : "del",
+        "fwmark",
+        mark_str,
+        "table",
+        mark_str
+    };
+    ret = runCmd(ARRAY_SIZE(fwmark6_cmd), fwmark6_cmd);
+
+
+    if (ret) return ret;
+
+    //create the route rule chain
+    char chain_str[IFNAMSIZ + 18];
+    snprintf(chain_str, sizeof(chain_str), LOCAL_MANGLE_IFACE_FORMAT, iface);
+    //code split due to ordering requirements
+    if (add) {
+        ret = execIptables(V4V6,
+                "-t",
+                "mangle",
+                "-N",
+                chain_str,
+                NULL);
+        //set up the rule for sending premarked packets to the VPN chain
+        //Insert these at the top of the chain so they trigger before any UID rules
+        ret |= execIptables(V4V6,
+                "-t",
+                "mangle",
+                "-I",
+                LOCAL_MANGLE_OUTPUT,
+                "3",
+                "-m",
+                "mark",
+                "--mark",
+                mark_str,
+                "-g",
+                chain_str,
+                NULL);
+        //add a rule to clear the mark in the VPN chain
+        //packets marked with SO_MARK already have the iface's mark set but unless they match a
+        //route they should hit the network instead of the VPN
+        ret |= execIptables(V4V6,
+                "-t",
+                "mangle",
+                "-A",
+                chain_str,
+                "-j",
+                "MARK",
+                "--set-mark",
+                "0",
+                NULL);
+
+    } else {
+        ret = execIptables(V4V6,
+                "-t",
+                "mangle",
+                "-D",
+                LOCAL_MANGLE_OUTPUT,
+                "-m",
+                "mark",
+                "--mark",
+                mark_str,
+                "-g",
+                chain_str,
+                NULL);
+
+        //clear and delete the chain
+        ret |= execIptables(V4V6,
+                "-t",
+                "mangle",
+                "-F",
+                chain_str,
+                NULL);
+
+        ret |= execIptables(V4V6,
+                "-t",
+                "mangle",
+                "-X",
+                chain_str,
+                NULL);
+    }
 
     //set up the needed source IP rewriting
     //NOTE: Without ipv6 NAT in the kernel <3.7 only support V4 NAT
-    return execIptables(V4,
+    ret = execIptables(V4,
             "-t",
             "nat",
             add ? "-A" : "-D",
@@ -283,11 +454,82 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
             "-m",
             "mark",
             "--mark",
-            tableIndex_str,
+            mark_str,
             "-j",
             "MASQUERADE",
             NULL);
 
+    if (ret) return ret;
+
+    //try and set up for ipv6. ipv6 nat came in the kernel only in 3.7, so this can fail
+    ret = execIptables(V6,
+            "-t",
+            "nat",
+            add ? "-A" : "-D",
+            LOCAL_NAT_POSTROUTING,
+            "-o",
+            iface,
+            "-m",
+            "mark",
+            "--mark",
+            mark_str,
+            "-j",
+            "MASQUERADE",
+            NULL);
+    if (ret) {
+        //Without V6 NAT we can't do V6 over VPNs.
+        ret = execIptables(V6,
+                "-t",
+                "filter",
+                add ? "-A" : "-D",
+                LOCAL_FILTER_OUTPUT,
+                "-m",
+                "mark",
+                "--mark",
+                mark_str,
+                "-j",
+                "REJECT",
+                NULL);
+    }
+    return ret;
+
+}
+
+int SecondaryTableController::addFwmarkRoute(const char* iface, const char *dest, int prefix) {
+    return setFwmarkRoute(iface, dest, prefix, true);
+}
+
+int SecondaryTableController::removeFwmarkRoute(const char* iface, const char *dest, int prefix) {
+    return setFwmarkRoute(iface, dest, prefix, true);
+}
+
+int SecondaryTableController::setFwmarkRoute(const char* iface, const char *dest, int prefix,
+                                             bool add) {
+    int tableIndex = findTableNumber(iface);
+    if (tableIndex == -1) {
+        errno = EINVAL;
+        return -1;
+    }
+    int mark = tableIndex + BASE_TABLE_NUMBER;
+    char mark_str[11] = {0};
+    char chain_str[IFNAMSIZ + 18];
+    char dest_str[44]; // enough to store an IPv6 address + 3 character bitmask
+
+    snprintf(mark_str, sizeof(mark_str), "%d", mark);
+    snprintf(chain_str, sizeof(chain_str), LOCAL_MANGLE_IFACE_FORMAT, iface);
+    snprintf(dest_str, sizeof(dest_str), "%s/%d", dest, prefix);
+    return execIptables(getIptablesTarget(dest),
+            "-t",
+            "mangle",
+            add ? "-A" : "-D",
+            chain_str,
+            "-d",
+            dest_str,
+            "-j",
+            "MARK",
+            "--set-mark",
+            mark_str,
+            NULL);
 }
 
 int SecondaryTableController::addUidRule(const char *iface, int uid_start, int uid_end) {
@@ -316,10 +558,10 @@ int SecondaryTableController::setUidRule(const char *iface, int uid_start, int u
             return -1;
         }
     }
-    char mark_str[11] = {0};
-    snprintf(mark_str, sizeof(mark_str), "%d", mark);
     char uid_str[24] = {0};
+    char chain_str[IFNAMSIZ + 18];
     snprintf(uid_str, sizeof(uid_str), "%d-%d", uid_start, uid_end);
+    snprintf(chain_str, sizeof(chain_str), LOCAL_MANGLE_IFACE_FORMAT, iface);
     return execIptables(V4V6,
             "-t",
             "mangle",
@@ -329,10 +571,8 @@ int SecondaryTableController::setUidRule(const char *iface, int uid_start, int u
             "owner",
             "--uid-owner",
             uid_str,
-            "-j",
-            "MARK",
-            "--set-mark",
-            mark_str,
+            "-g",
+            chain_str,
             NULL);
 }
 

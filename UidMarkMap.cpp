@@ -65,3 +65,15 @@ int UidMarkMap::getMark(int uid) {
     }
     return -1;
 };
+
+bool UidMarkMap::anyRulesForMark(int mark) {
+    android::RWLock::AutoRLock lock(mRWLock);
+    android::netd::List<UidMarkEntry*>::iterator it;
+    for (it = mMap.begin(); it != mMap.end(); it++) {
+        UidMarkEntry *entry = *it;
+        if (entry->mark == mark) {
+            return true;
+        }
+    }
+    return false;
+}
