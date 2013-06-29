@@ -168,15 +168,12 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
     std::string fullCmd = cmd;
 
     if (rejectHandling == IptRejectAdd) {
-        fullCmd += " --jump REJECT --reject-with";
-        switch (iptVer) {
-        case IptIpV4:
-            fullCmd += " icmp-net-prohibited";
-            break;
-        case IptIpV6:
-            fullCmd += " icmp6-adm-prohibited";
-            break;
-        }
+        /*
+         * Must be carefull what one rejects with, as uper layer protocols will just
+         * keep on hammering the device until the number of retries are done.
+         * For port-unreachable (default), TCP should consider as an abort (RFC1122).
+         */
+        fullCmd += " --jump REJECT";
     }
 
     fullCmd.insert(0, " ");
