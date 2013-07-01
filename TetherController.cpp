@@ -80,7 +80,7 @@ static int config_write_setting(const char *path, const char *value)
         ALOGE("Failed to open %s (%s)", path, strerror(errno));
         return -1;
     }
-    if (write(fd, value, strlen(value)) != strlen(value)) {
+    if (write(fd, value, strlen(value)) != (int)strlen(value)) {
         ALOGE("Failed to write to %s (%s)", path, strerror(errno));
         close(fd);
         return -1;
@@ -216,6 +216,7 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs, int l
         close(pipefd[0]);
         mDaemonPid = pid;
         mDaemonFd = pipefd[1];
+        applyDnsInterfaces();
         ALOGD("Tethering services running");
     }
 
@@ -388,6 +389,36 @@ NetAddressCollection *TetherController::getDnsForwarders() {
     return mDnsForwarders;
 }
 
+int TetherController::applyDnsInterfaces() {
+    int i;
+    char daemonCmd[MAX_CMD_SIZE];
+
+    strcpy(daemonCmd, "update_ifaces");
+    int cmdLen = strlen(daemonCmd);
+    InterfaceCollection::iterator it;
+    bool haveInterfaces = false;
+
+    for (it = mInterfaces->begin(); it != mInterfaces->end(); ++it) {
+        cmdLen += (strlen(*it) + 1);
+        if (cmdLen + 1 >= MAX_CMD_SIZE) {
+            ALOGD("Too many DNS ifaces listed");
+            break;
+        }
+
+        strcat(daemonCmd, ":");
+        strcat(daemonCmd, *it);
+        haveInterfaces = true;
+    }
+
+    if ((mDaemonFd != -1) && haveInterfaces) {
+        ALOGD("Sending update msg to dnsmasq [%s]", daemonCmd);
+        if (write(mDaemonFd, daemonCmd, strlen(daemonCmd) +1) < 0) {
+            ALOGE("Failed to send update command to dnsmasq (%s)", strerror(errno));
+            return -1;
+        }
+    }
+    return 0;
+}
 
 int TetherController::addUpstreamInterface(char *iface)
 {
@@ -437,7 +468,20 @@ int TetherController::tetherInterface(const char *interface) {
     mInterfaces->push_back(strdup(interface));
 
     addV6RtrAdvIface(interface);
-    return 0;
+
+    if (applyDnsInterfaces()) {
+        InterfaceCollection::iterator it;
+        for (it = mInterfaces->begin(); it != mInterfaces->end(); ++it) {
+            if (!strcmp(interface, *it)) {
+                free(*it);
+                mInterfaces->erase(it);
+                break;
+            }
+        }
+        return -1;
+    } else {
+        return 0;
+    }
 }
 
 int TetherController::untetherInterface(const char *interface) {
@@ -449,8 +493,8 @@ int TetherController::untetherInterface(const char *interface) {
         if (!strcmp(interface, *it)) {
             free(*it);
             mInterfaces->erase(it);
-
-            return 0;
+            removeV6RtrAdvIface(NULL);
+            return applyDnsInterfaces();
         }
     }
     errno = ENOENT;

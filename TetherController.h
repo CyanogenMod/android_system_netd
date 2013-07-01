@@ -63,6 +63,9 @@ public:
     int removeV6RtrAdvIface(const char *iface);
     int addUpstreamInterface(char *iface);
     int removeUpstreamInterface(char *iface);
+
+private:
+    int applyDnsInterfaces();
 };
 
 #endif
