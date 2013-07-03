@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_NDEBUG 0
+// #define LOG_NDEBUG 0
 
 /*
  * The CommandListener, FrameworkListener don't allow for
@@ -66,6 +66,7 @@ const int  BandwidthController::MAX_IPT_OUTPUT_LINE_LEN = 256;
  *    - when an interface is marked as costly it should be INSERTED into the INPUT/OUTPUT chains.
  *      E.g. "-I bw_INPUT -i rmnet0 --jump costly"
  *    - quota'd rules in the costly chain should be before penalty_box lookups.
+ *    - happy_box rejects everything by default.
  *    - the qtaguid counting is done at the end of the bw_INPUT/bw_OUTPUT user chains.
  *
  * * global quota vs per interface quota
@@ -77,6 +78,8 @@ const int  BandwidthController::MAX_IPT_OUTPUT_LINE_LEN = 256;
  *      iptables -I costly_shared -m quota \! --quota 500000 \
  *          --jump REJECT --reject-with icmp-net-prohibited
  *      iptables -A costly_shared --jump penalty_box
+ *      If the happy box is enabled,
+ *        iptables -A penalty_box --jump happy_box
  *
  *    . adding a new iface to this, E.g.:
  *      iptables -I bw_INPUT -i iface1 --jump costly_shared
@@ -88,14 +91,20 @@ const int  BandwidthController::MAX_IPT_OUTPUT_LINE_LEN = 256;
  *      iptables -I bw_INPUT -i iface0 --jump costly_iface0
  *      iptables -I bw_OUTPUT -o iface0 --jump costly_iface0
  *      iptables -A costly_iface0 -m quota \! --quota 500000 \
- *          --jump REJECT --reject-with icmp-net-prohibited
+ *          --jump REJECT --reject-with icmp-port-unreachable
  *      iptables -A costly_iface0 --jump penalty_box
  *
  * * penalty_box handling:
  *  - only one penalty_box for all interfaces
- *   E.g  Adding an app:
- *    iptables -A penalty_box -m owner --uid-owner app_3 \
- *        --jump REJECT --reject-with icmp-net-prohibited
+ *   E.g  Adding an app, it has to preserve the appened happy_box, so "-I":
+ *    iptables -I penalty_box -m owner --uid-owner app_3 \
+ *        --jump REJECT --reject-with icmp-port-unreachable
+ *
+ * * happy_box handling:
+ *  - The happy_box goes at the end of the penalty box.
+ *   E.g  Adding a happy app,
+ *    iptables -I happy_box -m owner --uid-owner app_3 \
+ *        --jump RETURN
  */
 const char *BandwidthController::IPT_FLUSH_COMMANDS[] = {
     /*
@@ -106,8 +115,13 @@ const char *BandwidthController::IPT_FLUSH_COMMANDS[] = {
     "-F bw_INPUT",
     "-F bw_OUTPUT",
     "-F bw_FORWARD",
+    "-F happy_box",
     "-F penalty_box",
     "-F costly_shared",
+
+    /* Just a couple that are the most common. */
+    "-F costly_rmnet0",
+    "-F costly_wlan0",
 
     "-t raw -F bw_raw_PREROUTING",
     "-t mangle -F bw_mangle_POSTROUTING",
@@ -115,13 +129,19 @@ const char *BandwidthController::IPT_FLUSH_COMMANDS[] = {
 
 /* The cleanup commands assume flushing has been done. */
 const char *BandwidthController::IPT_CLEANUP_COMMANDS[] = {
+    "-X happy_box",
     "-X penalty_box",
     "-X costly_shared",
+
+    /* Just a couple that are the most common. */
+    "-X costly_rmnet0",
+    "-X costly_wlan0",
 };
 
 const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
-    "-N costly_shared",
+    "-N happy_box",
     "-N penalty_box",
+    "-N costly_shared",
 };
 
 const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
@@ -240,6 +260,7 @@ int BandwidthController::enableBandwidthControl(bool force) {
     sharedQuotaIfaces.clear();
     quotaIfaces.clear();
     naughtyAppUids.clear();
+    niceAppUids.clear();
     globalAlertBytes = 0;
     globalAlertTetherCount = 0;
     sharedQuotaBytes = sharedAlertBytes = 0;
@@ -304,6 +325,53 @@ std::string BandwidthController::makeIptablesSpecialAppCmd(IptOp op, int uid, co
     return res;
 }
 
+int BandwidthController::enableHappyBox(void) {
+    char cmd[MAX_CMD_LEN];
+    int res = 0;
+
+    /*
+     * We tentatively delete before adding, which helps recovering
+     * from bad states (e.g. netd died).
+     */
+
+    /* Should not exist, but ignore result if already there. */
+    snprintf(cmd, sizeof(cmd), "-N happy_box");
+    runIpxtablesCmd(cmd, IptJumpNoAdd);
+
+    /* Should be empty, but clear in case something was wrong. */
+    niceAppUids.clear();
+    snprintf(cmd, sizeof(cmd), "-F happy_box");
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
+
+    snprintf(cmd, sizeof(cmd), "-D penalty_box -j happy_box");
+    runIpxtablesCmd(cmd, IptJumpNoAdd);
+    snprintf(cmd, sizeof(cmd), "-A penalty_box -j happy_box");
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
+
+    /* Reject. Defaulting to prot-unreachable */
+    snprintf(cmd, sizeof(cmd), "-D happy_box -j REJECT");
+    runIpxtablesCmd(cmd, IptJumpNoAdd);
+    snprintf(cmd, sizeof(cmd), "-A happy_box -j REJECT");
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
+
+    return res;
+}
+
+int BandwidthController::disableHappyBox(void) {
+    char cmd[MAX_CMD_LEN];
+
+    /* Best effort */
+    snprintf(cmd, sizeof(cmd), "-D penalty_box -j happy_box");
+    runIpxtablesCmd(cmd, IptJumpNoAdd);
+    niceAppUids.clear();
+    snprintf(cmd, sizeof(cmd), "-F happy_box");
+    runIpxtablesCmd(cmd, IptJumpNoAdd);
+    snprintf(cmd, sizeof(cmd), "-X happy_box");
+    runIpxtablesCmd(cmd, IptJumpNoAdd);
+
+    return 0;
+}
+
 int BandwidthController::addNaughtyApps(int numUids, char *appUids[]) {
     return manipulateNaughtyApps(numUids, appUids, SpecialAppOpAdd);
 }
@@ -312,8 +380,20 @@ int BandwidthController::removeNaughtyApps(int numUids, char *appUids[]) {
     return manipulateNaughtyApps(numUids, appUids, SpecialAppOpRemove);
 }
 
+int BandwidthController::addNiceApps(int numUids, char *appUids[]) {
+    return manipulateNiceApps(numUids, appUids, SpecialAppOpAdd);
+}
+
+int BandwidthController::removeNiceApps(int numUids, char *appUids[]) {
+    return manipulateNiceApps(numUids, appUids, SpecialAppOpRemove);
+}
+
 int BandwidthController::manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp) {
     return manipulateSpecialApps(numUids, appStrUids, "penalty_box", naughtyAppUids, IptJumpReject, appOp);
+}
+
+int BandwidthController::manipulateNiceApps(int numUids, char *appStrUids[], SpecialAppOp appOp) {
+    return manipulateSpecialApps(numUids, appStrUids, "happy_box", niceAppUids, IptJumpReturn, appOp);
 }
 
 
@@ -647,10 +727,10 @@ int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) 
     }
 
     if (it == quotaIfaces.end()) {
-        /* Preparing the iface adds a penalty_box check */
+        /* Preparing the iface adds a penalty/happy box check */
         res |= prepCostlyIface(ifn, QuotaUnique);
         /*
-         * The rejecting quota limit should go after the penalty box checks
+         * The rejecting quota limit should go after the penalty/happy box checks
          * or else a naughty app could just eat up the quota.
          * So we append here.
          */

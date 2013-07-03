@@ -64,8 +64,12 @@ public:
     int getInterfaceQuota(const char *iface, int64_t *bytes);
     int removeInterfaceQuota(const char *iface);
 
+    int enableHappyBox(void);
+    int disableHappyBox(void);
     int addNaughtyApps(int numUids, char *appUids[]);
     int removeNaughtyApps(int numUids, char *appUids[]);
+    int addNiceApps(int numUids, char *appUids[]);
+    int removeNiceApps(int numUids, char *appUids[]);
 
     int setGlobalAlert(int64_t bytes);
     int removeGlobalAlert(void);
@@ -120,6 +124,7 @@ protected:
                                std::list<int /*appUid*/> &specialAppUids,
                                IptJumpOp jumpHandling, SpecialAppOp appOp);
     int manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
+    int manipulateNiceApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
 
     int prepCostlyIface(const char *ifn, QuotaType quotaType);
     int cleanupCostlyIface(const char *ifn, QuotaType quotaType);
@@ -177,6 +182,7 @@ protected:
 
     std::list<QuotaInfo> quotaIfaces;
     std::list<int /*appUid*/> naughtyAppUids;
+    std::list<int /*appUid*/> niceAppUids;
 
 private:
     static const char *IPT_FLUSH_COMMANDS[];

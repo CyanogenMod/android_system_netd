@@ -1142,7 +1142,43 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         int rc = sBandwidthCtrl->removeNaughtyApps(argc - 2, argv + 2);
         sendGenericOkFail(cli, rc);
         return 0;
+    }
+    if (!strcmp(argv[1], "happybox")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "happybox (enable | disable)");
+            return 0;
+        }
+        if (!strcmp(argv[2], "enable")) {
+            int rc = sBandwidthCtrl->enableHappyBox();
+            sendGenericOkFail(cli, rc);
+            return 0;
 
+        }
+        if (!strcmp(argv[2], "disable")) {
+            int rc = sBandwidthCtrl->disableHappyBox();
+            sendGenericOkFail(cli, rc);
+            return 0;
+        }
+        sendGenericSyntaxError(cli, "happybox (enable | disable)");
+        return 0;
+    }
+    if (!strcmp(argv[1], "addniceapps") || !strcmp(argv[1], "aha")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "addniceapps <appUid> ...");
+            return 0;
+        }
+        int rc = sBandwidthCtrl->addNiceApps(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+    if (!strcmp(argv[1], "removeniceapps") || !strcmp(argv[1], "rha")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "removeniceapps <appUid> ...");
+            return 0;
+        }
+        int rc = sBandwidthCtrl->removeNiceApps(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
     }
     if (!strcmp(argv[1], "setglobalalert") || !strcmp(argv[1], "sga")) {
         if (argc != 3) {
@@ -1152,7 +1188,6 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         int rc = sBandwidthCtrl->setGlobalAlert(atoll(argv[2]));
         sendGenericOkFail(cli, rc);
         return 0;
-
     }
     if (!strcmp(argv[1], "debugsettetherglobalalert") || !strcmp(argv[1], "dstga")) {
         if (argc != 4) {
