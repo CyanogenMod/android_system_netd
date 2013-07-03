@@ -65,63 +65,63 @@ const int  BandwidthController::MAX_IPT_OUTPUT_LINE_LEN = 256;
  *  * Ordering
  *    - when an interface is marked as costly it should be INSERTED into the INPUT/OUTPUT chains.
  *      E.g. "-I bw_INPUT -i rmnet0 --jump costly"
- *    - quota'd rules in the costly chain should be before penalty_box lookups.
- *    - happy_box rejects everything by default.
+ *    - quota'd rules in the costly chain should be before bw_penalty_box lookups.
+ *    - bw_happy_box rejects everything by default.
  *    - the qtaguid counting is done at the end of the bw_INPUT/bw_OUTPUT user chains.
  *
  * * global quota vs per interface quota
  *   - global quota for all costly interfaces uses a single costly chain:
  *    . initial rules
- *      iptables -N costly_shared
- *      iptables -I bw_INPUT -i iface0 --jump costly_shared
- *      iptables -I bw_OUTPUT -o iface0 --jump costly_shared
- *      iptables -I costly_shared -m quota \! --quota 500000 \
+ *      iptables -N bw_costly_shared
+ *      iptables -I bw_INPUT -i iface0 --jump bw_costly_shared
+ *      iptables -I bw_OUTPUT -o iface0 --jump bw_costly_shared
+ *      iptables -I bw_costly_shared -m quota \! --quota 500000 \
  *          --jump REJECT --reject-with icmp-net-prohibited
- *      iptables -A costly_shared --jump penalty_box
+ *      iptables -A bw_costly_shared --jump bw_penalty_box
  *      If the happy box is enabled,
- *        iptables -A penalty_box --jump happy_box
+ *        iptables -A bw_penalty_box --jump bw_happy_box
  *
  *    . adding a new iface to this, E.g.:
- *      iptables -I bw_INPUT -i iface1 --jump costly_shared
- *      iptables -I bw_OUTPUT -o iface1 --jump costly_shared
+ *      iptables -I bw_INPUT -i iface1 --jump bw_costly_shared
+ *      iptables -I bw_OUTPUT -o iface1 --jump bw_costly_shared
  *
  *   - quota per interface. This is achieve by having "costly" chains per quota.
  *     E.g. adding a new costly interface iface0 with its own quota:
- *      iptables -N costly_iface0
- *      iptables -I bw_INPUT -i iface0 --jump costly_iface0
- *      iptables -I bw_OUTPUT -o iface0 --jump costly_iface0
- *      iptables -A costly_iface0 -m quota \! --quota 500000 \
+ *      iptables -N bw_costly_iface0
+ *      iptables -I bw_INPUT -i iface0 --jump bw_costly_iface0
+ *      iptables -I bw_OUTPUT -o iface0 --jump bw_costly_iface0
+ *      iptables -A bw_costly_iface0 -m quota \! --quota 500000 \
  *          --jump REJECT --reject-with icmp-port-unreachable
- *      iptables -A costly_iface0 --jump penalty_box
+ *      iptables -A bw_costly_iface0 --jump bw_penalty_box
  *
- * * penalty_box handling:
- *  - only one penalty_box for all interfaces
- *   E.g  Adding an app, it has to preserve the appened happy_box, so "-I":
- *    iptables -I penalty_box -m owner --uid-owner app_3 \
+ * * bw_penalty_box handling:
+ *  - only one bw_penalty_box for all interfaces
+ *   E.g  Adding an app, it has to preserve the appened bw_happy_box, so "-I":
+ *    iptables -I bw_penalty_box -m owner --uid-owner app_3 \
  *        --jump REJECT --reject-with icmp-port-unreachable
  *
- * * happy_box handling:
- *  - The happy_box goes at the end of the penalty box.
+ * * bw_happy_box handling:
+ *  - The bw_happy_box goes at the end of the penalty box.
  *   E.g  Adding a happy app,
- *    iptables -I happy_box -m owner --uid-owner app_3 \
+ *    iptables -I bw_happy_box -m owner --uid-owner app_3 \
  *        --jump RETURN
  */
 const char *BandwidthController::IPT_FLUSH_COMMANDS[] = {
     /*
      * Cleanup rules.
-     * Should normally include costly_<iface>, but we rely on the way they are setup
+     * Should normally include bw_costly_<iface>, but we rely on the way they are setup
      * to allow coexistance.
      */
     "-F bw_INPUT",
     "-F bw_OUTPUT",
     "-F bw_FORWARD",
-    "-F happy_box",
-    "-F penalty_box",
-    "-F costly_shared",
+    "-F bw_happy_box",
+    "-F bw_penalty_box",
+    "-F bw_costly_shared",
 
     /* Just a couple that are the most common. */
-    "-F costly_rmnet0",
-    "-F costly_wlan0",
+    "-F bw_costly_rmnet0",
+    "-F bw_costly_wlan0",
 
     "-t raw -F bw_raw_PREROUTING",
     "-t mangle -F bw_mangle_POSTROUTING",
@@ -129,19 +129,19 @@ const char *BandwidthController::IPT_FLUSH_COMMANDS[] = {
 
 /* The cleanup commands assume flushing has been done. */
 const char *BandwidthController::IPT_CLEANUP_COMMANDS[] = {
-    "-X happy_box",
-    "-X penalty_box",
-    "-X costly_shared",
+    "-X bw_happy_box",
+    "-X bw_penalty_box",
+    "-X bw_costly_shared",
 
     /* Just a couple that are the most common. */
-    "-X costly_rmnet0",
-    "-X costly_wlan0",
+    "-X bw_costly_rmnet0",
+    "-X bw_costly_wlan0",
 };
 
 const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
-    "-N happy_box",
-    "-N penalty_box",
-    "-N costly_shared",
+    "-N bw_happy_box",
+    "-N bw_penalty_box",
+    "-N bw_costly_shared",
 };
 
 const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
@@ -149,7 +149,7 @@ const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
 
     "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
 
-    "-A costly_shared --jump penalty_box",
+    "-A bw_costly_shared --jump bw_penalty_box",
 
     "-t raw -A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
     "-t mangle -A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
@@ -335,23 +335,23 @@ int BandwidthController::enableHappyBox(void) {
      */
 
     /* Should not exist, but ignore result if already there. */
-    snprintf(cmd, sizeof(cmd), "-N happy_box");
+    snprintf(cmd, sizeof(cmd), "-N bw_happy_box");
     runIpxtablesCmd(cmd, IptJumpNoAdd);
 
     /* Should be empty, but clear in case something was wrong. */
     niceAppUids.clear();
-    snprintf(cmd, sizeof(cmd), "-F happy_box");
+    snprintf(cmd, sizeof(cmd), "-F bw_happy_box");
     res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
 
-    snprintf(cmd, sizeof(cmd), "-D penalty_box -j happy_box");
+    snprintf(cmd, sizeof(cmd), "-D bw_penalty_box -j bw_happy_box");
     runIpxtablesCmd(cmd, IptJumpNoAdd);
-    snprintf(cmd, sizeof(cmd), "-A penalty_box -j happy_box");
+    snprintf(cmd, sizeof(cmd), "-A bw_penalty_box -j bw_happy_box");
     res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
 
     /* Reject. Defaulting to prot-unreachable */
-    snprintf(cmd, sizeof(cmd), "-D happy_box -j REJECT");
+    snprintf(cmd, sizeof(cmd), "-D bw_happy_box -j REJECT");
     runIpxtablesCmd(cmd, IptJumpNoAdd);
-    snprintf(cmd, sizeof(cmd), "-A happy_box -j REJECT");
+    snprintf(cmd, sizeof(cmd), "-A bw_happy_box -j REJECT");
     res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
 
     return res;
@@ -361,12 +361,12 @@ int BandwidthController::disableHappyBox(void) {
     char cmd[MAX_CMD_LEN];
 
     /* Best effort */
-    snprintf(cmd, sizeof(cmd), "-D penalty_box -j happy_box");
+    snprintf(cmd, sizeof(cmd), "-D bw_penalty_box -j bw_happy_box");
     runIpxtablesCmd(cmd, IptJumpNoAdd);
     niceAppUids.clear();
-    snprintf(cmd, sizeof(cmd), "-F happy_box");
+    snprintf(cmd, sizeof(cmd), "-F bw_happy_box");
     runIpxtablesCmd(cmd, IptJumpNoAdd);
-    snprintf(cmd, sizeof(cmd), "-X happy_box");
+    snprintf(cmd, sizeof(cmd), "-X bw_happy_box");
     runIpxtablesCmd(cmd, IptJumpNoAdd);
 
     return 0;
@@ -389,11 +389,11 @@ int BandwidthController::removeNiceApps(int numUids, char *appUids[]) {
 }
 
 int BandwidthController::manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp) {
-    return manipulateSpecialApps(numUids, appStrUids, "penalty_box", naughtyAppUids, IptJumpReject, appOp);
+    return manipulateSpecialApps(numUids, appStrUids, "bw_penalty_box", naughtyAppUids, IptJumpReject, appOp);
 }
 
 int BandwidthController::manipulateNiceApps(int numUids, char *appStrUids[], SpecialAppOp appOp) {
-    return manipulateSpecialApps(numUids, appStrUids, "happy_box", niceAppUids, IptJumpReturn, appOp);
+    return manipulateSpecialApps(numUids, appStrUids, "bw_happy_box", niceAppUids, IptJumpReturn, appOp);
 }
 
 
@@ -495,7 +495,7 @@ std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *cost
     }
 
     // The requried IP version specific --jump REJECT ... will be added later.
-    asprintf(&buff, "%s costly_%s -m quota2 ! --quota %lld --name %s", opFlag, costName, quota,
+    asprintf(&buff, "%s bw_costly_%s -m quota2 ! --quota %lld --name %s", opFlag, costName, quota,
              costName);
     res = buff;
     free(buff);
@@ -512,11 +512,11 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
     /* The "-N costly" is created upfront, no need to handle it here. */
     switch (quotaType) {
     case QuotaUnique:
-        costString = "costly_";
+        costString = "bw_costly_";
         costString += ifn;
         costCString = costString.c_str();
         /*
-         * Flush the costly_<iface> is allowed to fail in case it didn't exist.
+         * Flush the bw_costly_<iface> is allowed to fail in case it didn't exist.
          * Creating a new one is allowed to fail in case it existed.
          * This helps with netd restarts.
          */
@@ -526,11 +526,11 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
         res2 = runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
         res = (res1 && res2) || (!res1 && !res2);
 
-        snprintf(cmd, sizeof(cmd), "-A %s -j penalty_box", costCString);
+        snprintf(cmd, sizeof(cmd), "-A %s -j bw_penalty_box", costCString);
         res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
         break;
     case QuotaShared:
-        costCString = "costly_shared";
+        costCString = "bw_costly_shared";
         break;
     default:
         ALOGE("Unexpected quotatype %d", quotaType);
@@ -564,12 +564,12 @@ int BandwidthController::cleanupCostlyIface(const char *ifn, QuotaType quotaType
 
     switch (quotaType) {
     case QuotaUnique:
-        costString = "costly_";
+        costString = "bw_costly_";
         costString += ifn;
         costCString = costString.c_str();
         break;
     case QuotaShared:
-        costCString = "costly_shared";
+        costCString = "bw_costly_shared";
         break;
     default:
         ALOGE("Unexpected quotatype %d", quotaType);
@@ -581,7 +581,7 @@ int BandwidthController::cleanupCostlyIface(const char *ifn, QuotaType quotaType
     snprintf(cmd, sizeof(cmd), "-D bw_OUTPUT -o %s --jump %s", ifn, costCString);
     res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
 
-    /* The "-N costly_shared" is created upfront, no need to handle it here. */
+    /* The "-N bw_costly_shared" is created upfront, no need to handle it here. */
     if (quotaType == QuotaUnique) {
         snprintf(cmd, sizeof(cmd), "-F %s", costCString);
         res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
@@ -1045,7 +1045,7 @@ int BandwidthController::setCostlyAlert(const char *costName, int64_t bytes, int
     if (*alertBytes) {
         res = updateQuota(alertName, *alertBytes);
     } else {
-        asprintf(&chainName, "costly_%s", costName);
+        asprintf(&chainName, "bw_costly_%s", costName);
         asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-A", chainName, bytes, alertName);
         res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
         free(alertQuotaCmd);
@@ -1068,7 +1068,7 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
         return -1;
     }
 
-    asprintf(&chainName, "costly_%s", costName);
+    asprintf(&chainName, "bw_costly_%s", costName);
     asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-D", chainName, *alertBytes, alertName);
     res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
     free(alertQuotaCmd);
