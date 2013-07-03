@@ -105,8 +105,8 @@ protected:
 
     enum IptIpVer { IptIpV4, IptIpV6 };
     enum IptOp { IptOpInsert, IptOpReplace, IptOpDelete, IptOpAppend };
-    enum IptRejectOp { IptRejectAdd, IptRejectNoAdd };
-    enum NaughtyAppOp { NaughtyAppOpAdd, NaughtyAppOpRemove };
+    enum IptJumpOp { IptJumpReject, IptJumpReturn, IptJumpNoAdd };
+    enum SpecialAppOp { SpecialAppOpAdd, SpecialAppOpRemove };
     enum QuotaType { QuotaUnique, QuotaShared };
     enum RunCmdErrHandling { RunCmdFailureBad, RunCmdFailureOk };
 #if LOG_NDEBUG
@@ -114,12 +114,17 @@ protected:
 #else
     enum IptFailureLog { IptFailShow, IptFailHide = IptFailShow };
 #endif
-    int maninpulateNaughtyApps(int numUids, char *appStrUids[], NaughtyAppOp appOp);
+
+    int manipulateSpecialApps(int numUids, char *appStrUids[],
+                               const char *chain,
+                               std::list<int /*appUid*/> &specialAppUids,
+                               IptJumpOp jumpHandling, SpecialAppOp appOp);
+    int manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
 
     int prepCostlyIface(const char *ifn, QuotaType quotaType);
     int cleanupCostlyIface(const char *ifn, QuotaType quotaType);
 
-    std::string makeIptablesNaughtyCmd(IptOp op, int uid);
+    std::string makeIptablesSpecialAppCmd(IptOp op, int uid, const char *chain);
     std::string makeIptablesQuotaCmd(IptOp op, const char *costName, int64_t quota);
 
     int runIptablesAlertCmd(IptOp op, const char *alertName, int64_t bytes);
@@ -128,9 +133,9 @@ protected:
     /* Runs for both ipv4 and ipv6 iptables */
     int runCommands(int numCommands, const char *commands[], RunCmdErrHandling cmdErrHandling);
     /* Runs for both ipv4 and ipv6 iptables, appends -j REJECT --reject-with ...  */
-    static int runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling,
+    static int runIpxtablesCmd(const char *cmd, IptJumpOp jumpHandling,
                                IptFailureLog failureHandling = IptFailShow);
-    static int runIptablesCmd(const char *cmd, IptRejectOp rejectHandling, IptIpVer iptIpVer,
+    static int runIptablesCmd(const char *cmd, IptJumpOp jumpHandling, IptIpVer iptIpVer,
                               IptFailureLog failureHandling = IptFailShow);
 
 

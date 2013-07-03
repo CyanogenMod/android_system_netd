@@ -138,13 +138,13 @@ const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
 BandwidthController::BandwidthController(void) {
 }
 
-int BandwidthController::runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling,
+int BandwidthController::runIpxtablesCmd(const char *cmd, IptJumpOp jumpHandling,
                                          IptFailureLog failureHandling) {
     int res = 0;
 
     ALOGV("runIpxtablesCmd(cmd=%s)", cmd);
-    res |= runIptablesCmd(cmd, rejectHandling, IptIpV4, failureHandling);
-    res |= runIptablesCmd(cmd, rejectHandling, IptIpV6, failureHandling);
+    res |= runIptablesCmd(cmd, jumpHandling, IptIpV4, failureHandling);
+    res |= runIptablesCmd(cmd, jumpHandling, IptIpV6, failureHandling);
     return res;
 }
 
@@ -155,7 +155,7 @@ int BandwidthController::StrncpyAndCheck(char *buffer, const char *src, size_t b
     return buffer[buffSize - 1];
 }
 
-int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandling,
+int BandwidthController::runIptablesCmd(const char *cmd, IptJumpOp jumpHandling,
                                         IptIpVer iptVer, IptFailureLog failureHandling) {
     char buffer[MAX_CMD_LEN];
     const char *argv[MAX_CMD_ARGS];
@@ -167,13 +167,20 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
 
     std::string fullCmd = cmd;
 
-    if (rejectHandling == IptRejectAdd) {
+    switch (jumpHandling) {
+    case IptJumpReject:
         /*
          * Must be carefull what one rejects with, as uper layer protocols will just
          * keep on hammering the device until the number of retries are done.
          * For port-unreachable (default), TCP should consider as an abort (RFC1122).
          */
         fullCmd += " --jump REJECT";
+        break;
+    case IptJumpReturn:
+        fullCmd += " --jump RETURN";
+        break;
+    case IptJumpNoAdd:
+        break;
     }
 
     fullCmd.insert(0, " ");
@@ -262,14 +269,14 @@ int BandwidthController::runCommands(int numCommands, const char *commands[],
     }
     ALOGV("runCommands(): %d commands", numCommands);
     for (int cmdNum = 0; cmdNum < numCommands; cmdNum++) {
-        res = runIpxtablesCmd(commands[cmdNum], IptRejectNoAdd, failureLogging);
+        res = runIpxtablesCmd(commands[cmdNum], IptJumpNoAdd, failureLogging);
         if (res && cmdErrHandling != RunCmdFailureOk)
             return res;
     }
     return 0;
 }
 
-std::string BandwidthController::makeIptablesNaughtyCmd(IptOp op, int uid) {
+std::string BandwidthController::makeIptablesSpecialAppCmd(IptOp op, int uid, const char *chain) {
     std::string res;
     char *buff;
     const char *opFlag;
@@ -279,7 +286,9 @@ std::string BandwidthController::makeIptablesNaughtyCmd(IptOp op, int uid) {
         opFlag = "-I";
         break;
     case IptOpAppend:
-        opFlag = "-A";
+        ALOGE("Append op not supported for %s uids", chain);
+        res = "";
+        return res;
         break;
     case IptOpReplace:
         opFlag = "-R";
@@ -289,37 +298,46 @@ std::string BandwidthController::makeIptablesNaughtyCmd(IptOp op, int uid) {
         opFlag = "-D";
         break;
     }
-    asprintf(&buff, "%s penalty_box -m owner --uid-owner %d", opFlag, uid);
+    asprintf(&buff, "%s %s -m owner --uid-owner %d", opFlag, chain, uid);
     res = buff;
     free(buff);
     return res;
 }
 
 int BandwidthController::addNaughtyApps(int numUids, char *appUids[]) {
-    return maninpulateNaughtyApps(numUids, appUids, NaughtyAppOpAdd);
+    return manipulateNaughtyApps(numUids, appUids, SpecialAppOpAdd);
 }
 
 int BandwidthController::removeNaughtyApps(int numUids, char *appUids[]) {
-    return maninpulateNaughtyApps(numUids, appUids, NaughtyAppOpRemove);
+    return manipulateNaughtyApps(numUids, appUids, SpecialAppOpRemove);
 }
 
-int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[], NaughtyAppOp appOp) {
+int BandwidthController::manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp) {
+    return manipulateSpecialApps(numUids, appStrUids, "penalty_box", naughtyAppUids, IptJumpReject, appOp);
+}
+
+
+int BandwidthController::manipulateSpecialApps(int numUids, char *appStrUids[],
+                                               const char *chain,
+                                               std::list<int /*appUid*/> &specialAppUids,
+                                               IptJumpOp jumpHandling, SpecialAppOp appOp) {
+
     char cmd[MAX_CMD_LEN];
     int uidNum;
     const char *failLogTemplate;
     IptOp op;
     int appUids[numUids];
-    std::string naughtyCmd;
+    std::string iptCmd;
     std::list<int /*uid*/>::iterator it;
 
     switch (appOp) {
-    case NaughtyAppOpAdd:
+    case SpecialAppOpAdd:
         op = IptOpInsert;
-        failLogTemplate = "Failed to add app uid %d to penalty box.";
+        failLogTemplate = "Failed to add app uid %d to %s.";
         break;
-    case NaughtyAppOpRemove:
+    case SpecialAppOpRemove:
         op = IptOpDelete;
-        failLogTemplate = "Failed to delete app uid %d from penalty box.";
+        failLogTemplate = "Failed to delete app uid %d from %s box.";
         break;
     default:
         ALOGE("Unexpected app Op %d", appOp);
@@ -329,36 +347,36 @@ int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[],
     for (uidNum = 0; uidNum < numUids; uidNum++) {
         appUids[uidNum] = atol(appStrUids[uidNum]);
         if (appUids[uidNum] == 0) {
-            ALOGE(failLogTemplate, appUids[uidNum]);
+            ALOGE(failLogTemplate, appUids[uidNum], chain);
             goto fail_parse;
         }
     }
 
     for (uidNum = 0; uidNum < numUids; uidNum++) {
         int uid = appUids[uidNum];
-        for (it = naughtyAppUids.begin(); it != naughtyAppUids.end(); it++) {
+        for (it = specialAppUids.begin(); it != specialAppUids.end(); it++) {
             if (*it == uid)
                 break;
         }
-        bool found = (it != naughtyAppUids.end());
+        bool found = (it != specialAppUids.end());
 
-        if (appOp == NaughtyAppOpRemove) {
+        if (appOp == SpecialAppOpRemove) {
             if (!found) {
                 ALOGE("No such appUid %d to remove", uid);
                 return -1;
             }
-            naughtyAppUids.erase(it);
+            specialAppUids.erase(it);
         } else {
             if (found) {
                 ALOGE("appUid %d exists already", uid);
                 return -1;
             }
-            naughtyAppUids.push_front(uid);
+            specialAppUids.push_front(uid);
         }
 
-        naughtyCmd = makeIptablesNaughtyCmd(op, uid);
-        if (runIpxtablesCmd(naughtyCmd.c_str(), IptRejectAdd)) {
-            ALOGE(failLogTemplate, uid);
+        iptCmd = makeIptablesSpecialAppCmd(op, uid, chain);
+        if (runIpxtablesCmd(iptCmd.c_str(), jumpHandling)) {
+            ALOGE(failLogTemplate, uid, chain);
             goto fail_with_uidNum;
         }
     }
@@ -366,8 +384,8 @@ int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[],
 
 fail_with_uidNum:
     /* Try to remove the uid that failed in any case*/
-    naughtyCmd = makeIptablesNaughtyCmd(IptOpDelete, appUids[uidNum]);
-    runIpxtablesCmd(naughtyCmd.c_str(), IptRejectAdd);
+    iptCmd = makeIptablesSpecialAppCmd(IptOpDelete, appUids[uidNum], chain);
+    runIpxtablesCmd(iptCmd.c_str(), jumpHandling);
 fail_parse:
     return -1;
 }
@@ -422,13 +440,13 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
          * This helps with netd restarts.
          */
         snprintf(cmd, sizeof(cmd), "-F %s", costCString);
-        res1 = runIpxtablesCmd(cmd, IptRejectNoAdd, IptFailHide);
+        res1 = runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
         snprintf(cmd, sizeof(cmd), "-N %s", costCString);
-        res2 = runIpxtablesCmd(cmd, IptRejectNoAdd, IptFailHide);
+        res2 = runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
         res = (res1 && res2) || (!res1 && !res2);
 
         snprintf(cmd, sizeof(cmd), "-A %s -j penalty_box", costCString);
-        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+        res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
         break;
     case QuotaShared:
         costCString = "costly_shared";
@@ -444,16 +462,16 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
     }
 
     snprintf(cmd, sizeof(cmd), "-D bw_INPUT -i %s --jump %s", ifn, costCString);
-    runIpxtablesCmd(cmd, IptRejectNoAdd, IptFailHide);
+    runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
 
     snprintf(cmd, sizeof(cmd), "-I bw_INPUT %d -i %s --jump %s", ruleInsertPos, ifn, costCString);
-    res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
 
     snprintf(cmd, sizeof(cmd), "-D bw_OUTPUT -o %s --jump %s", ifn, costCString);
-    runIpxtablesCmd(cmd, IptRejectNoAdd, IptFailHide);
+    runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
 
     snprintf(cmd, sizeof(cmd), "-I bw_OUTPUT %d -o %s --jump %s", ruleInsertPos, ifn, costCString);
-    res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
     return res;
 }
 
@@ -478,16 +496,16 @@ int BandwidthController::cleanupCostlyIface(const char *ifn, QuotaType quotaType
     }
 
     snprintf(cmd, sizeof(cmd), "-D bw_INPUT -i %s --jump %s", ifn, costCString);
-    res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
     snprintf(cmd, sizeof(cmd), "-D bw_OUTPUT -o %s --jump %s", ifn, costCString);
-    res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
 
     /* The "-N costly_shared" is created upfront, no need to handle it here. */
     if (quotaType == QuotaUnique) {
         snprintf(cmd, sizeof(cmd), "-F %s", costCString);
-        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+        res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
         snprintf(cmd, sizeof(cmd), "-X %s", costCString);
-        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+        res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
     }
     return res;
 }
@@ -527,7 +545,7 @@ int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxB
         res |= prepCostlyIface(ifn, QuotaShared);
         if (sharedQuotaIfaces.empty()) {
             quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
-            res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
+            res |= runIpxtablesCmd(quotaCmd.c_str(), IptJumpReject);
             if (res) {
                 ALOGE("Failed set quota rule");
                 goto fail;
@@ -588,7 +606,7 @@ int BandwidthController::removeInterfaceSharedQuota(const char *iface) {
     if (sharedQuotaIfaces.empty()) {
         std::string quotaCmd;
         quotaCmd = makeIptablesQuotaCmd(IptOpDelete, costName, sharedQuotaBytes);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
+        res |= runIpxtablesCmd(quotaCmd.c_str(), IptJumpReject);
         sharedQuotaBytes = 0;
         if (sharedAlertBytes) {
             removeSharedAlert();
@@ -637,7 +655,7 @@ int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) 
          * So we append here.
          */
         quotaCmd = makeIptablesQuotaCmd(IptOpAppend, costName, maxBytes);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
+        res |= runIpxtablesCmd(quotaCmd.c_str(), IptJumpReject);
         if (res) {
             ALOGE("Failed set quota rule");
             goto fail;
@@ -760,11 +778,11 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
 
     asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_INPUT",
         bytes, alertName);
-    res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
     free(alertQuotaCmd);
     asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_OUTPUT",
         bytes, alertName);
-    res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
     free(alertQuotaCmd);
     return res;
 }
@@ -792,7 +810,7 @@ int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName,
 
     asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_FORWARD",
         bytes, alertName);
-    res = runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+    res = runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
     free(alertQuotaCmd);
     return res;
 }
@@ -948,7 +966,7 @@ int BandwidthController::setCostlyAlert(const char *costName, int64_t bytes, int
     } else {
         asprintf(&chainName, "costly_%s", costName);
         asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-A", chainName, bytes, alertName);
-        res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+        res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
         free(alertQuotaCmd);
         free(chainName);
     }
@@ -971,7 +989,7 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
 
     asprintf(&chainName, "costly_%s", costName);
     asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-D", chainName, *alertBytes, alertName);
-    res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
     free(alertQuotaCmd);
     free(chainName);
 
