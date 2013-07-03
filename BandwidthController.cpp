@@ -413,11 +413,11 @@ int BandwidthController::manipulateSpecialApps(int numUids, char *appStrUids[],
     switch (appOp) {
     case SpecialAppOpAdd:
         op = IptOpInsert;
-        failLogTemplate = "Failed to add app uid %d to %s.";
+        failLogTemplate = "Failed to add app uid %s(%d) to %s.";
         break;
     case SpecialAppOpRemove:
         op = IptOpDelete;
-        failLogTemplate = "Failed to delete app uid %d from %s box.";
+        failLogTemplate = "Failed to delete app uid %s(%d) from %s box.";
         break;
     default:
         ALOGE("Unexpected app Op %d", appOp);
@@ -425,9 +425,10 @@ int BandwidthController::manipulateSpecialApps(int numUids, char *appStrUids[],
     }
 
     for (uidNum = 0; uidNum < numUids; uidNum++) {
-        appUids[uidNum] = atol(appStrUids[uidNum]);
-        if (appUids[uidNum] == 0) {
-            ALOGE(failLogTemplate, appUids[uidNum], chain);
+        char *end;
+        appUids[uidNum] = strtoul(appStrUids[uidNum], &end, 0);
+        if (*end || !*appStrUids[uidNum]) {
+            ALOGE(failLogTemplate, appStrUids[uidNum], appUids[uidNum], chain);
             goto fail_parse;
         }
     }
@@ -456,7 +457,7 @@ int BandwidthController::manipulateSpecialApps(int numUids, char *appStrUids[],
 
         iptCmd = makeIptablesSpecialAppCmd(op, uid, chain);
         if (runIpxtablesCmd(iptCmd.c_str(), jumpHandling)) {
-            ALOGE(failLogTemplate, uid, chain);
+            ALOGE(failLogTemplate, appStrUids[uidNum], uid, chain);
             goto fail_with_uidNum;
         }
     }
