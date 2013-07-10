@@ -49,10 +49,13 @@ public:
     int removeFwmarkRule(const char *iface);
     int addFwmarkRoute(const char* iface, const char *dest, int prefix);
     int removeFwmarkRoute(const char* iface, const char *dest, int prefix);
+    int addHostExemption(const char *host);
+    int removeHostExemption(const char *host);
 
     int setupIptablesHooks();
 
     static const char* LOCAL_MANGLE_OUTPUT;
+    static const char* LOCAL_MANGLE_EXEMPT;
     static const char* LOCAL_MANGLE_IFACE_FORMAT;
     static const char* LOCAL_NAT_POSTROUTING;
     static const char* LOCAL_FILTER_OUTPUT;
@@ -64,6 +67,7 @@ private:
     int setUidRule(const char* iface, int uid_start, int uid_end, bool add);
     int setFwmarkRule(const char *iface, bool add);
     int setFwmarkRoute(const char* iface, const char *dest, int prefix, bool add);
+    int setHostExemption(const char *host, bool add);
     int modifyRoute(SocketClient *cli, const char *action, char *iface, char *dest, int prefix,
             char *gateway, int tableIndex);
 
