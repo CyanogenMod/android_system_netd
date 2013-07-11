@@ -37,6 +37,7 @@
 #include "SecondaryTableController.h"
 
 const char* SecondaryTableController::LOCAL_MANGLE_OUTPUT = "st_mangle_OUTPUT";
+const char* SecondaryTableController::LOCAL_MANGLE_EXEMPT = "st_mangle_EXEMPT";
 const char* SecondaryTableController::LOCAL_MANGLE_IFACE_FORMAT = "st_mangle_%s_OUTPUT";
 const char* SecondaryTableController::LOCAL_NAT_POSTROUTING = "st_nat_POSTROUTING";
 const char* SecondaryTableController::LOCAL_FILTER_OUTPUT = "st_filter_OUTPUT";
@@ -59,6 +60,12 @@ int SecondaryTableController::setupIptablesHooks() {
             "mangle",
             "-F",
             LOCAL_MANGLE_OUTPUT,
+            NULL);
+    res |= execIptables(V4V6,
+            "-t",
+            "mangle",
+            "-F",
+            LOCAL_MANGLE_EXEMPT,
             NULL);
     //rule for skipping anything marked with the PROTECT_MARK
     char protect_mark_str[11];
@@ -573,6 +580,32 @@ int SecondaryTableController::setUidRule(const char *iface, int uid_start, int u
             uid_str,
             "-g",
             chain_str,
+            NULL);
+}
+
+int SecondaryTableController::addHostExemption(const char *host) {
+    return setHostExemption(host, true);
+}
+
+int SecondaryTableController::removeHostExemption(const char *host) {
+    return setHostExemption(host, false);
+}
+
+int SecondaryTableController::setHostExemption(const char *host, bool add) {
+    IptablesTarget target = !strcmp(getVersion(host), "-4") ? V4 : V6;
+    char protect_mark_str[11];
+    snprintf(protect_mark_str, sizeof(protect_mark_str), "%d", PROTECT_MARK);
+    return execIptables(target,
+            "-t",
+            "mangle",
+            add ? "-A" : "-D",
+            LOCAL_MANGLE_EXEMPT,
+            "-d",
+            host,
+            "-j",
+            "MARK",
+            "--set-mark",
+            protect_mark_str,
             NULL);
 }
 

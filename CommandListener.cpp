@@ -94,6 +94,7 @@ static const char* MANGLE_POSTROUTING[] = {
 };
 
 static const char* MANGLE_OUTPUT[] = {
+        SecondaryTableController::LOCAL_MANGLE_EXEMPT,
         SecondaryTableController::LOCAL_MANGLE_OUTPUT,
         NULL,
 };
@@ -269,6 +270,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
         // interface fwmark  rule  add/remove    iface
         // interface fwmark  route add/remove    iface        dest    prefix
         // interface fwmark  uid   add/remove    iface      uid_start uid_end
+        // interface fwmark exempt add/remove    dest
         if (!strcmp(argv[1], "fwmark")) {
             if (!strcmp(argv[2], "rule")) {
                 if (argc < 5) {
@@ -347,6 +349,31 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                     }
                 } else {
                     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown uid cmd", false);
+                }
+                return 0;
+            } else if (!strcmp(argv[2], "exempt")) {
+                if (argc < 5) {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                    return 0;
+                }
+                if (!strcmp(argv[3], "add")) {
+                    if (!sSecondaryTableCtrl->addHostExemption(argv[4])) {
+                        cli->sendMsg(ResponseCode::CommandOkay, "exemption rule successfully added",
+                                false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to add exemption rule",
+                                true);
+                    }
+                } else if (!strcmp(argv[3], "remove")) {
+                    if (!sSecondaryTableCtrl->removeHostExemption(argv[4])) {
+                        cli->sendMsg(ResponseCode::CommandOkay,
+                                "exemption rule successfully removed", false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed,
+                                "Failed to remove exemption rule", true);
+                    }
+                } else {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown exemption cmd", false);
                 }
                 return 0;
             } else {
