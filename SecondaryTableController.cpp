@@ -39,7 +39,7 @@
 const char* SecondaryTableController::LOCAL_MANGLE_OUTPUT = "st_mangle_OUTPUT";
 const char* SecondaryTableController::LOCAL_NAT_POSTROUTING = "st_nat_POSTROUTING";
 
-SecondaryTableController::SecondaryTableController() {
+SecondaryTableController::SecondaryTableController(UidMarkMap *map) : mUidMarkMap(map) {
     int i;
     for (i=0; i < INTERFACES_TRACKED; i++) {
         mInterfaceTable[i][0] = 0;
@@ -301,10 +301,23 @@ int SecondaryTableController::removeUidRule(const char *iface, int uid_start, in
 int SecondaryTableController::setUidRule(const char *iface, int uid_start, int uid_end, bool add) {
     int tableIndex = findTableNumber(iface);
     if (tableIndex == -1) {
+        errno = EINVAL;
         return -1;
     }
-    char tableIndex_str[11] = {0};
-    snprintf(tableIndex_str, sizeof(tableIndex_str), "%d", tableIndex + BASE_TABLE_NUMBER);
+    int mark = tableIndex + BASE_TABLE_NUMBER;
+    if (add) {
+        if (!mUidMarkMap->add(uid_start, uid_end, mark)) {
+            errno = EINVAL;
+            return -1;
+        }
+    } else {
+        if (!mUidMarkMap->remove(uid_start, uid_end, mark)) {
+            errno = EINVAL;
+            return -1;
+        }
+    }
+    char mark_str[11] = {0};
+    snprintf(mark_str, sizeof(mark_str), "%d", mark);
     char uid_str[24] = {0};
     snprintf(uid_str, sizeof(uid_str), "%d-%d", uid_start, uid_end);
     return execIptables(V4V6,
@@ -319,7 +332,7 @@ int SecondaryTableController::setUidRule(const char *iface, int uid_start, int u
             "-j",
             "MARK",
             "--set-mark",
-            tableIndex_str,
+            mark_str,
             NULL);
 }
 

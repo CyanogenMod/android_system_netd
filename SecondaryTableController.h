@@ -20,6 +20,7 @@
 #include <sysutils/FrameworkListener.h>
 
 #include <net/if.h>
+#include "UidMarkMap.h"
 
 #ifndef IFNAMSIZ
 #define IFNAMSIZ 16
@@ -32,7 +33,7 @@ static int MAX_TABLE_NUMBER = BASE_TABLE_NUMBER + INTERFACES_TRACKED;
 class SecondaryTableController {
 
 public:
-    SecondaryTableController();
+    SecondaryTableController(UidMarkMap *map);
     virtual ~SecondaryTableController();
 
     int addRoute(SocketClient *cli, char *iface, char *dest, int prefixLen, char *gateway);
@@ -50,6 +51,8 @@ public:
 
 
 private:
+    UidMarkMap *mUidMarkMap;
+
     int setUidRule(const char* iface, int uid_start, int uid_end, bool add);
     int setFwmarkRule(const char *iface, bool add);
     int modifyRoute(SocketClient *cli, const char *action, char *iface, char *dest, int prefix,

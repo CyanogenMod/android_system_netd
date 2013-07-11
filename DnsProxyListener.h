@@ -20,18 +20,22 @@
 #include <sysutils/FrameworkListener.h>
 
 #include "NetdCommand.h"
+#include "UidMarkMap.h"
 
 class DnsProxyListener : public FrameworkListener {
 public:
-    DnsProxyListener();
+    DnsProxyListener(UidMarkMap *map);
     virtual ~DnsProxyListener() {}
 
 private:
+    UidMarkMap *mUidMarkMap;
     class GetAddrInfoCmd : public NetdCommand {
     public:
-        GetAddrInfoCmd();
+        GetAddrInfoCmd(UidMarkMap *uidMarkMap);
         virtual ~GetAddrInfoCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
+    private:
+        UidMarkMap *mUidMarkMap;
     };
 
     class GetAddrInfoHandler {
@@ -43,7 +47,8 @@ private:
                            struct addrinfo* hints,
                            char* iface,
                            pid_t pid,
-                           uid_t uid);
+                           uid_t uid,
+                           int mark);
         ~GetAddrInfoHandler();
 
         static void* threadStart(void* handler);
@@ -58,14 +63,17 @@ private:
         char* mIface; // owned
         pid_t mPid;
         uid_t mUid;
+        int mMark;
     };
 
     /* ------ gethostbyname ------*/
     class GetHostByNameCmd : public NetdCommand {
     public:
-        GetHostByNameCmd();
+        GetHostByNameCmd(UidMarkMap *uidMarkMap);
         virtual ~GetHostByNameCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
+    private:
+        UidMarkMap *mUidMarkMap;
     };
 
     class GetHostByNameHandler {
@@ -75,7 +83,8 @@ private:
                             uid_t uid,
                             char *iface,
                             char *name,
-                            int af);
+                            int af,
+                            int mark);
         ~GetHostByNameHandler();
         static void* threadStart(void* handler);
         void start();
@@ -87,14 +96,17 @@ private:
         char* mIface; // owned
         char* mName; // owned
         int mAf;
+        int mMark;
     };
 
     /* ------ gethostbyaddr ------*/
     class GetHostByAddrCmd : public NetdCommand {
     public:
-        GetHostByAddrCmd();
+        GetHostByAddrCmd(UidMarkMap *uidMarkMap);
         virtual ~GetHostByAddrCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
+    private:
+        UidMarkMap *mUidMarkMap;
     };
 
     class GetHostByAddrHandler {
@@ -105,7 +117,8 @@ private:
                             int   addressFamily,
                             char* iface,
                             pid_t pid,
-                            uid_t uid);
+                            uid_t uid,
+                            int mark);
         ~GetHostByAddrHandler();
 
         static void* threadStart(void* handler);
@@ -120,6 +133,7 @@ private:
         char* mIface; // owned
         pid_t mPid;
         uid_t mUid;
+        int   mMark;
     };
 };
 

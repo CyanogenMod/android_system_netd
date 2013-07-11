@@ -22,6 +22,7 @@ LOCAL_SRC_FILES:=                                      \
                   SoftapController.cpp                 \
                   TetherController.cpp                 \
                   oem_iptables_hook.cpp                \
+                  UidMarkMap.cpp                       \
                   main.cpp                             \
 
 
