@@ -51,6 +51,8 @@ public:
     int removeFwmarkRoute(const char* iface, const char *dest, int prefix);
     int addHostExemption(const char *host);
     int removeHostExemption(const char *host);
+    void getUidMark(SocketClient *cli, int uid);
+    void getProtectMark(SocketClient *cli);
 
     int setupIptablesHooks();
 

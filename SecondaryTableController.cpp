@@ -609,6 +609,19 @@ int SecondaryTableController::setHostExemption(const char *host, bool add) {
             NULL);
 }
 
+void SecondaryTableController::getUidMark(SocketClient *cli, int uid) {
+    int mark = mUidMarkMap->getMark(uid);
+    char mark_str[11];
+    snprintf(mark_str, sizeof(mark_str), "%d", mark);
+    cli->sendMsg(ResponseCode::GetMarkResult, mark_str, false);
+}
+
+void SecondaryTableController::getProtectMark(SocketClient *cli) {
+    char protect_mark_str[11];
+    snprintf(protect_mark_str, sizeof(protect_mark_str), "%d", PROTECT_MARK);
+    cli->sendMsg(ResponseCode::GetMarkResult, protect_mark_str, false);
+}
+
 int SecondaryTableController::runCmd(int argc, const char **argv) {
     int ret = 0;
 

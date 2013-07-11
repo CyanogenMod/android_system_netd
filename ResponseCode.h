@@ -46,6 +46,7 @@ public:
     static const int DnsProxyQueryResult       = 222;
     static const int ClatdStatusResult         = 223;
     static const int InterfaceGetMtuResult     = 224;
+    static const int GetMarkResult             = 225;
 
     // 400 series - The command was accepted but the requested action
     // did not take place.
