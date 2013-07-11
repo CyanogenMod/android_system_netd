@@ -77,6 +77,7 @@ static const char* FILTER_OUTPUT[] = {
         OEM_IPTABLES_FILTER_OUTPUT,
         FirewallController::LOCAL_OUTPUT,
         BandwidthController::LOCAL_OUTPUT,
+        SecondaryTableController::LOCAL_FILTER_OUTPUT,
         NULL,
 };
 
@@ -206,6 +207,8 @@ CommandListener::CommandListener(UidMarkMap *map) :
     sIdletimerCtrl->setupIptablesHooks();
 
     sBandwidthCtrl->enableBandwidthControl(false);
+
+    sSecondaryTableCtrl->setupIptablesHooks();
 }
 
 CommandListener::InterfaceCmd::InterfaceCmd() :
@@ -263,37 +266,65 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
 
         //     0       1       2        3          4           5        6      7
         // interface route add/remove iface default/secondary dest    prefix gateway
-        // interface route  fwmark  add/remove   iface
-        // interface route    uid   add/remove   iface      uid_start  uid_end
-        if (!strcmp(argv[1], "route")) {
-            int prefix_length = 0;
-            if (!strcmp(argv[2], "fwmark")) {
+        // interface fwmark  rule  add/remove    iface
+        // interface fwmark  route add/remove    iface        dest    prefix
+        // interface fwmark  uid   add/remove    iface      uid_start uid_end
+        if (!strcmp(argv[1], "fwmark")) {
+            if (!strcmp(argv[2], "rule")) {
                 if (argc < 5) {
                     cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                     return 0;
                 }
                 if (!strcmp(argv[3], "add")) {
                     if (!sSecondaryTableCtrl->addFwmarkRule(argv[4])) {
-                        cli->sendMsg(ResponseCode::CommandOkay, "Fwmark rule successfully added",
-                                false);
+                        cli->sendMsg(ResponseCode::CommandOkay,
+                                "Fwmark rule successfully added", false);
                     } else {
                         cli->sendMsg(ResponseCode::OperationFailed, "Failed to add fwmark rule",
                                 true);
                     }
                 } else if (!strcmp(argv[3], "remove")) {
                     if (!sSecondaryTableCtrl->removeFwmarkRule(argv[4])) {
-                        cli->sendMsg(ResponseCode::CommandOkay, "Fwmark rule successfully removed",
-                                false);
+                        cli->sendMsg(ResponseCode::CommandOkay,
+                                "Fwmark rule successfully removed", false);
                     } else {
-                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove fwmark rule",
-                                true);
+                        cli->sendMsg(ResponseCode::OperationFailed,
+                                "Failed to remove fwmark rule", true);
                     }
                 } else {
-                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark cmd", false);
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark rule cmd",
+                            false);
                 }
                 return 0;
-            }
-            if (!strcmp(argv[2], "uid")) {
+            } else if (!strcmp(argv[2], "route")) {
+                if (argc < 7) {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                    return 0;
+                }
+                if (!strcmp(argv[3], "add")) {
+                    if (!sSecondaryTableCtrl->addFwmarkRoute(argv[4], argv[5], atoi(argv[6]))) {
+                        cli->sendMsg(ResponseCode::CommandOkay,
+                                "Fwmark route successfully added", false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed,
+                                "Failed to add fwmark route", true);
+                    }
+                } else if (!strcmp(argv[3], "remove")) {
+                    if (!sSecondaryTableCtrl->removeFwmarkRoute(argv[4], argv[5],
+                                atoi(argv[6]))) {
+                        cli->sendMsg(ResponseCode::CommandOkay,
+                                "Fwmark route successfully removed", false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed,
+                                "Failed to remove fwmark route", true);
+                    }
+                } else {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark route cmd",
+                            false);
+                }
+                return 0;
+
+            } else if (!strcmp(argv[2], "uid")) {
                 if (argc < 7) {
                     cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                     return 0;
@@ -318,7 +349,13 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown uid cmd", false);
                 }
                 return 0;
+            } else {
+                cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark cmd", false);
+                return 0;
             }
+        }
+        if (!strcmp(argv[1], "route")) {
+            int prefix_length = 0;
             if (argc < 8) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                 return 0;
