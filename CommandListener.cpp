@@ -271,6 +271,8 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
         // interface fwmark  route add/remove    iface        dest    prefix
         // interface fwmark  uid   add/remove    iface      uid_start uid_end
         // interface fwmark exempt add/remove    dest
+        // interface fwmark  get     protect
+        // interface fwmark  get     mark        uid
         if (!strcmp(argv[1], "fwmark")) {
             if (!strcmp(argv[2], "rule")) {
                 if (argc < 5) {
@@ -376,6 +378,25 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown exemption cmd", false);
                 }
                 return 0;
+            } else if (!strcmp(argv[2], "get")) {
+                if (argc < 4) {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                    return 0;
+                }
+                if (!strcmp(argv[3], "protect")) {
+                    sSecondaryTableCtrl->getProtectMark(cli);
+                    return 0;
+                } else if (!strcmp(argv[3], "mark")) {
+                    if (argc < 5) {
+                        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                        return 0;
+                    }
+                    sSecondaryTableCtrl->getUidMark(cli, atoi(argv[4]));
+                    return 0;
+                } else {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark get cmd", false);
+                    return 0;
+                }
             } else {
                 cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark cmd", false);
                 return 0;
