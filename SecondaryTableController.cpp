@@ -67,7 +67,7 @@ int SecondaryTableController::setupIptablesHooks() {
             "-F",
             LOCAL_MANGLE_EXEMPT,
             NULL);
-    //rule for skipping anything marked with the PROTECT_MARK
+    // rule for skipping anything marked with the PROTECT_MARK
     char protect_mark_str[11];
     snprintf(protect_mark_str, sizeof(protect_mark_str), "%d", PROTECT_MARK);
     res |= execIptables(V4V6,
@@ -83,8 +83,8 @@ int SecondaryTableController::setupIptablesHooks() {
             "RETURN",
             NULL);
 
-    //protect the legacy VPN daemons from routes.
-    //TODO: Remove this when legacy VPN's are removed.
+    // protect the legacy VPN daemons from routes.
+    // TODO: Remove this when legacy VPN's are removed.
     res |= execIptables(V4V6,
             "-t",
             "mangle",
@@ -98,7 +98,6 @@ int SecondaryTableController::setupIptablesHooks() {
             "RETURN",
             NULL);
     return res;
-
 }
 
 int SecondaryTableController::findTableNumber(const char *iface) {
@@ -342,6 +341,8 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
         IP_PATH,
         "rule",
         add ? "add" : "del",
+        "prio",
+        RULE_PRIO,
         "fwmark",
         mark_str,
         "table",
@@ -369,6 +370,8 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
         "-6",
         "rule",
         add ? "add" : "del",
+        "prio",
+        RULE_PRIO,
         "fwmark",
         mark_str,
         "table",
@@ -595,7 +598,7 @@ int SecondaryTableController::setHostExemption(const char *host, bool add) {
     IptablesTarget target = !strcmp(getVersion(host), "-4") ? V4 : V6;
     char protect_mark_str[11];
     snprintf(protect_mark_str, sizeof(protect_mark_str), "%d", PROTECT_MARK);
-    return execIptables(target,
+    int ret = execIptables(target,
             "-t",
             "mangle",
             add ? "-A" : "-D",
@@ -607,6 +610,20 @@ int SecondaryTableController::setHostExemption(const char *host, bool add) {
             "--set-mark",
             protect_mark_str,
             NULL);
+    const char *cmd[] = {
+        IP_PATH,
+        getVersion(host),
+        "rule",
+        add ? "add" : "del",
+        "prio",
+        EXEMPT_PRIO,
+        "to",
+        host,
+        "table",
+        "main"
+    };
+    ret |= runCmd(ARRAY_SIZE(cmd), cmd);
+    return ret;
 }
 
 void SecondaryTableController::getUidMark(SocketClient *cli, int uid) {
