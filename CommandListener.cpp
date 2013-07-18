@@ -785,8 +785,8 @@ int CommandListener::PppdCmd::runCommand(SocketClient *cli,
     if (!strcmp(argv[1], "attach")) {
         struct in_addr l, r, dns1, dns2;
 
-        memset(&dns1, sizeof(struct in_addr), 0);
-        memset(&dns2, sizeof(struct in_addr), 0);
+        memset(&dns1, 0, sizeof(struct in_addr));
+        memset(&dns2, 0, sizeof(struct in_addr));
 
         if (!inet_aton(argv[3], &l)) {
             cli->sendMsg(ResponseCode::CommandParameterError, "Invalid local address", false);
