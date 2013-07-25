@@ -30,8 +30,7 @@
 #define LOG_TAG "SecondaryTablController"
 #include <cutils/log.h>
 #include <cutils/properties.h>
-
-extern "C" int system_nosh(const char *command);
+#include <logwrap/logwrap.h>
 
 #include "ResponseCode.h"
 #include "NetdConstants.h"
@@ -81,18 +80,43 @@ int SecondaryTableController::addRoute(SocketClient *cli, char *iface, char *des
 
 int SecondaryTableController::modifyRoute(SocketClient *cli, const char *action, char *iface,
         char *dest, int prefix, char *gateway, int tableIndex) {
-    char *cmd;
+    char dest_str[44]; // enough to store an IPv6 address + 3 character bitmask
+    char tableIndex_str[11];
+    int ret;
+
+    //  IP tool doesn't like "::" - the equiv of 0.0.0.0 that it accepts for ipv4
+    snprintf(dest_str, sizeof(dest_str), "%s/%d", dest, prefix);
+    snprintf(tableIndex_str, sizeof(tableIndex_str), "%d", tableIndex + BASE_TABLE_NUMBER);
 
     if (strcmp("::", gateway) == 0) {
-        //  IP tool doesn't like "::" - the equiv of 0.0.0.0 that it accepts for ipv4
-        asprintf(&cmd, "%s route %s %s/%d dev %s table %d",
-                IP_PATH, action, dest, prefix, iface, tableIndex+BASE_TABLE_NUMBER);
+        const char *cmd[] = {
+                IP_PATH,
+                "route",
+                action,
+                dest_str,
+                "dev",
+                iface,
+                "table",
+                tableIndex_str
+        };
+        ret = runCmd(ARRAY_SIZE(cmd), cmd);
     } else {
-        asprintf(&cmd, "%s route %s %s/%d via %s dev %s table %d",
-                IP_PATH, action, dest, prefix, gateway, iface, tableIndex+BASE_TABLE_NUMBER);
+        const char *cmd[] = {
+                IP_PATH,
+                "route",
+                action,
+                dest_str,
+                "via",
+                gateway,
+                "dev",
+                iface,
+                "table",
+                tableIndex_str
+        };
+        ret = runCmd(ARRAY_SIZE(cmd), cmd);
     }
 
-    if (runAndFree(cli, cmd)) {
+    if (ret) {
         ALOGE("ip route %s failed: %s route %s %s/%d via %s dev %s table %d", action,
                 IP_PATH, action, dest, prefix, gateway, iface, tableIndex+BASE_TABLE_NUMBER);
         errno = ENODEV;
@@ -157,14 +181,25 @@ int SecondaryTableController::removeRoute(SocketClient *cli, char *iface, char *
 
 int SecondaryTableController::modifyFromRule(int tableIndex, const char *action,
         const char *addr) {
-    char *cmd;
+    char tableIndex_str[11];
 
     if (verifyTableIndex(tableIndex)) {
         return -1;
     }
-    asprintf(&cmd, "%s %s rule %s from %s table %d", IP_PATH, getVersion(addr),
-            action, addr, tableIndex + BASE_TABLE_NUMBER);
-    if (runAndFree(NULL, cmd)) {
+
+    snprintf(tableIndex_str, sizeof(tableIndex_str), "%d", tableIndex +
+            BASE_TABLE_NUMBER);
+    const char *cmd[] = {
+            IP_PATH,
+            getVersion(addr),
+            "rule",
+            action,
+            "from",
+            addr,
+            "table",
+            tableIndex_str
+    };
+    if (runCmd(ARRAY_SIZE(cmd), cmd)) {
         return -1;
     }
 
@@ -174,7 +209,7 @@ int SecondaryTableController::modifyFromRule(int tableIndex, const char *action,
 
 int SecondaryTableController::modifyLocalRoute(int tableIndex, const char *action,
         const char *iface, const char *addr) {
-    char *cmd;
+    char tableIndex_str[11];
 
     if (verifyTableIndex(tableIndex)) {
         return -1;
@@ -182,23 +217,25 @@ int SecondaryTableController::modifyLocalRoute(int tableIndex, const char *actio
 
     modifyRuleCount(tableIndex, action); // some del's will fail as the iface is already gone.
 
-    asprintf(&cmd, "%s route %s %s dev %s table %d", IP_PATH, action, addr, iface,
-            tableIndex+BASE_TABLE_NUMBER);
-    return runAndFree(NULL, cmd);
+    snprintf(tableIndex_str, sizeof(tableIndex_str), "%d", tableIndex +
+            BASE_TABLE_NUMBER);
+    const char *cmd[] = {
+            IP_PATH,
+            "route",
+            action,
+            addr,
+            "dev",
+            iface,
+            "table",
+            tableIndex_str
+    };
+
+    return runCmd(ARRAY_SIZE(cmd), cmd);
 }
 
-int SecondaryTableController::runAndFree(SocketClient *cli, char *cmd) {
+int SecondaryTableController::runCmd(int argc, const char **argv) {
     int ret = 0;
-    if (strlen(cmd) >= 255) {
-        if (cli != NULL) {
-            ALOGE("ip command (%s) too long", cmd);
-            errno = E2BIG;
-            cli->sendMsg(ResponseCode::CommandSyntaxError, "Too long", true);
-        }
-        free(cmd);
-        return -1;
-    }
-    ret = system_nosh(cmd);
-    free(cmd);
+
+    ret = android_fork_execvp(argc, (char **)argv, NULL, false, false);
     return ret;
 }

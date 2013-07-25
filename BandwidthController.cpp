@@ -40,16 +40,13 @@
 #define LOG_TAG "BandwidthController"
 #include <cutils/log.h>
 #include <cutils/properties.h>
-
-extern "C" int logwrap(int argc, const char **argv);
-extern "C" int system_nosh(const char *command);
+#include <logwrap/logwrap.h>
 
 #include "NetdConstants.h"
 #include "BandwidthController.h"
 
 /* Alphabetical */
-#define ALERT_IPT_TEMPLATE "%s %s %s -m quota2 ! --quota %lld --name %s"
-const int  BandwidthController::ALERT_RULE_POS_IN_COSTLY_CHAIN = 4;
+#define ALERT_IPT_TEMPLATE "%s %s -m quota2 ! --quota %lld --name %s"
 const char BandwidthController::ALERT_GLOBAL_NAME[] = "globalAlert";
 const char* BandwidthController::LOCAL_INPUT = "bw_INPUT";
 const char* BandwidthController::LOCAL_FORWARD = "bw_FORWARD";
@@ -60,8 +57,6 @@ const int  BandwidthController::MAX_CMD_ARGS = 32;
 const int  BandwidthController::MAX_CMD_LEN = 1024;
 const int  BandwidthController::MAX_IFACENAME_LEN = 64;
 const int  BandwidthController::MAX_IPT_OUTPUT_LINE_LEN = 256;
-
-bool BandwidthController::useLogwrapCall = false;
 
 /**
  * Some comments about the rules:
@@ -128,23 +123,17 @@ const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
 };
 
 const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
-    "-A bw_INPUT -i lo --jump RETURN",
     "-A bw_INPUT -m owner --socket-exists", /* This is a tracking rule. */
 
-    "-A bw_OUTPUT -o lo --jump RETURN",
     "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
 
     "-A costly_shared --jump penalty_box",
 
-    "-t raw -A bw_raw_PREROUTING ! -i lo+ -m owner --socket-exists", /* This is a tracking rule. */
-    "-t mangle -A bw_mangle_POSTROUTING ! -o lo+ -m owner --socket-exists", /* This is a tracking rule. */
+    "-t raw -A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
+    "-t mangle -A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
 };
 
 BandwidthController::BandwidthController(void) {
-    char value[PROPERTY_VALUE_MAX];
-
-    property_get("persist.bandwidth.uselogwrap", value, "0");
-    useLogwrapCall = !strcmp(value, "1");
 }
 
 int BandwidthController::runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling,
@@ -172,6 +161,7 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
     char *next = buffer;
     char *tmp;
     int res;
+    int status = 0;
 
     std::string fullCmd = cmd;
 
@@ -190,28 +180,27 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
     fullCmd.insert(0, " ");
     fullCmd.insert(0, iptVer == IptIpV4 ? IPTABLES_PATH : IP6TABLES_PATH);
 
-    if (!useLogwrapCall) {
-        res = system_nosh(fullCmd.c_str());
-    } else {
-        if (StrncpyAndCheck(buffer, fullCmd.c_str(), sizeof(buffer))) {
-            ALOGE("iptables command too long");
+    if (StrncpyAndCheck(buffer, fullCmd.c_str(), sizeof(buffer))) {
+        ALOGE("iptables command too long");
+        return -1;
+    }
+
+    argc = 0;
+    while ((tmp = strsep(&next, " "))) {
+        argv[argc++] = tmp;
+        if (argc >= MAX_CMD_ARGS) {
+            ALOGE("iptables argument overflow");
             return -1;
         }
-
-        argc = 0;
-        while ((tmp = strsep(&next, " "))) {
-            argv[argc++] = tmp;
-            if (argc >= MAX_CMD_ARGS) {
-                ALOGE("iptables argument overflow");
-                return -1;
-            }
-        }
-
-        argv[argc] = NULL;
-        res = logwrap(argc, argv);
     }
+
+    argv[argc] = NULL;
+    res = android_fork_execvp(argc, (char **)argv, &status, false,
+            failureHandling == IptFailShow);
+    res = res || !WIFEXITED(status) || WEXITSTATUS(status);
     if (res && failureHandling == IptFailShow) {
-        ALOGE("runIptablesCmd(): failed %s res=%d", fullCmd.c_str(), res);
+      ALOGE("runIptablesCmd(): res=%d status=%d failed %s", res, status,
+            fullCmd.c_str());
     }
     return res;
 }
@@ -289,6 +278,9 @@ std::string BandwidthController::makeIptablesNaughtyCmd(IptOp op, int uid) {
     switch (op) {
     case IptOpInsert:
         opFlag = "-I";
+        break;
+    case IptOpAppend:
+        opFlag = "-A";
         break;
     case IptOpReplace:
         opFlag = "-R";
@@ -391,6 +383,9 @@ std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *cost
     switch (op) {
     case IptOpInsert:
         opFlag = "-I";
+        break;
+    case IptOpAppend:
+        opFlag = "-A";
         break;
     case IptOpReplace:
         opFlag = "-R";
@@ -635,8 +630,14 @@ int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) 
     }
 
     if (it == quotaIfaces.end()) {
+        /* Preparing the iface adds a penalty_box check */
         res |= prepCostlyIface(ifn, QuotaUnique);
-        quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
+	/*
+	 * The rejecting quota limit should go after the penalty box checks
+	 * or else a naughty app could just eat up the quota.
+	 * So we append here.
+	 */
+        quotaCmd = makeIptablesQuotaCmd(IptOpAppend, costName, maxBytes);
         res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
         if (res) {
             ALOGE("Failed set quota rule");
@@ -740,12 +741,14 @@ int BandwidthController::updateQuota(const char *quotaName, int64_t bytes) {
 int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, int64_t bytes) {
     int res = 0;
     const char *opFlag;
-    const char *ifaceLimiting;
     char *alertQuotaCmd;
 
     switch (op) {
     case IptOpInsert:
         opFlag = "-I";
+        break;
+    case IptOpAppend:
+        opFlag = "-A";
         break;
     case IptOpReplace:
         opFlag = "-R";
@@ -756,13 +759,11 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
         break;
     }
 
-    ifaceLimiting = "! -i lo+";
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, ifaceLimiting, opFlag, "bw_INPUT",
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_INPUT",
         bytes, alertName);
     res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
     free(alertQuotaCmd);
-    ifaceLimiting = "! -o lo+";
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, ifaceLimiting, opFlag, "bw_OUTPUT",
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_OUTPUT",
         bytes, alertName);
     res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
     free(alertQuotaCmd);
@@ -772,12 +773,14 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
 int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName, int64_t bytes) {
     int res = 0;
     const char *opFlag;
-    const char *ifaceLimiting;
     char *alertQuotaCmd;
 
     switch (op) {
     case IptOpInsert:
         opFlag = "-I";
+        break;
+    case IptOpAppend:
+        opFlag = "-A";
         break;
     case IptOpReplace:
         opFlag = "-R";
@@ -788,8 +791,7 @@ int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName,
         break;
     }
 
-    ifaceLimiting = "! -i lo+";
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, ifaceLimiting, opFlag, "bw_FORWARD",
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_FORWARD",
         bytes, alertName);
     res = runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
     free(alertQuotaCmd);
@@ -933,7 +935,7 @@ int BandwidthController::removeInterfaceAlert(const char *iface) {
 
 int BandwidthController::setCostlyAlert(const char *costName, int64_t bytes, int64_t *alertBytes) {
     char *alertQuotaCmd;
-    char *chainNameAndPos;
+    char *chainName;
     int res = 0;
     char *alertName;
 
@@ -945,11 +947,11 @@ int BandwidthController::setCostlyAlert(const char *costName, int64_t bytes, int
     if (*alertBytes) {
         res = updateQuota(alertName, *alertBytes);
     } else {
-        asprintf(&chainNameAndPos, "costly_%s %d", costName, ALERT_RULE_POS_IN_COSTLY_CHAIN);
-        asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "", "-I", chainNameAndPos, bytes, alertName);
+        asprintf(&chainName, "costly_%s", costName);
+        asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-A", chainName, bytes, alertName);
         res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
         free(alertQuotaCmd);
-        free(chainNameAndPos);
+        free(chainName);
     }
     *alertBytes = bytes;
     free(alertName);
@@ -969,7 +971,7 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
     }
 
     asprintf(&chainName, "costly_%s", costName);
-    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "", "-D", chainName, *alertBytes, alertName);
+    asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-D", chainName, *alertBytes, alertName);
     res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
     free(alertQuotaCmd);
     free(chainName);

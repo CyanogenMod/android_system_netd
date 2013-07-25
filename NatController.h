@@ -39,9 +39,10 @@ private:
     SecondaryTableController *secondaryTableCtrl;
 
     int setDefaults();
-    int runCmd(const char *path, const char *cmd);
+    int runCmd(int argc, const char **argv);
     bool checkInterface(const char *iface);
     int setForwardRules(bool set, const char *intIface, const char *extIface);
+    int routesOp(bool add, const char *intIface, const char *extIface, char **argv, int addrCount);
 };
 
 #endif

@@ -37,12 +37,12 @@ int ResolverController::setDefaultInterface(const char* iface) {
     return 0;
 }
 
-int ResolverController::setInterfaceDnsServers(const char* iface, char** servers, int numservers) {
+int ResolverController::setInterfaceDnsServers(const char* iface, const char* domains,
+        char** servers, int numservers) {
     if (DBG) {
         ALOGD("setInterfaceDnsServers iface = %s\n", iface);
     }
-
-    _resolv_set_nameservers_for_iface(iface, servers, numservers);
+    _resolv_set_nameservers_for_iface(iface, servers, numservers, domains);
 
     return 0;
 }
@@ -73,6 +73,26 @@ int ResolverController::flushInterfaceDnsCache(const char* iface) {
     }
 
     _resolv_flush_cache_for_iface(iface);
+
+    return 0;
+}
+
+int ResolverController::setDnsInterfaceForPid(const char* iface, int pid) {
+    if (DBG) {
+        ALOGD("setDnsIfaceForPid iface = %s, pid = %d\n", iface, pid);
+    }
+
+    _resolv_set_iface_for_pid(iface, pid);
+
+    return 0;
+}
+
+int ResolverController::clearDnsInterfaceForPid(int pid) {
+    if (DBG) {
+        ALOGD("clearDnsIfaceForPid pid = %d\n", pid);
+    }
+
+    _resolv_clear_iface_for_pid(pid);
 
     return 0;
 }

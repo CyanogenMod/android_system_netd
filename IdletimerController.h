@@ -36,7 +36,7 @@ public:
  private:
     enum IptOp { IptOpAdd, IptOpDelete };
     int setDefaults();
-    int runIpxtablesCmd(const char *cmd);
+    int runIpxtablesCmd(int argc, const char **cmd);
     int modifyInterfaceIdletimer(IptOp op, const char *iface, uint32_t timeout,
                                  const char *classLabel);
 };

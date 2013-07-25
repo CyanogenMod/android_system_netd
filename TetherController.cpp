@@ -38,7 +38,6 @@ TetherController::TetherController() {
     mDnsForwarders = new NetAddressCollection();
     mDaemonFd = -1;
     mDaemonPid = 0;
-    mDhcpcdPid = 0;
 }
 
 TetherController::~TetherController() {
@@ -163,12 +162,12 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs, int l
             ALOGE("execl failed (%s)", strerror(errno));
         }
         ALOGE("Should never get here!");
-        free(args);
-        return 0;
+        _exit(-1);
     } else {
         close(pipefd[0]);
         mDaemonPid = pid;
         mDaemonFd = pipefd[1];
+        applyDnsInterfaces();
         ALOGD("Tethering services running");
     }
 
@@ -193,75 +192,6 @@ int TetherController::stopTethering() {
     return 0;
 }
 
-// TODO(BT) remove
-int TetherController::startReverseTethering(const char* iface) {
-    if (mDhcpcdPid != 0) {
-        ALOGE("Reverse tethering already started");
-        errno = EBUSY;
-        return -1;
-    }
-
-    ALOGD("TetherController::startReverseTethering, Starting reverse tethering");
-
-    /*
-     * TODO: Create a monitoring thread to handle and restart
-     * the daemon if it exits prematurely
-     */
-    //cleanup the dhcp result
-    char dhcp_result_name[64];
-    snprintf(dhcp_result_name, sizeof(dhcp_result_name) - 1, "dhcp.%s.result", iface);
-    property_set(dhcp_result_name, "");
-
-    pid_t pid;
-    if ((pid = fork()) < 0) {
-        ALOGE("fork failed (%s)", strerror(errno));
-        return -1;
-    }
-
-    if (!pid) {
-
-        char *args[10];
-        int argc = 0;
-        args[argc++] = "/system/bin/dhcpcd";
-        char host_name[128];
-        if (property_get("net.hostname", host_name, NULL) && (host_name[0] != '\0'))
-        {
-            args[argc++] = "-h";
-            args[argc++] = host_name;
-        }
-        args[argc++] = (char*)iface;
-        args[argc] = NULL;
-        if (execv(args[0], args)) {
-            ALOGE("startReverseTethering, execv failed (%s)", strerror(errno));
-        }
-        ALOGE("startReverseTethering, Should never get here!");
-        // TODO(BT) inform parent of the failure.
-        //          Parent process need wait for child to report error status
-        //          before it set mDhcpcdPid and return 0.
-        exit(-1);
-    } else {
-        mDhcpcdPid = pid;
-        ALOGD("Reverse Tethering running, pid:%d", pid);
-    }
-    return 0;
-}
-
-// TODO(BT) remove
-int TetherController::stopReverseTethering() {
-
-    if (mDhcpcdPid == 0) {
-        ALOGE("Tethering already stopped");
-        return 0;
-    }
-
-    ALOGD("Stopping tethering services");
-
-    kill(mDhcpcdPid, SIGTERM);
-    waitpid(mDhcpcdPid, NULL, 0);
-    mDhcpcdPid = 0;
-    ALOGD("Tethering services stopped");
-    return 0;
-}
 bool TetherController::isTetheringStarted() {
     return (mDaemonPid == 0 ? false : true);
 }
@@ -313,19 +243,67 @@ NetAddressCollection *TetherController::getDnsForwarders() {
     return mDnsForwarders;
 }
 
-int TetherController::tetherInterface(const char *interface) {
-    mInterfaces->push_back(strdup(interface));
+int TetherController::applyDnsInterfaces() {
+    int i;
+    char daemonCmd[MAX_CMD_SIZE];
+
+    strcpy(daemonCmd, "update_ifaces");
+    int cmdLen = strlen(daemonCmd);
+    InterfaceCollection::iterator it;
+    bool haveInterfaces = false;
+
+    for (it = mInterfaces->begin(); it != mInterfaces->end(); ++it) {
+        cmdLen += (strlen(*it) + 1);
+        if (cmdLen + 1 >= MAX_CMD_SIZE) {
+            ALOGD("Too many DNS ifaces listed");
+            break;
+        }
+
+        strcat(daemonCmd, ":");
+        strcat(daemonCmd, *it);
+        haveInterfaces = true;
+    }
+
+    if ((mDaemonFd != -1) && haveInterfaces) {
+        ALOGD("Sending update msg to dnsmasq [%s]", daemonCmd);
+        if (write(mDaemonFd, daemonCmd, strlen(daemonCmd) +1) < 0) {
+            ALOGE("Failed to send update command to dnsmasq (%s)", strerror(errno));
+            return -1;
+        }
+    }
     return 0;
+}
+
+int TetherController::tetherInterface(const char *interface) {
+    ALOGD("tetherInterface(%s)", interface);
+    mInterfaces->push_back(strdup(interface));
+
+    if (applyDnsInterfaces()) {
+        InterfaceCollection::iterator it;
+        for (it = mInterfaces->begin(); it != mInterfaces->end(); ++it) {
+            if (!strcmp(interface, *it)) {
+                free(*it);
+                mInterfaces->erase(it);
+                break;
+            }
+        }
+        return -1;
+    } else {
+        return 0;
+    }
 }
 
 int TetherController::untetherInterface(const char *interface) {
     InterfaceCollection::iterator it;
 
+    ALOGD("untetherInterface(%s)", interface);
+
     for (it = mInterfaces->begin(); it != mInterfaces->end(); ++it) {
         if (!strcmp(interface, *it)) {
             free(*it);
             mInterfaces->erase(it);
-            return 0;
+
+            return applyDnsInterfaces();
         }
     }
     errno = ENOENT;

@@ -14,18 +14,19 @@
  * limitations under the License.
  */
 
-#ifndef _THROTTLE_CONTROLLER_H
-#define _THROTTLE_CONTROLLER_H
+#ifndef _CLATD_CONTROLLER_H
+#define _CLATD_CONTROLLER_H
 
-class ThrottleController {
+class ClatdController {
+    pid_t mClatdPid;
+
 public:
-    static int setInterfaceThrottle(const char *iface, int rxKbps, int txKbps);
-    static int getInterfaceRxThrottle(const char *iface, int *rx);
-    static int getInterfaceTxThrottle(const char *iface, int *tx);
+    ClatdController();
+    virtual ~ClatdController();
 
-private:
-    static int runTcCmd(const char *cmd);
-    static void reset(const char *iface);
+    int startClatd(char *interface);
+    int stopClatd();
+    bool isClatdStarted();
 };
 
 #endif

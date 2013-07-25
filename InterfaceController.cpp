@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
+#include <dirent.h>
 
 #include <dlfcn.h>
 
@@ -34,6 +35,8 @@
 #include <netutils/ifc.h>
 #include <private/android_filesystem_config.h>
 
+#include "NetdConstants.h"
+
 #include "InterfaceController.h"
 
 char if_cmd_lib_file_name[] = "/system/lib/libnetcmdiface.so";
@@ -41,8 +44,17 @@ char set_cmd_func_name[] = "net_iface_send_command";
 char set_cmd_init_func_name[] = "net_iface_send_command_init";
 char set_cmd_fini_func_name[] = "net_iface_send_command_fini";
 
+const char ipv6_proc_path[] = "/proc/sys/net/ipv6/conf";
+
 InterfaceController::InterfaceController()
 	: sendCommand_(NULL) {
+	// Initial IPv6 settings.
+	// By default, accept_ra is set to 1 (accept RAs unless forwarding is on) on all interfaces.
+	// This causes RAs to work or not work based on whether forwarding is on, and causes routes
+	// learned from RAs to go away when forwarding is turned on. Make this behaviour predictable
+	// by always setting accept_ra to 2.
+	setAcceptRA("2");
+
 	libh_ = dlopen(if_cmd_lib_file_name, RTLD_NOW | RTLD_LOCAL);
 	if (libh_ == NULL) {
 		const char *err_str = dlerror();
@@ -98,4 +110,56 @@ int InterfaceController::interfaceCommand(int argc, char *argv[], char **rbuf) {
 		ret = sendCommand_(argc, argv, rbuf);
 
 	return ret;
+}
+
+int InterfaceController::writeIPv6ProcPath(const char *interface, const char *setting, const char *value) {
+	char *path;
+	asprintf(&path, "%s/%s/%s", ipv6_proc_path, interface, setting);
+	int success = writeFile(path, value, strlen(value));
+	free(path);
+	return success;
+}
+
+int InterfaceController::setEnableIPv6(const char *interface, const int on) {
+	// When disable_ipv6 changes from 1 to 0, the kernel starts autoconf.
+	// When disable_ipv6 changes from 0 to 1, the kernel clears all autoconf
+	// addresses and routes and disables IPv6 on the interface.
+	const char *disable_ipv6 = on ? "0" : "1";
+	return writeIPv6ProcPath(interface, "disable_ipv6", disable_ipv6);
+}
+
+int InterfaceController::setIPv6PrivacyExtensions(const char *interface, const int on) {
+	// 0: disable IPv6 privacy addresses
+	// 0: enable IPv6 privacy addresses and prefer them over non-privacy ones.
+	return writeIPv6ProcPath(interface, "use_tempaddr", on ? "2" : "0");
+}
+
+int InterfaceController::isInterfaceName(const char *name) {
+	return strcmp(name, ".") &&
+		strcmp(name, "..") &&
+		strcmp(name, "default") &&
+		strcmp(name, "all");
+}
+
+int InterfaceController::setAcceptRA(const char *value) {
+	// Set the default value, which is used by any interfaces that are created in the future.
+	writeIPv6ProcPath("default", "accept_ra", value);
+
+	// Set the value on all the interfaces.
+	DIR *dir = opendir(ipv6_proc_path);
+	if (!dir) {
+		ALOGE("Can't list %s: %s", ipv6_proc_path, strerror(errno));
+		return -errno;
+	}
+	struct dirent *d;
+	while((d = readdir(dir)) != NULL) {
+		if (d->d_type == DT_DIR && isInterfaceName(d->d_name)) {
+			if (writeIPv6ProcPath(d->d_name, "accept_ra", value) < 0) {
+				ALOGE("Can't write to %s/%s/accept_ra: %s", ipv6_proc_path,
+				      d->d_name, strerror(errno));
+			}
+		}
+	}
+	closedir(dir);
+	return 0;
 }

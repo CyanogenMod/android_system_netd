@@ -4,6 +4,7 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:=                                      \
                   BandwidthController.cpp              \
+                  ClatdController.cpp                  \
                   CommandListener.cpp                  \
                   DnsProxyListener.cpp                 \
                   FirewallController.cpp               \
@@ -19,9 +20,7 @@ LOCAL_SRC_FILES:=                                      \
                   ResolverController.cpp               \
                   SecondaryTableController.cpp         \
                   TetherController.cpp                 \
-                  ThrottleController.cpp               \
                   oem_iptables_hook.cpp                \
-                  logwrapper.c                         \
                   main.cpp                             \
 
 
@@ -37,8 +36,10 @@ LOCAL_C_INCLUDES := $(KERNEL_HEADERS) \
 
 LOCAL_CFLAGS := -Werror=format
 
-LOCAL_SHARED_LIBRARIES := libstlport libsysutils libcutils libnetutils \
-                          libcrypto libhardware_legacy libmdnssd libdl
+LOCAL_SHARED_LIBRARIES := libstlport libsysutils liblog libcutils libnetutils \
+                          libcrypto libhardware_legacy libmdnssd libdl \
+                          liblogwrap
+
 ifdef USES_TI_MAC80211
   LOCAL_SRC_FILES += SoftapControllerTI.cpp
 else

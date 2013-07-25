@@ -24,31 +24,39 @@
 
 #define LOG_TAG "OemIptablesHook"
 #include <cutils/log.h>
+#include <logwrap/logwrap.h>
 #include "NetdConstants.h"
 
-extern "C" int system_nosh(const char *command);
-
-
-static int runIptablesCmd(const char *cmd) {
-    char *buffer;
-    size_t len = strnlen(cmd, 255);
+static int runIptablesCmd(int argc, const char **argv) {
     int res;
 
-    if (len == 255) {
-        ALOGE("command too long");
-        return -1;
-    }
-
-    asprintf(&buffer, "%s %s", IPTABLES_PATH, cmd);
-    res = system_nosh(buffer);
-    free(buffer);
+    res = android_fork_execvp(argc, (char **)argv, NULL, false, false);
     return res;
 }
 
 static bool oemCleanupHooks() {
-    runIptablesCmd("-F oem_out");
-    runIptablesCmd("-F oem_fwd");
-    runIptablesCmd("-t nat -F oem_nat_pre");
+    const char *cmd1[] = {
+            IPTABLES_PATH,
+            "-F",
+            "oem_out"
+    };
+    runIptablesCmd(ARRAY_SIZE(cmd1), cmd1);
+
+    const char *cmd2[] = {
+            IPTABLES_PATH,
+            "-F",
+            "oem_fwd"
+    };
+    runIptablesCmd(ARRAY_SIZE(cmd2), cmd2);
+
+    const char *cmd3[] = {
+            IPTABLES_PATH,
+            "-t",
+            "nat",
+            "-F",
+            "oem_nat_pre"
+    };
+    runIptablesCmd(ARRAY_SIZE(cmd3), cmd3);
     return true;
 }
 

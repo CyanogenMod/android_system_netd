@@ -99,6 +99,7 @@
 #include <errno.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -107,11 +108,10 @@
 
 #define LOG_TAG "IdletimerController"
 #include <cutils/log.h>
+#include <logwrap/logwrap.h>
 
 #include "IdletimerController.h"
 #include "NetdConstants.h"
-
-extern "C" int system_nosh(const char *command);
 
 const char* IdletimerController::LOCAL_RAW_PREROUTING = "idletimer_raw_PREROUTING";
 const char* IdletimerController::LOCAL_MANGLE_POSTROUTING = "idletimer_mangle_POSTROUTING";
@@ -122,21 +122,11 @@ IdletimerController::IdletimerController() {
 IdletimerController::~IdletimerController() {
 }
 /* return 0 or non-zero */
-int IdletimerController::runIpxtablesCmd(const char *cmd) {
-    char *buffer;
-    size_t len = strnlen(cmd, 255);
+int IdletimerController::runIpxtablesCmd(int argc, const char **argv) {
     int res;
 
-    if (len == 255) {
-        ALOGE("command too long");
-        return -1;
-    }
-
-    asprintf(&buffer, "%s %s", IPTABLES_PATH, cmd);
-    res = system_nosh(buffer);
-    ALOGV("%s #%d", buffer, res);
-    free(buffer);
-
+    res = android_fork_execvp(argc, (char **)argv, NULL, false, false);
+    ALOGV("runCmd() res=%d", res);
     return res;
 }
 
@@ -146,17 +136,27 @@ bool IdletimerController::setupIptablesHooks() {
 
 int IdletimerController::setDefaults() {
   int res;
-  char *buffer;
-  asprintf(&buffer, "-t raw -F %s", LOCAL_RAW_PREROUTING);
-  res = runIpxtablesCmd(buffer);
-  free(buffer);
+  const char *cmd1[] = {
+      IPTABLES_PATH,
+      "-t",
+      "raw",
+      "-F",
+      LOCAL_RAW_PREROUTING
+  };
+  res = runIpxtablesCmd(ARRAY_SIZE(cmd1), cmd1);
 
   if (res)
     return res;
 
-  asprintf(&buffer, "-t mangle -F %s", LOCAL_MANGLE_POSTROUTING);
-  res = runIpxtablesCmd(buffer);
-  free(buffer);
+  const char *cmd2[] = {
+      IPTABLES_PATH,
+      "-t",
+      "mangle",
+      "-F",
+      LOCAL_MANGLE_POSTROUTING
+  };
+  res = runIpxtablesCmd(ARRAY_SIZE(cmd2), cmd2);
+
   return res;
 }
 
@@ -174,21 +174,50 @@ int IdletimerController::modifyInterfaceIdletimer(IptOp op, const char *iface,
                                                   uint32_t timeout,
                                                   const char *classLabel) {
   int res;
-  char *buffer;
-  asprintf(&buffer, "-t raw -%c %s -i %s -j IDLETIMER"
-           " --timeout %u --label %s --send_nl_msg 1",
-           (op == IptOpAdd) ? 'A' : 'D', LOCAL_RAW_PREROUTING, iface, timeout, classLabel);
-  res = runIpxtablesCmd(buffer);
-  free(buffer);
+  char timeout_str[11]; //enough to store any 32-bit unsigned decimal
+
+  snprintf(timeout_str, sizeof(timeout_str), "%u", timeout);
+
+  const char *cmd1[] = {
+      IPTABLES_PATH,
+      "-t",
+      "raw",
+      (op == IptOpAdd) ? "-A" : "-D",
+      LOCAL_RAW_PREROUTING,
+      "-i",
+      iface,
+      "-j",
+      "IDLETIMER",
+      "--timeout",
+      timeout_str,
+      "--label",
+      classLabel,
+      "--send_nl_msg",
+      "1"
+  };
+  res = runIpxtablesCmd(ARRAY_SIZE(cmd1), cmd1);
 
   if (res)
     return res;
 
-  asprintf(&buffer, "-t mangle -%c %s -o %s -j IDLETIMER"
-           " --timeout %u --label %s --send_nl_msg 1",
-           (op == IptOpAdd) ? 'A' : 'D', LOCAL_MANGLE_POSTROUTING, iface, timeout, classLabel);
-  res = runIpxtablesCmd(buffer);
-  free(buffer);
+  const char *cmd2[] = {
+      IPTABLES_PATH,
+      "-t",
+      "mangle",
+      (op == IptOpAdd) ? "-A" : "-D",
+      LOCAL_MANGLE_POSTROUTING,
+      "-o",
+      iface,
+      "-j",
+      "IDLETIMER",
+      "--timeout",
+      timeout_str,
+      "--label",
+      classLabel,
+      "--send_nl_msg",
+      "1"
+  };
+  res = runIpxtablesCmd(ARRAY_SIZE(cmd2), cmd2);
 
   return res;
 }

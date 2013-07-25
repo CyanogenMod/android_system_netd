@@ -52,7 +52,7 @@ private:
     int verifyTableIndex(int tableIndex);
     const char *getVersion(const char *addr);
 
-    int runAndFree(SocketClient *cli, char *cmd);
+    int runCmd(int argc, const char **argv);
 };
 
 #endif

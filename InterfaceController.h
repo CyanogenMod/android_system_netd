@@ -33,12 +33,18 @@ class InterfaceController {
 	InterfaceController();
 	virtual ~InterfaceController();
 	int interfaceCommand(int argc, char *argv[], char **rbuf);
+	int setEnableIPv6(const char *interface, const int on);
+	int setIPv6PrivacyExtensions(const char *interface, const int on);
 
  private:
 	void *libh_;
 	int (*sendCommand_)(int argc, char *argv[], char **rbuf);
 	int (*sendCommandInit_)(void);
 	int (*sendCommandFini_)(void);
+	int writeIPv6ProcPath(const char *interface, const char *setting,
+			      const char *value);
+        int isInterfaceName(const char *name);
+        int setAcceptRA(const char *value);
 };
 
 #endif

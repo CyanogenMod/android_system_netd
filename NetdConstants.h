@@ -29,11 +29,12 @@ extern const char * const OEM_SCRIPT_PATH;
 extern const char * const ADD;
 extern const char * const DEL;
 
-extern "C" int fork_and_execve(const char*, const char*[]);
-
 enum IptablesTarget { V4, V6, V4V6 };
 
 int execIptables(IptablesTarget target, ...);
 int execIptablesSilently(IptablesTarget target, ...);
+int writeFile(const char *path, const char *value, int size);
+
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
 #endif

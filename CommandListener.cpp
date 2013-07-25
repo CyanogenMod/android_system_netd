@@ -24,7 +24,6 @@
 #include <dirent.h>
 #include <errno.h>
 #include <string.h>
-#include <fcntl.h>
 #include <linux/if.h>
 
 #define LOG_TAG "CommandListener"
@@ -35,7 +34,6 @@
 
 #include "CommandListener.h"
 #include "ResponseCode.h"
-#include "ThrottleController.h"
 #include "BandwidthController.h"
 #include "IdletimerController.h"
 #include "SecondaryTableController.h"
@@ -53,6 +51,7 @@ InterfaceController *CommandListener::sInterfaceCtrl = NULL;
 ResolverController *CommandListener::sResolverCtrl = NULL;
 SecondaryTableController *CommandListener::sSecondaryTableCtrl = NULL;
 FirewallController *CommandListener::sFirewallCtrl = NULL;
+ClatdController *CommandListener::sClatdCtrl = NULL;
 
 /**
  * List of module chains to be created, along with explicit ordering. ORDERING
@@ -136,6 +135,7 @@ CommandListener::CommandListener() :
     registerCmd(new IdletimerControlCmd());
     registerCmd(new ResolverCmd());
     registerCmd(new FirewallCmd());
+    registerCmd(new ClatdCmd());
 
     if (!sSecondaryTableCtrl)
         sSecondaryTableCtrl = new SecondaryTableController();
@@ -157,6 +157,8 @@ CommandListener::CommandListener() :
         sFirewallCtrl = new FirewallController();
     if (!sInterfaceCtrl)
         sInterfaceCtrl = new InterfaceController();
+    if (!sClatdCtrl)
+        sClatdCtrl = new ClatdController();
 
     /*
      * This is the only time we touch top-level chains in iptables; controllers
@@ -203,22 +205,6 @@ CommandListener::InterfaceCmd::InterfaceCmd() :
                  NetdCommand("interface") {
 }
 
-int CommandListener::writeFile(const char *path, const char *value, int size) {
-    int fd = open(path, O_WRONLY);
-    if (fd < 0) {
-        ALOGE("Failed to open %s: %s", path, strerror(errno));
-        return -1;
-    }
-
-    if (write(fd, value, size) != size) {
-        ALOGE("Failed to write %s: %s", path, strerror(errno));
-        close(fd);
-        return -1;
-    }
-    close(fd);
-    return 0;
-}
-
 int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                                                       int argc, char **argv) {
     if (argc < 2) {
@@ -242,79 +228,6 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
         }
         closedir(d);
         cli->sendMsg(ResponseCode::CommandOkay, "Interface list completed", false);
-        return 0;
-    } else if (!strcmp(argv[1], "readrxcounter")) {
-        if (argc != 3) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Usage: interface readrxcounter <interface>", false);
-            return 0;
-        }
-        unsigned long rx = 0, tx = 0;
-        if (readInterfaceCounters(argv[2], &rx, &tx)) {
-            cli->sendMsg(ResponseCode::OperationFailed, "Failed to read counters", true);
-            return 0;
-        }
-
-        char *msg;
-        asprintf(&msg, "%lu", rx);
-        cli->sendMsg(ResponseCode::InterfaceRxCounterResult, msg, false);
-        free(msg);
-
-        return 0;
-    } else if (!strcmp(argv[1], "readtxcounter")) {
-        if (argc != 3) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Usage: interface readtxcounter <interface>", false);
-            return 0;
-        }
-        unsigned long rx = 0, tx = 0;
-        if (readInterfaceCounters(argv[2], &rx, &tx)) {
-            cli->sendMsg(ResponseCode::OperationFailed, "Failed to read counters", true);
-            return 0;
-        }
-
-        char *msg = NULL;
-        asprintf(&msg, "%lu", tx);
-        cli->sendMsg(ResponseCode::InterfaceTxCounterResult, msg, false);
-        free(msg);
-        return 0;
-    } else if (!strcmp(argv[1], "getthrottle")) {
-        if (argc != 4 || (argc == 4 && (strcmp(argv[3], "rx") && (strcmp(argv[3], "tx"))))) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Usage: interface getthrottle <interface> <rx|tx>", false);
-            return 0;
-        }
-        int val = 0;
-        int rc = 0;
-        int voldRc = ResponseCode::InterfaceRxThrottleResult;
-
-        if (!strcmp(argv[3], "rx")) {
-            rc = ThrottleController::getInterfaceRxThrottle(argv[2], &val);
-        } else {
-            rc = ThrottleController::getInterfaceTxThrottle(argv[2], &val);
-            voldRc = ResponseCode::InterfaceTxThrottleResult;
-        }
-        if (rc) {
-            cli->sendMsg(ResponseCode::OperationFailed, "Failed to get throttle", true);
-        } else {
-            char *msg = NULL;
-            asprintf(&msg, "%u", val);
-            cli->sendMsg(voldRc, msg, false);
-            free(msg);
-            return 0;
-        }
-        return 0;
-    } else if (!strcmp(argv[1], "setthrottle")) {
-        if (argc != 5) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Usage: interface setthrottle <interface> <rx_kbps> <tx_kbps>", false);
-            return 0;
-        }
-        if (ThrottleController::setInterfaceThrottle(argv[2], atoi(argv[3]), atoi(argv[4]))) {
-            cli->sendMsg(ResponseCode::OperationFailed, "Failed to set throttle", true);
-        } else {
-            cli->sendMsg(ResponseCode::CommandOkay, "Interface throttling set", false);
-        }
         return 0;
     } else if (!strcmp(argv[1], "driver")) {
         int rc;
@@ -525,19 +438,13 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                         false);
                 return 0;
             }
-
-            char *tmp;
-            asprintf(&tmp, "/proc/sys/net/ipv6/conf/%s/use_tempaddr", argv[2]);
-
-            if (writeFile(tmp, !strncmp(argv[3], "enable", 7) ? "2" : "0", 1) < 0) {
-                free(tmp);
+            int enable = !strncmp(argv[3], "enable", 7);
+            if (sInterfaceCtrl->setIPv6PrivacyExtensions(argv[2], enable) == 0) {
+                cli->sendMsg(ResponseCode::CommandOkay, "IPv6 privacy extensions changed", false);
+            } else {
                 cli->sendMsg(ResponseCode::OperationFailed,
                         "Failed to set ipv6 privacy extensions", true);
-                return 0;
             }
-
-            free(tmp);
-            cli->sendMsg(ResponseCode::CommandOkay, "IPv6 privacy extensions changed", false);
             return 0;
         } else if (!strcmp(argv[1], "ipv6")) {
             if (argc != 4) {
@@ -547,18 +454,13 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 return 0;
             }
 
-            char *tmp;
-            asprintf(&tmp, "/proc/sys/net/ipv6/conf/%s/disable_ipv6", argv[2]);
-
-            if (writeFile(tmp, !strncmp(argv[3], "enable", 7) ? "0" : "1", 1) < 0) {
-                free(tmp);
+            int enable = !strncmp(argv[3], "enable", 7);
+            if (sInterfaceCtrl->setEnableIPv6(argv[2], enable) == 0) {
+                cli->sendMsg(ResponseCode::CommandOkay, "IPv6 state changed", false);
+            } else {
                 cli->sendMsg(ResponseCode::OperationFailed,
                         "Failed to change IPv6 state", true);
-                return 0;
             }
-
-            free(tmp);
-            cli->sendMsg(ResponseCode::CommandOkay, "IPv6 state changed", false);
             return 0;
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown interface cmd", false);
@@ -639,12 +541,6 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
 
     if (!strcmp(argv[1], "stop")) {
         rc = sTetherCtrl->stopTethering();
-    } else if(!strcmp(argv[1], "start-reverse")) {
-        ALOGD("CommandListener::TetherCmd::run, call startReverseTethering, iface:%s", argv[2]);
-        sTetherCtrl->startReverseTethering(argv[2]);
-    } else if (!strcmp(argv[1], "stop-reverse")) {
-        ALOGD("CommandListener::TetherCmd::run, call stopReverseTethering");
-        rc = sTetherCtrl->stopReverseTethering();
     } else if (!strcmp(argv[1], "status")) {
         char *tmp = NULL;
 
@@ -653,6 +549,21 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
         cli->sendMsg(ResponseCode::TetherStatusResult, tmp, false);
         free(tmp);
         return 0;
+    } else if (argc == 3) {
+        if (!strcmp(argv[1], "interface") && !strcmp(argv[2], "list")) {
+            InterfaceCollection *ilist = sTetherCtrl->getTetheredInterfaceList();
+            InterfaceCollection::iterator it;
+            for (it = ilist->begin(); it != ilist->end(); ++it) {
+                cli->sendMsg(ResponseCode::TetherInterfaceListResult, *it, false);
+            }
+        } else if (!strcmp(argv[1], "dns") && !strcmp(argv[2], "list")) {
+            NetAddressCollection *dlist = sTetherCtrl->getDnsForwarders();
+            NetAddressCollection::iterator it;
+
+            for (it = dlist->begin(); it != dlist->end(); ++it) {
+                cli->sendMsg(ResponseCode::TetherDnsFwdTgtListResult, inet_ntoa(*it), false);
+            }
+        }
     } else {
         /*
          * These commands take a minimum of 4 arguments
@@ -694,13 +605,7 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
                 rc = sTetherCtrl->tetherInterface(argv[3]);
             } else if (!strcmp(argv[2], "remove")) {
                 rc = sTetherCtrl->untetherInterface(argv[3]);
-            } else if (!strcmp(argv[2], "list")) {
-                InterfaceCollection *ilist = sTetherCtrl->getTetheredInterfaceList();
-                InterfaceCollection::iterator it;
-
-                for (it = ilist->begin(); it != ilist->end(); ++it) {
-                    cli->sendMsg(ResponseCode::TetherInterfaceListResult, *it, false);
-                }
+            /* else if (!strcmp(argv[2], "list")) handled above */
             } else {
                 cli->sendMsg(ResponseCode::CommandParameterError,
                              "Unknown tether interface operation", false);
@@ -709,13 +614,7 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
         } else if (!strcmp(argv[1], "dns")) {
             if (!strcmp(argv[2], "set")) {
                 rc = sTetherCtrl->setDnsForwarders(&argv[3], argc - 3);
-            } else if (!strcmp(argv[2], "list")) {
-                NetAddressCollection *dlist = sTetherCtrl->getDnsForwarders();
-                NetAddressCollection::iterator it;
-
-                for (it = dlist->begin(); it != dlist->end(); ++it) {
-                    cli->sendMsg(ResponseCode::TetherDnsFwdTgtListResult, inet_ntoa(*it), false);
-                }
+            /* else if (!strcmp(argv[2], "list")) handled above */
             } else {
                 cli->sendMsg(ResponseCode::CommandParameterError,
                              "Unknown tether interface operation", false);
@@ -831,11 +730,17 @@ CommandListener::SoftapCmd::SoftapCmd() :
 
 int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
                                         int argc, char **argv) {
-    int rc = 0, flag = 0;
+    int rc = ResponseCode::SoftapStatusResult;
+    int flag = 0;
     char *retbuf = NULL;
 
+    if (sSoftapCtrl == NULL) {
+      cli->sendMsg(ResponseCode::ServiceStartFailed, "SoftAP is not available", false);
+      return -1;
+    }
     if (argc < 2) {
-        cli->sendMsg(ResponseCode::CommandSyntaxError, "Softap Missing argument", false);
+        cli->sendMsg(ResponseCode::CommandSyntaxError,
+                     "Missing argument in a SoftAP command", false);
         return 0;
     }
 
@@ -845,31 +750,23 @@ int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
         rc = sSoftapCtrl->stopSoftap();
     } else if (!strcmp(argv[1], "fwreload")) {
         rc = sSoftapCtrl->fwReloadSoftap(argc, argv);
-    } else if (!strcmp(argv[1], "clients")) {
-        rc = sSoftapCtrl->clientsSoftap(&retbuf);
-        if (!rc) {
-            cli->sendMsg(ResponseCode::CommandOkay, retbuf, false);
-            free(retbuf);
-            return 0;
-        }
     } else if (!strcmp(argv[1], "status")) {
-        asprintf(&retbuf, "Softap service %s",
-                 (sSoftapCtrl->isSoftapStarted() ? "started" : "stopped"));
-        cli->sendMsg(ResponseCode::SoftapStatusResult, retbuf, false);
+        asprintf(&retbuf, "Softap service %s running",
+                 (sSoftapCtrl->isSoftapStarted() ? "is" : "is not"));
+        cli->sendMsg(rc, retbuf, false);
         free(retbuf);
         return 0;
     } else if (!strcmp(argv[1], "set")) {
         rc = sSoftapCtrl->setSoftap(argc, argv);
     } else {
-        cli->sendMsg(ResponseCode::CommandSyntaxError, "Softap Unknown cmd", false);
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Unrecognized SoftAP command", false);
         return 0;
     }
 
-    if (!rc) {
-        cli->sendMsg(ResponseCode::CommandOkay, "Softap operation succeeded", false);
-    } else {
-        cli->sendMsg(ResponseCode::OperationFailed, "Softap operation failed", true);
-    }
+    if (rc >= 400 && rc < 600)
+      cli->sendMsg(rc, "SoftAP command has failed", false);
+    else
+      cli->sendMsg(rc, "Ok", false);
 
     return 0;
 }
@@ -895,9 +792,10 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
                     "Wrong number of arguments to resolver setdefaultif", false);
             return 0;
         }
-    } else if (!strcmp(argv[1], "setifdns")) { // "resolver setifdns <iface> <dns1> <dns2> ..."
-        if (argc >= 4) {
-            rc = sResolverCtrl->setInterfaceDnsServers(argv[2], &argv[3], argc - 3);
+    } else if (!strcmp(argv[1], "setifdns")) {
+        // "resolver setifdns <iface> <domains> <dns1> <dns2> ..."
+        if (argc >= 5) {
+            rc = sResolverCtrl->setInterfaceDnsServers(argv[2], argv[3], &argv[4], argc - 4);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver setifdns", false);
@@ -929,6 +827,22 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
                     "Wrong number of arguments to resolver setdefaultif", false);
             return 0;
         }
+    } else if (!strcmp(argv[1], "setifaceforpid")) { // resolver setifaceforpid <iface> <pid>
+        if (argc == 4) {
+            rc = sResolverCtrl->setDnsInterfaceForPid(argv[2], atoi(argv[3]));
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Wrong number of arguments to resolver setifaceforpid", false);
+            return 0;
+        }
+    } else if (!strcmp(argv[1], "clearifaceforpid")) { // resolver clearifaceforpid <pid>
+        if (argc == 3) {
+            rc = sResolverCtrl->clearDnsInterfaceForPid(atoi(argv[2]));
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Wrong number of arguments to resolver clearifaceforpid", false);
+            return 0;
+        }
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError,"Resolver unknown command", false);
         return 0;
@@ -940,47 +854,6 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
         cli->sendMsg(ResponseCode::OperationFailed, "Resolver command failed", true);
     }
 
-    return 0;
-}
-
-int CommandListener::readInterfaceCounters(const char *iface, unsigned long *rx, unsigned long *tx) {
-    FILE *fp = fopen("/proc/net/dev", "r");
-    if (!fp) {
-        ALOGE("Failed to open /proc/net/dev (%s)", strerror(errno));
-        return -1;
-    }
-
-    char buffer[512];
-
-    fgets(buffer, sizeof(buffer), fp); // Header 1
-    fgets(buffer, sizeof(buffer), fp); // Header 2
-    while(fgets(buffer, sizeof(buffer), fp)) {
-        buffer[strlen(buffer)-1] = '\0';
-
-        char name[31];
-        unsigned long d;
-        sscanf(buffer, "%30s %lu %lu %lu %lu %lu %lu %lu %lu %lu",
-                name, rx, &d, &d, &d, &d, &d, &d, &d, tx);
-        char *rxString = strchr(name, ':');
-        *rxString = '\0';
-        rxString++;
-        // when the rx count gets too big it changes from "name: 999" to "name:1000"
-        // and the sscanf munge the two together.  Detect that and fix
-        // note that all the %lu will be off by one and the real tx value will be in d
-        if (*rxString != '\0') {
-            *tx = d;
-            sscanf(rxString, "%20lu", rx);
-        }
-        if (strcmp(name, iface)) {
-            continue;
-        }
-        fclose(fp);
-        return 0;
-    }
-
-    fclose(fp);
-    *rx = 0;
-    *tx = 0;
     return 0;
 }
 
@@ -1445,5 +1318,46 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
     }
 
     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown command", false);
+    return 0;
+}
+
+CommandListener::ClatdCmd::ClatdCmd() : NetdCommand("clatd") {
+}
+
+int CommandListener::ClatdCmd::runCommand(SocketClient *cli, int argc,
+                                                            char **argv) {
+    int rc = 0;
+    if (argc < 2) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+        return 0;
+    }
+
+    if(!strcmp(argv[1], "stop")) {
+        rc = sClatdCtrl->stopClatd();
+    } else if (!strcmp(argv[1], "status")) {
+        char *tmp = NULL;
+
+        asprintf(&tmp, "Clatd status: %s", (sClatdCtrl->isClatdStarted() ?
+                                                        "started" : "stopped"));
+        cli->sendMsg(ResponseCode::ClatdStatusResult, tmp, false);
+        free(tmp);
+        return 0;
+    } else if(!strcmp(argv[1], "start")) {
+        if (argc < 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+            return 0;
+        }
+        rc = sClatdCtrl->startClatd(argv[2]);
+    } else {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown clatd cmd", false);
+        return 0;
+    }
+
+    if (!rc) {
+        cli->sendMsg(ResponseCode::CommandOkay, "Clatd operation succeeded", false);
+    } else {
+        cli->sendMsg(ResponseCode::OperationFailed, "Clatd operation failed", false);
+    }
+
     return 0;
 }
