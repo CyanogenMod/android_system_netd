@@ -39,5 +39,7 @@ protected:
     void notifyInterfaceLinkChanged(const char *name, bool isUp);
     void notifyQuotaLimitReached(const char *name, const char *iface);
     void notifyInterfaceClassActivity(const char *name, bool isActive);
+    void notifyAddressChanged(int action, const char *addr, const char *iface,
+                              const char *flags, const char *scope);
 };
 #endif
