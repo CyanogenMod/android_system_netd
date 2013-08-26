@@ -119,10 +119,6 @@ const char *BandwidthController::IPT_FLUSH_COMMANDS[] = {
     "-F bw_penalty_box",
     "-F bw_costly_shared",
 
-    /* Just a couple that are the most common. */
-    "-F bw_costly_rmnet0",
-    "-F bw_costly_wlan0",
-
     "-t raw -F bw_raw_PREROUTING",
     "-t mangle -F bw_mangle_POSTROUTING",
 };
@@ -132,10 +128,6 @@ const char *BandwidthController::IPT_CLEANUP_COMMANDS[] = {
     "-X bw_happy_box",
     "-X bw_penalty_box",
     "-X bw_costly_shared",
-
-    /* Just a couple that are the most common. */
-    "-X bw_costly_rmnet0",
-    "-X bw_costly_wlan0",
 };
 
 const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
@@ -231,15 +223,24 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptJumpOp jumpHandling,
     return res;
 }
 
-int BandwidthController::setupIptablesHooks(void) {
+void BandwidthController::flushCleanTables(bool doClean) {
+    /* Flush and remove the bw_costly_<iface> tables */
+    flushExistingCostlyTables(doClean);
 
     /* Some of the initialCommands are allowed to fail */
     runCommands(sizeof(IPT_FLUSH_COMMANDS) / sizeof(char*),
             IPT_FLUSH_COMMANDS, RunCmdFailureOk);
 
-    runCommands(sizeof(IPT_CLEANUP_COMMANDS) / sizeof(char*),
-            IPT_CLEANUP_COMMANDS, RunCmdFailureOk);
+    if (doClean) {
+        runCommands(sizeof(IPT_CLEANUP_COMMANDS) / sizeof(char*),
+                IPT_CLEANUP_COMMANDS, RunCmdFailureOk);
+    }
+}
 
+int BandwidthController::setupIptablesHooks(void) {
+
+    /* flush+clean is allowed to fail */
+    flushCleanTables(true);
     runCommands(sizeof(IPT_SETUP_COMMANDS) / sizeof(char*),
             IPT_SETUP_COMMANDS, RunCmdFailureBad);
 
@@ -265,10 +266,8 @@ int BandwidthController::enableBandwidthControl(bool force) {
     globalAlertTetherCount = 0;
     sharedQuotaBytes = sharedAlertBytes = 0;
 
-    res = runCommands(sizeof(IPT_FLUSH_COMMANDS) / sizeof(char*),
-            IPT_FLUSH_COMMANDS, RunCmdFailureOk);
-
-    res |= runCommands(sizeof(IPT_BASIC_ACCOUNTING_COMMANDS) / sizeof(char*),
+    flushCleanTables(false);
+    res = runCommands(sizeof(IPT_BASIC_ACCOUNTING_COMMANDS) / sizeof(char*),
             IPT_BASIC_ACCOUNTING_COMMANDS, RunCmdFailureBad);
 
     return res;
@@ -276,8 +275,8 @@ int BandwidthController::enableBandwidthControl(bool force) {
 }
 
 int BandwidthController::disableBandwidthControl(void) {
-    runCommands(sizeof(IPT_FLUSH_COMMANDS) / sizeof(char*),
-            IPT_FLUSH_COMMANDS, RunCmdFailureOk);
+
+    flushCleanTables(false);
     return 0;
 }
 
@@ -1220,4 +1219,52 @@ int BandwidthController::getTetherStats(SocketClient *cli, TetherStats &stats, s
 
     /* Currently NatController doesn't do ipv6 tethering, so we are done. */
     return res;
+}
+
+void BandwidthController::flushExistingCostlyTables(bool doClean) {
+    int res;
+    std::string fullCmd;
+    FILE *iptOutput;
+    const char *cmd;
+
+    /* Only lookup ip4 table names as ip6 will have the same tables ... */
+    fullCmd = IPTABLES_PATH;
+    fullCmd += " -S";
+    iptOutput = popen(fullCmd.c_str(), "r");
+    if (!iptOutput) {
+            ALOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
+        return;
+    }
+    /* ... then flush/clean both ip4 and ip6 iptables. */
+    parseAndFlushCostlyTables(iptOutput, doClean);
+    pclose(iptOutput);
+}
+
+void BandwidthController::parseAndFlushCostlyTables(FILE *fp, bool doRemove) {
+    int res;
+    char lineBuffer[MAX_IPT_OUTPUT_LINE_LEN];
+    char costlyIfaceName[MAX_IPT_OUTPUT_LINE_LEN];
+    char cmd[MAX_CMD_LEN];
+    char *buffPtr;
+
+    while (NULL != (buffPtr = fgets(lineBuffer, MAX_IPT_OUTPUT_LINE_LEN, fp))) {
+        costlyIfaceName[0] = '\0';   /* So that debugging output always works */
+        res = sscanf(buffPtr, "-N bw_costly_%s", costlyIfaceName);
+        ALOGV("parse res=%d costly=<%s> orig line=<%s>", res,
+            costlyIfaceName, buffPtr);
+        if (res != 1) {
+            continue;
+        }
+        /* Exclusions: "shared" is not an ifacename */
+        if (!strcmp(costlyIfaceName, "shared")) {
+            continue;
+        }
+
+        snprintf(cmd, sizeof(cmd), "-F bw_costly_%s", costlyIfaceName);
+        runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
+        if (doRemove) {
+            snprintf(cmd, sizeof(cmd), "-X bw_costly_%s", costlyIfaceName);
+            runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
+        }
+    }
 }

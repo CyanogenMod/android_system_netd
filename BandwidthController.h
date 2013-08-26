@@ -164,6 +164,22 @@ protected:
     static int parseForwardChainStats(SocketClient *cli, const TetherStats filter, FILE *fp,
                                       std::string &extraProcessingInfo);
 
+    /*
+     * Attempt to find the bw_costly_* tables that need flushing,
+     * and flush them.
+     * If doClean then remove the tables also.
+     * Deals with both ip4 and ip6 tables.
+     */
+    void flushExistingCostlyTables(bool doClean);
+    static void parseAndFlushCostlyTables(FILE *fp, bool doRemove);
+
+    /*
+     * Attempt to flush our tables.
+     * If doClean then remove them also.
+     * Deals with both ip4 and ip6 tables.
+     */
+    void flushCleanTables(bool doClean);
+
     /*------------------*/
 
     std::list<std::string> sharedQuotaIfaces;
