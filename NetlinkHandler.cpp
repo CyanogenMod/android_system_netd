@@ -52,7 +52,7 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
         return;
     }
 
-    if (!strcmp(subsys, "interface")) {
+    if (!strcmp(subsys, "net")) {
         int action = evt->getAction();
         const char *iface = evt->findParam("INTERFACE");
 
@@ -67,16 +67,14 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
             notifyInterfaceLinkChanged(iface, true);
         } else if (action == evt->NlActionLinkDown) {
             notifyInterfaceLinkChanged(iface, false);
-        }
-
-    } else if (!strcmp(subsys, "address")) {
-        const char *address = evt->findParam("ADDRESS");
-        const char *iface = evt->findParam("IFACE");
-        const char *flags = evt->findParam("FLAGS");
-        const char *scope = evt->findParam("SCOPE");
-
-        if (iface && flags && scope) {
-            notifyAddressChanged(evt->getAction(), address, iface, flags, scope);
+        } else if (action == evt->NlActionAddressUpdated ||
+                   action == evt->NlActionAddressRemoved) {
+            const char *address = evt->findParam("ADDRESS");
+            const char *flags = evt->findParam("FLAGS");
+            const char *scope = evt->findParam("SCOPE");
+            if (iface && flags && scope) {
+                notifyAddressChanged(action, address, iface, flags, scope);
+            }
         }
 
     } else if (!strcmp(subsys, "qlog")) {
@@ -161,8 +159,8 @@ void NetlinkHandler::notifyAddressChanged(int action, const char *addr,
                                           const char *scope) {
     char msg[255];
     snprintf(msg, sizeof(msg), "Address %s %s %s %s %s",
-             (action == NetlinkEvent::NlActionAdd) ? "updated" : "removed",
-             addr, iface, flags, scope);
+             (action == NetlinkEvent::NlActionAddressUpdated) ?
+             "updated" : "removed", addr, iface, flags, scope);
 
     mNm->getBroadcaster()->sendBroadcast(ResponseCode::InterfaceAddressChange,
             msg, false);
