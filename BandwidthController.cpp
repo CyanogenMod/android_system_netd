@@ -1098,7 +1098,6 @@ int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherS
     TetherStats stats;
     char *buffPtr;
     int64_t packets, bytes;
-    int statsFound = 0;
 
     bool filterPair = filter.intIface[0] && filter.extIface[0];
 
@@ -1174,11 +1173,10 @@ int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherS
                 stats = filter;
             }
             free(msg);
-            statsFound++;
         }
     }
-    /* We found some stats, and the last one isn't a partial stats. */
-    if (statsFound && (stats.rxBytes == -1 || stats.txBytes == -1)) {
+    /* Successful if the last stats entry wasn't partial. */
+    if ((stats.rxBytes == -1) == (stats.txBytes == -1)) {
         cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
         return 0;
     }
