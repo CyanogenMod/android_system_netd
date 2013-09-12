@@ -87,7 +87,8 @@ public:
      * For all pairs, stats should have ifaceIn=ifaceOut="".
      * Sends out to the cli the single stat (TetheringStatsReluts) or a list of stats
      * (TetheringStatsListResult+CommandOkay).
-     * Error is to be handled on the outside
+     * Error is to be handled on the outside.
+     * It results in an error if invoked and no tethering counter rules exist.
      */
     int getTetherStats(SocketClient *cli, TetherStats &stats, std::string &extraProcessingInfo);
 

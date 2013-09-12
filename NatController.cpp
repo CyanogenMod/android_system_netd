@@ -97,6 +97,7 @@ int NatController::setupIptablesHooks() {
                 return -1;
         }
     }
+    ifacePairList.clear();
 
     return 0;
 }
@@ -253,27 +254,32 @@ int NatController::enableNat(const int argc, char **argv) {
     return 0;
 }
 
+bool NatController::checkTetherCountingRuleExist(const char *pair_name) {
+    std::list<std::string>::iterator it;
+
+    for (it = ifacePairList.begin(); it != ifacePairList.end(); it++) {
+        if (*it == pair_name) {
+            /* We already have this counter */
+            return true;
+        }
+    }
+    return false;
+}
+
 int NatController::setTetherCountingRules(bool add, const char *intIface, const char *extIface) {
 
     /* We only ever add tethering quota rules so that they stick. */
     if (!add) {
         return 0;
     }
-    char *quota_name, *proc_path;
+    char *pair_name, *proc_path;
     int quota_fd;
-    asprintf(&quota_name, "%s_%s", intIface, extIface);
+    asprintf(&pair_name, "%s_%s", intIface, extIface);
 
-    asprintf(&proc_path, "/proc/net/xt_quota/%s", quota_name);
-    quota_fd = open(proc_path, O_RDONLY);
-    if (quota_fd >= 0) {
-        /* quota for iface pair already exists */
-        free(proc_path);
-        free(quota_name);
+    if (checkTetherCountingRuleExist(pair_name)) {
+        free(pair_name);
         return 0;
     }
-    close(quota_fd);
-    free(proc_path);
-
     const char *cmd2b[] = {
             IPTABLES_PATH,
             "-A",
@@ -282,32 +288,22 @@ int NatController::setTetherCountingRules(bool add, const char *intIface, const 
             intIface,
             "-o",
             extIface,
-            "-m",
-            "quota2",
-            "--name",
-            quota_name,
-            "--grow",
             "-j",
           "RETURN"
     };
 
     if (runCmd(ARRAY_SIZE(cmd2b), cmd2b) && add) {
-        free(quota_name);
+        free(pair_name);
         return -1;
     }
-    free(quota_name);
+    ifacePairList.push_front(pair_name);
+    free(pair_name);
 
-    asprintf(&quota_name, "%s_%s", extIface, intIface);
-    asprintf(&proc_path, "/proc/net/xt_quota/%s", quota_name);
-    quota_fd = open(proc_path, O_RDONLY);
-    if (quota_fd >= 0) {
-        /* quota for iface pair already exists */
-        free(proc_path);
-        free(quota_name);
+    asprintf(&pair_name, "%s_%s", extIface, intIface);
+    if (checkTetherCountingRuleExist(pair_name)) {
+        free(pair_name);
         return 0;
     }
-    close(quota_fd);
-    free(proc_path);
 
     const char *cmd3b[] = {
             IPTABLES_PATH,
@@ -317,21 +313,17 @@ int NatController::setTetherCountingRules(bool add, const char *intIface, const 
             extIface,
             "-o",
             intIface,
-            "-m",
-            "quota2",
-            "--name",
-            quota_name,
-            "--grow",
             "-j",
             "RETURN"
     };
 
     if (runCmd(ARRAY_SIZE(cmd3b), cmd3b) && add) {
         // unwind what's been done, but don't care about success - what more could we do?
-        free(quota_name);
+        free(pair_name);
         return -1;
     }
-    free(quota_name);
+    ifacePairList.push_front(pair_name);
+    free(pair_name);
     return 0;
 }
 

@@ -1355,6 +1355,11 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         }
         tetherStats.intIface = argc > 2 ? argv[2] : "";
         tetherStats.extIface = argc > 3 ? argv[3] : "";
+        // No filtering requested and there are no interface pairs to lookup.
+        if (argc <= 2 && sNatCtrl->ifacePairList.empty()) {
+            cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
+            return 0;
+        }
         int rc = sBandwidthCtrl->getTetherStats(cli, tetherStats, extraProcessingInfo);
         if (rc) {
                 extraProcessingInfo.insert(0, "Failed to get tethering stats.\n");

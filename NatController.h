@@ -18,6 +18,7 @@
 #define _NAT_CONTROLLER_H
 
 #include <linux/in.h>
+#include <list>
 
 #include "SecondaryTableController.h"
 
@@ -35,9 +36,14 @@ public:
     static const char* LOCAL_NAT_POSTROUTING;
     static const char* LOCAL_TETHER_COUNTERS_CHAIN;
 
+    // List of strings of interface pairs.
+    std::list<std::string> ifacePairList;
+
 private:
     int natCount;
     SecondaryTableController *secondaryTableCtrl;
+
+    bool checkTetherCountingRuleExist(const char *pair_name);
 
     int setDefaults();
     int runCmd(int argc, const char **argv);

@@ -1082,10 +1082,12 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
  * Parse the ptks and bytes out of:
  *   Chain natctrl_tether_counters (4 references)
  *       pkts      bytes target     prot opt in     out     source               destination
- *         26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0            counter wlan0_rmnet0: 0 bytes
- *         27     2002 RETURN     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0            counter rmnet0_wlan0: 0 bytes
- *       1040   107471 RETURN     all  --  bt-pan rmnet0  0.0.0.0/0            0.0.0.0/0            counter bt-pan_rmnet0: 0 bytes
- *       1450  1708806 RETURN     all  --  rmnet0 bt-pan  0.0.0.0/0            0.0.0.0/0            counter rmnet0_bt-pan: 0 bytes
+ *         26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0
+ *         27     2002 RETURN     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0
+ *       1040   107471 RETURN     all  --  bt-pan rmnet0  0.0.0.0/0            0.0.0.0/0
+ *       1450  1708806 RETURN     all  --  rmnet0 bt-pan  0.0.0.0/0            0.0.0.0/0
+ * It results in an error if invoked and no tethering counter rules exist. The constraint
+ * helps detect complete parsing failure.
  */
 int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherStats filter,
                                                 FILE *fp, std::string &extraProcessingInfo) {
@@ -1098,6 +1100,7 @@ int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherS
     TetherStats stats;
     char *buffPtr;
     int64_t packets, bytes;
+    int statsFound = 0;
 
     bool filterPair = filter.intIface[0] && filter.extIface[0];
 
@@ -1173,14 +1176,18 @@ int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherS
                 stats = filter;
             }
             free(msg);
+            statsFound++;
         }
     }
-    /* Successful if the last stats entry wasn't partial. */
-    if ((stats.rxBytes == -1) == (stats.txBytes == -1)) {
-        cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
-        return 0;
+
+    /* It is always an error to find only one side of the stats. */
+    /* It is an error to find nothing when not filtering. */
+    if (((stats.rxBytes == -1) != (stats.txBytes == -1)) ||
+        (!statsFound && !filterPair)) {
+        return -1;
     }
-    return -1;
+    cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
+    return 0;
 }
 
 char *BandwidthController::TetherStats::getStatsLine(void) const {
