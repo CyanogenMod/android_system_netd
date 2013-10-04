@@ -129,15 +129,17 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     }
 
     char tmp[IF_NAMESIZE + 1];
+    int mark = mMark;
     if (mIface == NULL) {
         //fall back to the per uid interface if no per pid interface exists
         if(!_resolv_get_pids_associated_interface(mPid, tmp, sizeof(tmp)))
-            _resolv_get_uids_associated_interface(mUid, tmp, sizeof(tmp));
+            if(!_resolv_get_uids_associated_interface(mUid, tmp, sizeof(tmp)))
+                mark = -1; // if we don't have a targeted iface don't use a mark
     }
 
     struct addrinfo* result = NULL;
     uint32_t rv = android_getaddrinfoforiface(mHost, mService, mHints, mIface ? mIface : tmp,
-            mMark, &result);
+            mark, &result);
     if (rv) {
         // getaddrinfo failed
         mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, &rv, sizeof(rv));
@@ -467,16 +469,18 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     }
 
     char tmp[IF_NAMESIZE + 1];
+    int mark = mMark;
     if (mIface == NULL) {
         //fall back to the per uid interface if no per pid interface exists
         if(!_resolv_get_pids_associated_interface(mPid, tmp, sizeof(tmp)))
-            _resolv_get_uids_associated_interface(mUid, tmp, sizeof(tmp));
+            if(!_resolv_get_uids_associated_interface(mUid, tmp, sizeof(tmp)))
+                mark = -1;
     }
     struct hostent* hp;
 
     // NOTE gethostbyaddr should take a void* but bionic thinks it should be char*
     hp = android_gethostbyaddrforiface((char*)mAddress, mAddressLen, mAddressFamily,
-            mIface ? mIface : tmp, mMark);
+            mIface ? mIface : tmp, mark);
 
     if (DBG) {
         ALOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %d\n",
