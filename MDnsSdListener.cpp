@@ -26,6 +26,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <string.h>
+#include <resolv.h>
 
 #define LOG_TAG "MDnsDS"
 #define DBG 1
@@ -328,48 +329,10 @@ void MDnsSdListenerGetAddrInfoCallback(DNSServiceRef sdRef, DNSServiceFlags flag
 
 void MDnsSdListener::Handler::setHostname(SocketClient *cli, int requestId,
         const char *hostname) {
-    if (VDBG) ALOGD("setHostname(%d, %s)", requestId, hostname);
-    Context *context = new Context(requestId, mListener);
-    DNSServiceRef *ref = mMonitor->allocateServiceRef(requestId, context);
-    if (ref == NULL) {
-        ALOGE("request Id %d already in use during setHostname call", requestId);
-        cli->sendMsg(ResponseCode::CommandParameterError,
-                "RequestId already in use during setHostname call", false);
-        return;
-    }
-    DNSServiceFlags nativeFlags = 0;
-    DNSServiceErrorType result = DNSSetHostname(ref, nativeFlags, hostname,
-            &MDnsSdListenerSetHostnameCallback, context);
-    if (result != kDNSServiceErr_NoError) {
-        ALOGE("setHostname request %d got an error from DNSSetHostname %d", requestId, result);
-        mMonitor->freeServiceRef(requestId);
-        cli->sendMsg(ResponseCode::CommandParameterError,
-                "setHostname got an error from DNSSetHostname", false);
-        return;
-    }
-    mMonitor->startMonitoring(requestId);
-    if (VDBG) ALOGD("setHostname successful");
-    cli->sendMsg(ResponseCode::CommandOkay, "setHostname started", false);
-    return;
 }
 
 void MDnsSdListenerSetHostnameCallback(DNSServiceRef sdRef, DNSServiceFlags flags,
         DNSServiceErrorType errorCode, const char *hostname, void *inContext) {
-    MDnsSdListener::Context *context = reinterpret_cast<MDnsSdListener::Context *>(inContext);
-    char *msg;
-    int refNumber = context->mRefNumber;
-    if (errorCode != kDNSServiceErr_NoError) {
-        asprintf(&msg, "%d %d", refNumber, errorCode);
-        context->mListener->sendBroadcast(ResponseCode::ServiceSetHostnameFailed, msg, false);
-        if (DBG) ALOGE("setHostname failure for %d, error= %d", refNumber, errorCode);
-    } else {
-        char *quotedHostname = SocketClient::quoteArg(hostname);
-        asprintf(&msg, "%d %s", refNumber, quotedHostname);
-        free(quotedHostname);
-        context->mListener->sendBroadcast(ResponseCode::ServiceSetHostnameSuccess, msg, false);
-        if (VDBG) ALOGD("setHostname succeeded for %d.  Set to %s", refNumber, hostname);
-    }
-    free(msg);
 }
 
 
@@ -415,7 +378,7 @@ int MDnsSdListener::Handler::runCommand(SocketClient *cli,
     } else if (strcmp(cmd, "stop-discover") == 0) {
         stop(cli, argc, argv, "discover");
     } else if (strcmp(cmd, "register") == 0) {
-        if (argc != 6) {
+        if (argc != 8) {
             cli->sendMsg(ResponseCode::CommandParameterError,
                     "Invalid number of arguments to mdnssd register", false);
             return 0;
@@ -427,8 +390,19 @@ int MDnsSdListener::Handler::runCommand(SocketClient *cli,
         char *interfaceName = NULL; // will use all
         char *domain = NULL;        // will use default
         char *host = NULL;          // will use default hostname
-        int textLen = 0;
-        void *textRecord = NULL;
+        int textLen = atoi(argv[6]);
+        void *textRecord;
+        u_char textRecordStorage[2048];
+        if (textLen != 0) {
+            textRecord = textRecordStorage;
+            int len = b64_pton(argv[7], textRecordStorage, sizeof(textRecordStorage));
+            if (len == -1)
+                return 0;
+            textLen = len;
+        }
+        else {
+            textRecord = NULL;
+        }
 
         serviceRegister(cli, requestId, interfaceName, serviceName,
                 serviceType, domain, host, port, textLen, textRecord);
