@@ -76,6 +76,12 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
             if (iface && flags && scope) {
                 notifyAddressChanged(action, address, iface, flags, scope);
             }
+        } else if (action == evt->NlActionRdnss) {
+            const char *lifetime = evt->findParam("LIFETIME");
+            const char *servers = evt->findParam("SERVERS");
+            if (lifetime && servers) {
+                notifyInterfaceDnsServers(iface, lifetime, servers);
+            }
         }
 
     } else if (!strcmp(subsys, "qlog")) {
@@ -150,4 +156,11 @@ void NetlinkHandler::notifyAddressChanged(int action, const char *addr,
            "Address %s %s %s %s %s",
            (action == NetlinkEvent::NlActionAddressUpdated) ?
            "updated" : "removed", addr, iface, flags, scope);
+}
+
+void NetlinkHandler::notifyInterfaceDnsServers(const char *iface,
+                                               const char *lifetime,
+                                               const char *servers) {
+    notify(ResponseCode::InterfaceDnsInfo, "DnsInfo servers %s %s %s",
+           iface, lifetime, servers);
 }
