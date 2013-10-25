@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -101,67 +102,52 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
     }
 }
 
-void NetlinkHandler::notifyInterfaceAdded(const char *name) {
-    char msg[255];
-    snprintf(msg, sizeof(msg), "Iface added %s", name);
+void NetlinkHandler::notify(int code, const char *format, ...) {
+    char *msg;
+    va_list args;
+    va_start(args, format);
+    if (vasprintf(&msg, format, args) >= 0) {
+        mNm->getBroadcaster()->sendBroadcast(code, msg, false);
+        free(msg);
+    } else {
+        SLOGE("Failed to send notification: vasprintf: %s", strerror(errno));
+    }
+    va_end(args);
+}
 
-    mNm->getBroadcaster()->sendBroadcast(ResponseCode::InterfaceChange,
-            msg, false);
+void NetlinkHandler::notifyInterfaceAdded(const char *name) {
+    notify(ResponseCode::InterfaceChange, "Iface added %s", name);
 }
 
 void NetlinkHandler::notifyInterfaceRemoved(const char *name) {
-    char msg[255];
-    snprintf(msg, sizeof(msg), "Iface removed %s", name);
-
-    mNm->getBroadcaster()->sendBroadcast(ResponseCode::InterfaceChange,
-            msg, false);
+    notify(ResponseCode::InterfaceChange, "Iface removed %s", name);
 }
 
 void NetlinkHandler::notifyInterfaceChanged(const char *name, bool isUp) {
-    char msg[255];
-    snprintf(msg, sizeof(msg), "Iface changed %s %s", name,
-             (isUp ? "up" : "down"));
-
-    mNm->getBroadcaster()->sendBroadcast(ResponseCode::InterfaceChange,
-            msg, false);
+    notify(ResponseCode::InterfaceChange,
+           "Iface changed %s %s", name, (isUp ? "up" : "down"));
 }
 
 void NetlinkHandler::notifyInterfaceLinkChanged(const char *name, bool isUp) {
-    char msg[255];
-    snprintf(msg, sizeof(msg), "Iface linkstate %s %s", name,
-             (isUp ? "up" : "down"));
-
-    mNm->getBroadcaster()->sendBroadcast(ResponseCode::InterfaceChange,
-            msg, false);
+    notify(ResponseCode::InterfaceChange,
+           "Iface linkstate %s %s", name, (isUp ? "up" : "down"));
 }
 
 void NetlinkHandler::notifyQuotaLimitReached(const char *name, const char *iface) {
-    char msg[255];
-    snprintf(msg, sizeof(msg), "limit alert %s %s", name, iface);
-
-    mNm->getBroadcaster()->sendBroadcast(ResponseCode::BandwidthControl,
-            msg, false);
+    notify(ResponseCode::BandwidthControl, "limit alert %s %s", name, iface);
 }
 
 void NetlinkHandler::notifyInterfaceClassActivity(const char *name,
                                                   bool isActive) {
-    char msg[255];
-
-    snprintf(msg, sizeof(msg), "IfaceClass %s %s",
-             isActive ? "active" : "idle", name);
-    ALOGV("Broadcasting interface activity msg: %s", msg);
-    mNm->getBroadcaster()->sendBroadcast(
-        ResponseCode::InterfaceClassActivity, msg, false);
+    notify(ResponseCode::InterfaceClassActivity,
+           "IfaceClass %s %s", isActive ? "active" : "idle", name);
 }
 
 void NetlinkHandler::notifyAddressChanged(int action, const char *addr,
                                           const char *iface, const char *flags,
                                           const char *scope) {
-    char msg[255];
-    snprintf(msg, sizeof(msg), "Address %s %s %s %s %s",
-             (action == NetlinkEvent::NlActionAddressUpdated) ?
-             "updated" : "removed", addr, iface, flags, scope);
-
-    mNm->getBroadcaster()->sendBroadcast(ResponseCode::InterfaceAddressChange,
-            msg, false);
+    notify(ResponseCode::InterfaceAddressChange,
+           "Address %s %s %s %s %s",
+           (action == NetlinkEvent::NlActionAddressUpdated) ?
+           "updated" : "removed", addr, iface, flags, scope);
 }
