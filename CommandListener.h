@@ -34,6 +34,7 @@
 #include "SecondaryTableController.h"
 #include "FirewallController.h"
 #include "ClatdController.h"
+#include "UidMarkMap.h"
 #include "RouteController.h"
 
 class CommandListener : public FrameworkListener {
@@ -51,7 +52,7 @@ class CommandListener : public FrameworkListener {
     static RouteController *sRouteCtrl;
 
 public:
-    CommandListener();
+    CommandListener(UidMarkMap *map);
     virtual ~CommandListener() {}
 
 private:

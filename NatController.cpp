@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// #define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 
 #include <stdlib.h>
 #include <errno.h>
@@ -37,6 +37,7 @@
 
 const char* NatController::LOCAL_FORWARD = "natctrl_FORWARD";
 const char* NatController::LOCAL_NAT_POSTROUTING = "natctrl_nat_POSTROUTING";
+const char* NatController::LOCAL_TETHER_COUNTERS_CHAIN = "natctrl_tether_counters";
 
 NatController::NatController(SecondaryTableController *ctrl) {
     secondaryTableCtrl = ctrl;
@@ -55,20 +56,62 @@ int NatController::runCmd(int argc, const char **argv) {
     int res;
 
     res = android_fork_execvp(argc, (char **)argv, NULL, false, false);
-    ALOGV("runCmd() res=%d", res);
+
+#if !LOG_NDEBUG
+    std::string full_cmd = argv[0];
+    argc--; argv++;
+    /*
+     * HACK: Sometimes runCmd() is called with a ridcously large value (32)
+     * and it works because the argv[] contains a NULL after the last
+     * true argv. So here we use the NULL argv[] to terminate when the argc
+     * is horribly wrong, and argc for the normal cases.
+     */
+    for (; argc && argv[0]; argc--, argv++) {
+        full_cmd += " ";
+        full_cmd += argv[0];
+    }
+    ALOGV("runCmd(%s) res=%d", full_cmd.c_str(), res);
+#endif
     return res;
 }
 
 int NatController::setupIptablesHooks() {
-    setDefaults();
+    int res;
+    res = setDefaults();
+    if (res < 0) {
+        return res;
+    }
+
+    struct CommandsAndArgs defaultCommands[] = {
+        /*
+         * Chain for tethering counters.
+         * This chain is reached via --goto, and then RETURNS.
+         */
+        {{IPTABLES_PATH, "-F", LOCAL_TETHER_COUNTERS_CHAIN,}, 0},
+        {{IPTABLES_PATH, "-X", LOCAL_TETHER_COUNTERS_CHAIN,}, 0},
+        {{IPTABLES_PATH, "-N", LOCAL_TETHER_COUNTERS_CHAIN,}, 1},
+    };
+    for (unsigned int cmdNum = 0; cmdNum < ARRAY_SIZE(defaultCommands); cmdNum++) {
+        if (runCmd(ARRAY_SIZE(defaultCommands[cmdNum].cmd), defaultCommands[cmdNum].cmd) &&
+            defaultCommands[cmdNum].checkRes) {
+                return -1;
+        }
+    }
+
     return 0;
 }
 
 int NatController::setDefaults() {
+    /*
+     * The following only works because:
+     *  - the defaultsCommands[].cmd array is padded with NULL, and
+     *  - the 1st argc of runCmd() will just be the max for the CommandsAndArgs[].cmd, and
+     *  - internally it will be memcopied to an array and terminated with a NULL.
+     */
     struct CommandsAndArgs defaultCommands[] = {
-        {{IPTABLES_PATH, "-F", "natctrl_FORWARD",}, 1},
-        {{IPTABLES_PATH, "-A", "natctrl_FORWARD", "-j", "DROP"}, 1},
-        {{IPTABLES_PATH, "-t", "nat", "-F", "natctrl_nat_POSTROUTING"}, 1},
+        {{IPTABLES_PATH, "-F", LOCAL_FORWARD,}, 1},
+        {{IPTABLES_PATH, "-A", LOCAL_FORWARD, "-j", "DROP"}, 1},
+        {{IPTABLES_PATH, "-t", "nat", "-F", LOCAL_NAT_POSTROUTING}, 1},
         {{IP_PATH, "rule", "flush"}, 0},
         {{IP_PATH, "-6", "rule", "flush"}, 0},
         {{IP_PATH, "rule", "add", "from", "all", "lookup", "default", "prio", "32767"}, 0},
@@ -154,9 +197,18 @@ int NatController::enableNat(const int argc, char **argv) {
     const char *extIface = argv[3];
     int tableNumber;
 
+    ALOGV("enableNat(intIface=<%s>, extIface=<%s>)",intIface, extIface);
+
     if (!checkInterface(intIface) || !checkInterface(extIface)) {
         ALOGE("Invalid interface specified");
         errno = ENODEV;
+        return -1;
+    }
+
+    /* Bug: b/9565268. "enableNat wlan0 wlan0". For now we fail until java-land is fixed */
+    if (!strcmp(intIface, extIface)) {
+        ALOGE("Duplicate interface specified: %s %s", intIface, extIface);
+        errno = EINVAL;
         return -1;
     }
 
@@ -179,7 +231,7 @@ int NatController::enableNat(const int argc, char **argv) {
                 "-t",
                 "nat",
                 "-A",
-                "natctrl_nat_POSTROUTING",
+                LOCAL_NAT_POSTROUTING,
                 "-o",
                 extIface,
                 "-j",
@@ -209,7 +261,7 @@ int NatController::enableNat(const int argc, char **argv) {
     const char *cmd1[] = {
             IPTABLES_PATH,
             "-D",
-            "natctrl_FORWARD",
+            LOCAL_FORWARD,
             "-j",
             "DROP"
     };
@@ -217,7 +269,7 @@ int NatController::enableNat(const int argc, char **argv) {
     const char *cmd2[] = {
             IPTABLES_PATH,
             "-A",
-            "natctrl_FORWARD",
+            LOCAL_FORWARD,
             "-j",
             "DROP"
     };
@@ -227,11 +279,93 @@ int NatController::enableNat(const int argc, char **argv) {
     return 0;
 }
 
-int NatController::setForwardRules(bool add, const char *intIface, const char * extIface) {
+int NatController::setTetherCountingRules(bool add, const char *intIface, const char *extIface) {
+
+    /* We only ever add tethering quota rules so that they stick. */
+    if (!add) {
+        return 0;
+    }
+    char *quota_name, *proc_path;
+    int quota_fd;
+    asprintf(&quota_name, "%s_%s", intIface, extIface);
+
+    asprintf(&proc_path, "/proc/net/xt_quota/%s", quota_name);
+    quota_fd = open(proc_path, O_RDONLY);
+    if (quota_fd >= 0) {
+        /* quota for iface pair already exists */
+        free(proc_path);
+        free(quota_name);
+        return 0;
+    }
+    close(quota_fd);
+    free(proc_path);
+
+    const char *cmd2b[] = {
+            IPTABLES_PATH,
+            "-A",
+            LOCAL_TETHER_COUNTERS_CHAIN,
+            "-i",
+            intIface,
+            "-o",
+            extIface,
+            "-m",
+            "quota2",
+            "--name",
+            quota_name,
+            "--grow",
+            "-j",
+          "RETURN"
+    };
+
+    if (runCmd(ARRAY_SIZE(cmd2b), cmd2b) && add) {
+        free(quota_name);
+        return -1;
+    }
+    free(quota_name);
+
+    asprintf(&quota_name, "%s_%s", extIface, intIface);
+    asprintf(&proc_path, "/proc/net/xt_quota/%s", quota_name);
+    quota_fd = open(proc_path, O_RDONLY);
+    if (quota_fd >= 0) {
+        /* quota for iface pair already exists */
+        free(proc_path);
+        free(quota_name);
+        return 0;
+    }
+    close(quota_fd);
+    free(proc_path);
+
+    const char *cmd3b[] = {
+            IPTABLES_PATH,
+            "-A",
+            LOCAL_TETHER_COUNTERS_CHAIN,
+            "-i",
+            extIface,
+            "-o",
+            intIface,
+            "-m",
+            "quota2",
+            "--name",
+            quota_name,
+            "--grow",
+            "-j",
+            "RETURN"
+    };
+
+    if (runCmd(ARRAY_SIZE(cmd3b), cmd3b) && add) {
+        // unwind what's been done, but don't care about success - what more could we do?
+        free(quota_name);
+        return -1;
+    }
+    free(quota_name);
+    return 0;
+}
+
+int NatController::setForwardRules(bool add, const char *intIface, const char *extIface) {
     const char *cmd1[] = {
             IPTABLES_PATH,
             add ? "-A" : "-D",
-            "natctrl_FORWARD",
+            LOCAL_FORWARD,
             "-i",
             extIface,
             "-o",
@@ -240,8 +374,8 @@ int NatController::setForwardRules(bool add, const char *intIface, const char * 
             "state",
             "--state",
             "ESTABLISHED,RELATED",
-            "-j",
-            "RETURN"
+            "-g",
+            LOCAL_TETHER_COUNTERS_CHAIN
     };
     int rc = 0;
 
@@ -252,7 +386,7 @@ int NatController::setForwardRules(bool add, const char *intIface, const char * 
     const char *cmd2[] = {
             IPTABLES_PATH,
             add ? "-A" : "-D",
-            "natctrl_FORWARD",
+            LOCAL_FORWARD,
             "-i",
             intIface,
             "-o",
@@ -268,13 +402,13 @@ int NatController::setForwardRules(bool add, const char *intIface, const char * 
     const char *cmd3[] = {
             IPTABLES_PATH,
             add ? "-A" : "-D",
-            "natctrl_FORWARD",
+            LOCAL_FORWARD,
             "-i",
             intIface,
             "-o",
             extIface,
-            "-j",
-            "RETURN"
+            "-g",
+            LOCAL_TETHER_COUNTERS_CHAIN
     };
 
     if (runCmd(ARRAY_SIZE(cmd2), cmd2) && add) {
@@ -285,6 +419,11 @@ int NatController::setForwardRules(bool add, const char *intIface, const char * 
 
     if (runCmd(ARRAY_SIZE(cmd3), cmd3) && add) {
         // unwind what's been done, but don't care about success - what more could we do?
+        rc = -1;
+        goto err_return;
+    }
+
+    if (setTetherCountingRules(add, intIface, extIface) && add) {
         rc = -1;
         goto err_return;
     }

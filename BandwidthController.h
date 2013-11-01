@@ -20,6 +20,8 @@
 #include <string>
 #include <utility>  // for pair
 
+#include <sysutils/SocketClient.h>
+
 class BandwidthController {
 public:
     class TetherStats {
@@ -27,22 +29,24 @@ public:
         TetherStats(void)
                 : rxBytes(-1), rxPackets(-1),
                     txBytes(-1), txPackets(-1) {};
-        TetherStats(std::string ifnIn, std::string ifnOut,
+        TetherStats(std::string intIfn, std::string extIfn,
                 int64_t rxB, int64_t rxP,
                 int64_t txB, int64_t txP)
-                        : ifaceIn(ifnIn), ifaceOut(ifnOut),
+                        : intIface(intIfn), extIface(extIfn),
                             rxBytes(rxB), rxPackets(rxP),
-                    txBytes(txB), txPackets(txP) {};
-        std::string ifaceIn;
-        std::string ifaceOut;
+                            txBytes(txB), txPackets(txP) {};
+        /* Internal interface. Same as NatController's notion. */
+        std::string intIface;
+        /* External interface. Same as NatController's notion. */
+        std::string extIface;
         int64_t rxBytes, rxPackets;
         int64_t txBytes, txPackets;
         /*
          * Allocates a new string representing this:
-         * ifaceIn ifaceOut rx_bytes rx_packets tx_bytes tx_packets
+         * intIface extIface rx_bytes rx_packets tx_bytes tx_packets
          * The caller is responsible for free()'ing the returned ptr.
          */
-        char *getStatsLine(void);
+        char *getStatsLine(void) const;
     };
 
     BandwidthController();
@@ -60,8 +64,12 @@ public:
     int getInterfaceQuota(const char *iface, int64_t *bytes);
     int removeInterfaceQuota(const char *iface);
 
+    int enableHappyBox(void);
+    int disableHappyBox(void);
     int addNaughtyApps(int numUids, char *appUids[]);
     int removeNaughtyApps(int numUids, char *appUids[]);
+    int addNiceApps(int numUids, char *appUids[]);
+    int removeNiceApps(int numUids, char *appUids[]);
 
     int setGlobalAlert(int64_t bytes);
     int removeGlobalAlert(void);
@@ -75,10 +83,13 @@ public:
     int removeInterfaceAlert(const char *iface);
 
     /*
-     * stats should have ifaceIn and ifaceOut initialized.
-     * Byte counts should be left to the default (-1).
+     * For single pair of ifaces, stats should have ifaceIn and ifaceOut initialized.
+     * For all pairs, stats should have ifaceIn=ifaceOut="".
+     * Sends out to the cli the single stat (TetheringStatsReluts) or a list of stats
+     * (TetheringStatsListResult+CommandOkay).
+     * Error is to be handled on the outside
      */
-    int getTetherStats(TetherStats &stats, std::string &extraProcessingInfo);
+    int getTetherStats(SocketClient *cli, TetherStats &stats, std::string &extraProcessingInfo);
 
     static const char* LOCAL_INPUT;
     static const char* LOCAL_FORWARD;
@@ -98,8 +109,8 @@ protected:
 
     enum IptIpVer { IptIpV4, IptIpV6 };
     enum IptOp { IptOpInsert, IptOpReplace, IptOpDelete, IptOpAppend };
-    enum IptRejectOp { IptRejectAdd, IptRejectNoAdd };
-    enum NaughtyAppOp { NaughtyAppOpAdd, NaughtyAppOpRemove };
+    enum IptJumpOp { IptJumpReject, IptJumpReturn, IptJumpNoAdd };
+    enum SpecialAppOp { SpecialAppOpAdd, SpecialAppOpRemove };
     enum QuotaType { QuotaUnique, QuotaShared };
     enum RunCmdErrHandling { RunCmdFailureBad, RunCmdFailureOk };
 #if LOG_NDEBUG
@@ -107,12 +118,18 @@ protected:
 #else
     enum IptFailureLog { IptFailShow, IptFailHide = IptFailShow };
 #endif
-    int maninpulateNaughtyApps(int numUids, char *appStrUids[], NaughtyAppOp appOp);
+
+    int manipulateSpecialApps(int numUids, char *appStrUids[],
+                               const char *chain,
+                               std::list<int /*appUid*/> &specialAppUids,
+                               IptJumpOp jumpHandling, SpecialAppOp appOp);
+    int manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
+    int manipulateNiceApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
 
     int prepCostlyIface(const char *ifn, QuotaType quotaType);
     int cleanupCostlyIface(const char *ifn, QuotaType quotaType);
 
-    std::string makeIptablesNaughtyCmd(IptOp op, int uid);
+    std::string makeIptablesSpecialAppCmd(IptOp op, int uid, const char *chain);
     std::string makeIptablesQuotaCmd(IptOp op, const char *costName, int64_t quota);
 
     int runIptablesAlertCmd(IptOp op, const char *alertName, int64_t bytes);
@@ -121,9 +138,9 @@ protected:
     /* Runs for both ipv4 and ipv6 iptables */
     int runCommands(int numCommands, const char *commands[], RunCmdErrHandling cmdErrHandling);
     /* Runs for both ipv4 and ipv6 iptables, appends -j REJECT --reject-with ...  */
-    static int runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling,
+    static int runIpxtablesCmd(const char *cmd, IptJumpOp jumpHandling,
                                IptFailureLog failureHandling = IptFailShow);
-    static int runIptablesCmd(const char *cmd, IptRejectOp rejectHandling, IptIpVer iptIpVer,
+    static int runIptablesCmd(const char *cmd, IptJumpOp jumpHandling, IptIpVer iptIpVer,
                               IptFailureLog failureHandling = IptFailShow);
 
 
@@ -136,12 +153,32 @@ protected:
     int removeCostlyAlert(const char *costName, int64_t *alertBytes);
 
     /*
-     * stats should have ifaceIn and ifaceOut initialized.
-     * fp should be a file to the FORWARD rules of iptables.
+     * stats should never have only intIface initialized. Other 3 combos are ok.
+     * fp should be a file to the apropriate FORWARD chain of iptables rules.
      * extraProcessingInfo: contains raw parsed data, and error info.
+     * This strongly requires that setup of the rules is in a specific order:
+     *  in:intIface out:extIface
+     *  in:extIface out:intIface
+     * and the rules are grouped in pairs when more that one tethering was setup.
      */
-    static int parseForwardChainStats(TetherStats &stats, FILE *fp,
+    static int parseForwardChainStats(SocketClient *cli, const TetherStats filter, FILE *fp,
                                       std::string &extraProcessingInfo);
+
+    /*
+     * Attempt to find the bw_costly_* tables that need flushing,
+     * and flush them.
+     * If doClean then remove the tables also.
+     * Deals with both ip4 and ip6 tables.
+     */
+    void flushExistingCostlyTables(bool doClean);
+    static void parseAndFlushCostlyTables(FILE *fp, bool doRemove);
+
+    /*
+     * Attempt to flush our tables.
+     * If doClean then remove them also.
+     * Deals with both ip4 and ip6 tables.
+     */
+    void flushCleanTables(bool doClean);
 
     /*------------------*/
 
@@ -161,6 +198,7 @@ protected:
 
     std::list<QuotaInfo> quotaIfaces;
     std::list<int /*appUid*/> naughtyAppUids;
+    std::list<int /*appUid*/> niceAppUids;
 
 private:
     static const char *IPT_FLUSH_COMMANDS[];

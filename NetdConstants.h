@@ -34,6 +34,7 @@ enum IptablesTarget { V4, V6, V4V6 };
 int execIptables(IptablesTarget target, ...);
 int execIptablesSilently(IptablesTarget target, ...);
 int writeFile(const char *path, const char *value, int size);
+int readFile(const char *path, char *buf, int *sizep);
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 

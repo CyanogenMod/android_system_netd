@@ -44,6 +44,8 @@
 
 #include "NetdConstants.h"
 #include "BandwidthController.h"
+#include "NatController.h"  /* For LOCAL_TETHER_COUNTERS_CHAIN */
+#include "ResponseCode.h"
 
 /* Alphabetical */
 #define ALERT_IPT_TEMPLATE "%s %s -m quota2 ! --quota %lld --name %s"
@@ -63,49 +65,59 @@ const int  BandwidthController::MAX_IPT_OUTPUT_LINE_LEN = 256;
  *  * Ordering
  *    - when an interface is marked as costly it should be INSERTED into the INPUT/OUTPUT chains.
  *      E.g. "-I bw_INPUT -i rmnet0 --jump costly"
- *    - quota'd rules in the costly chain should be before penalty_box lookups.
+ *    - quota'd rules in the costly chain should be before bw_penalty_box lookups.
+ *    - bw_happy_box rejects everything by default.
  *    - the qtaguid counting is done at the end of the bw_INPUT/bw_OUTPUT user chains.
  *
  * * global quota vs per interface quota
  *   - global quota for all costly interfaces uses a single costly chain:
  *    . initial rules
- *      iptables -N costly_shared
- *      iptables -I bw_INPUT -i iface0 --jump costly_shared
- *      iptables -I bw_OUTPUT -o iface0 --jump costly_shared
- *      iptables -I costly_shared -m quota \! --quota 500000 \
+ *      iptables -N bw_costly_shared
+ *      iptables -I bw_INPUT -i iface0 --jump bw_costly_shared
+ *      iptables -I bw_OUTPUT -o iface0 --jump bw_costly_shared
+ *      iptables -I bw_costly_shared -m quota \! --quota 500000 \
  *          --jump REJECT --reject-with icmp-net-prohibited
- *      iptables -A costly_shared --jump penalty_box
+ *      iptables -A bw_costly_shared --jump bw_penalty_box
+ *      If the happy box is enabled,
+ *        iptables -A bw_penalty_box --jump bw_happy_box
  *
  *    . adding a new iface to this, E.g.:
- *      iptables -I bw_INPUT -i iface1 --jump costly_shared
- *      iptables -I bw_OUTPUT -o iface1 --jump costly_shared
+ *      iptables -I bw_INPUT -i iface1 --jump bw_costly_shared
+ *      iptables -I bw_OUTPUT -o iface1 --jump bw_costly_shared
  *
  *   - quota per interface. This is achieve by having "costly" chains per quota.
  *     E.g. adding a new costly interface iface0 with its own quota:
- *      iptables -N costly_iface0
- *      iptables -I bw_INPUT -i iface0 --jump costly_iface0
- *      iptables -I bw_OUTPUT -o iface0 --jump costly_iface0
- *      iptables -A costly_iface0 -m quota \! --quota 500000 \
- *          --jump REJECT --reject-with icmp-net-prohibited
- *      iptables -A costly_iface0 --jump penalty_box
+ *      iptables -N bw_costly_iface0
+ *      iptables -I bw_INPUT -i iface0 --jump bw_costly_iface0
+ *      iptables -I bw_OUTPUT -o iface0 --jump bw_costly_iface0
+ *      iptables -A bw_costly_iface0 -m quota \! --quota 500000 \
+ *          --jump REJECT --reject-with icmp-port-unreachable
+ *      iptables -A bw_costly_iface0 --jump bw_penalty_box
  *
- * * penalty_box handling:
- *  - only one penalty_box for all interfaces
- *   E.g  Adding an app:
- *    iptables -A penalty_box -m owner --uid-owner app_3 \
- *        --jump REJECT --reject-with icmp-net-prohibited
+ * * bw_penalty_box handling:
+ *  - only one bw_penalty_box for all interfaces
+ *   E.g  Adding an app, it has to preserve the appened bw_happy_box, so "-I":
+ *    iptables -I bw_penalty_box -m owner --uid-owner app_3 \
+ *        --jump REJECT --reject-with icmp-port-unreachable
+ *
+ * * bw_happy_box handling:
+ *  - The bw_happy_box goes at the end of the penalty box.
+ *   E.g  Adding a happy app,
+ *    iptables -I bw_happy_box -m owner --uid-owner app_3 \
+ *        --jump RETURN
  */
 const char *BandwidthController::IPT_FLUSH_COMMANDS[] = {
     /*
      * Cleanup rules.
-     * Should normally include costly_<iface>, but we rely on the way they are setup
+     * Should normally include bw_costly_<iface>, but we rely on the way they are setup
      * to allow coexistance.
      */
     "-F bw_INPUT",
     "-F bw_OUTPUT",
     "-F bw_FORWARD",
-    "-F penalty_box",
-    "-F costly_shared",
+    "-F bw_happy_box",
+    "-F bw_penalty_box",
+    "-F bw_costly_shared",
 
     "-t raw -F bw_raw_PREROUTING",
     "-t mangle -F bw_mangle_POSTROUTING",
@@ -113,13 +125,15 @@ const char *BandwidthController::IPT_FLUSH_COMMANDS[] = {
 
 /* The cleanup commands assume flushing has been done. */
 const char *BandwidthController::IPT_CLEANUP_COMMANDS[] = {
-    "-X penalty_box",
-    "-X costly_shared",
+    "-X bw_happy_box",
+    "-X bw_penalty_box",
+    "-X bw_costly_shared",
 };
 
 const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
-    "-N costly_shared",
-    "-N penalty_box",
+    "-N bw_happy_box",
+    "-N bw_penalty_box",
+    "-N bw_costly_shared",
 };
 
 const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
@@ -127,7 +141,7 @@ const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
 
     "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
 
-    "-A costly_shared --jump penalty_box",
+    "-A bw_costly_shared --jump bw_penalty_box",
 
     "-t raw -A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
     "-t mangle -A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
@@ -136,13 +150,13 @@ const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
 BandwidthController::BandwidthController(void) {
 }
 
-int BandwidthController::runIpxtablesCmd(const char *cmd, IptRejectOp rejectHandling,
+int BandwidthController::runIpxtablesCmd(const char *cmd, IptJumpOp jumpHandling,
                                          IptFailureLog failureHandling) {
     int res = 0;
 
     ALOGV("runIpxtablesCmd(cmd=%s)", cmd);
-    res |= runIptablesCmd(cmd, rejectHandling, IptIpV4, failureHandling);
-    res |= runIptablesCmd(cmd, rejectHandling, IptIpV6, failureHandling);
+    res |= runIptablesCmd(cmd, jumpHandling, IptIpV4, failureHandling);
+    res |= runIptablesCmd(cmd, jumpHandling, IptIpV6, failureHandling);
     return res;
 }
 
@@ -153,7 +167,7 @@ int BandwidthController::StrncpyAndCheck(char *buffer, const char *src, size_t b
     return buffer[buffSize - 1];
 }
 
-int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandling,
+int BandwidthController::runIptablesCmd(const char *cmd, IptJumpOp jumpHandling,
                                         IptIpVer iptVer, IptFailureLog failureHandling) {
     char buffer[MAX_CMD_LEN];
     const char *argv[MAX_CMD_ARGS];
@@ -165,16 +179,20 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
 
     std::string fullCmd = cmd;
 
-    if (rejectHandling == IptRejectAdd) {
-        fullCmd += " --jump REJECT --reject-with";
-        switch (iptVer) {
-        case IptIpV4:
-            fullCmd += " icmp-net-prohibited";
-            break;
-        case IptIpV6:
-            fullCmd += " icmp6-adm-prohibited";
-            break;
-        }
+    switch (jumpHandling) {
+    case IptJumpReject:
+        /*
+         * Must be carefull what one rejects with, as uper layer protocols will just
+         * keep on hammering the device until the number of retries are done.
+         * For port-unreachable (default), TCP should consider as an abort (RFC1122).
+         */
+        fullCmd += " --jump REJECT";
+        break;
+    case IptJumpReturn:
+        fullCmd += " --jump RETURN";
+        break;
+    case IptJumpNoAdd:
+        break;
     }
 
     fullCmd.insert(0, " ");
@@ -205,15 +223,24 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptRejectOp rejectHandl
     return res;
 }
 
-int BandwidthController::setupIptablesHooks(void) {
+void BandwidthController::flushCleanTables(bool doClean) {
+    /* Flush and remove the bw_costly_<iface> tables */
+    flushExistingCostlyTables(doClean);
 
     /* Some of the initialCommands are allowed to fail */
     runCommands(sizeof(IPT_FLUSH_COMMANDS) / sizeof(char*),
             IPT_FLUSH_COMMANDS, RunCmdFailureOk);
 
-    runCommands(sizeof(IPT_CLEANUP_COMMANDS) / sizeof(char*),
-            IPT_CLEANUP_COMMANDS, RunCmdFailureOk);
+    if (doClean) {
+        runCommands(sizeof(IPT_CLEANUP_COMMANDS) / sizeof(char*),
+                IPT_CLEANUP_COMMANDS, RunCmdFailureOk);
+    }
+}
 
+int BandwidthController::setupIptablesHooks(void) {
+
+    /* flush+clean is allowed to fail */
+    flushCleanTables(true);
     runCommands(sizeof(IPT_SETUP_COMMANDS) / sizeof(char*),
             IPT_SETUP_COMMANDS, RunCmdFailureBad);
 
@@ -234,14 +261,13 @@ int BandwidthController::enableBandwidthControl(bool force) {
     sharedQuotaIfaces.clear();
     quotaIfaces.clear();
     naughtyAppUids.clear();
+    niceAppUids.clear();
     globalAlertBytes = 0;
     globalAlertTetherCount = 0;
     sharedQuotaBytes = sharedAlertBytes = 0;
 
-    res = runCommands(sizeof(IPT_FLUSH_COMMANDS) / sizeof(char*),
-            IPT_FLUSH_COMMANDS, RunCmdFailureOk);
-
-    res |= runCommands(sizeof(IPT_BASIC_ACCOUNTING_COMMANDS) / sizeof(char*),
+    flushCleanTables(false);
+    res = runCommands(sizeof(IPT_BASIC_ACCOUNTING_COMMANDS) / sizeof(char*),
             IPT_BASIC_ACCOUNTING_COMMANDS, RunCmdFailureBad);
 
     return res;
@@ -249,8 +275,8 @@ int BandwidthController::enableBandwidthControl(bool force) {
 }
 
 int BandwidthController::disableBandwidthControl(void) {
-    runCommands(sizeof(IPT_FLUSH_COMMANDS) / sizeof(char*),
-            IPT_FLUSH_COMMANDS, RunCmdFailureOk);
+
+    flushCleanTables(false);
     return 0;
 }
 
@@ -263,14 +289,14 @@ int BandwidthController::runCommands(int numCommands, const char *commands[],
     }
     ALOGV("runCommands(): %d commands", numCommands);
     for (int cmdNum = 0; cmdNum < numCommands; cmdNum++) {
-        res = runIpxtablesCmd(commands[cmdNum], IptRejectNoAdd, failureLogging);
+        res = runIpxtablesCmd(commands[cmdNum], IptJumpNoAdd, failureLogging);
         if (res && cmdErrHandling != RunCmdFailureOk)
             return res;
     }
     return 0;
 }
 
-std::string BandwidthController::makeIptablesNaughtyCmd(IptOp op, int uid) {
+std::string BandwidthController::makeIptablesSpecialAppCmd(IptOp op, int uid, const char *chain) {
     std::string res;
     char *buff;
     const char *opFlag;
@@ -280,7 +306,9 @@ std::string BandwidthController::makeIptablesNaughtyCmd(IptOp op, int uid) {
         opFlag = "-I";
         break;
     case IptOpAppend:
-        opFlag = "-A";
+        ALOGE("Append op not supported for %s uids", chain);
+        res = "";
+        return res;
         break;
     case IptOpReplace:
         opFlag = "-R";
@@ -290,37 +318,105 @@ std::string BandwidthController::makeIptablesNaughtyCmd(IptOp op, int uid) {
         opFlag = "-D";
         break;
     }
-    asprintf(&buff, "%s penalty_box -m owner --uid-owner %d", opFlag, uid);
+    asprintf(&buff, "%s %s -m owner --uid-owner %d", opFlag, chain, uid);
     res = buff;
     free(buff);
     return res;
 }
 
+int BandwidthController::enableHappyBox(void) {
+    char cmd[MAX_CMD_LEN];
+    int res = 0;
+
+    /*
+     * We tentatively delete before adding, which helps recovering
+     * from bad states (e.g. netd died).
+     */
+
+    /* Should not exist, but ignore result if already there. */
+    snprintf(cmd, sizeof(cmd), "-N bw_happy_box");
+    runIpxtablesCmd(cmd, IptJumpNoAdd);
+
+    /* Should be empty, but clear in case something was wrong. */
+    niceAppUids.clear();
+    snprintf(cmd, sizeof(cmd), "-F bw_happy_box");
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
+
+    snprintf(cmd, sizeof(cmd), "-D bw_penalty_box -j bw_happy_box");
+    runIpxtablesCmd(cmd, IptJumpNoAdd);
+    snprintf(cmd, sizeof(cmd), "-A bw_penalty_box -j bw_happy_box");
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
+
+    /* Reject. Defaulting to prot-unreachable */
+    snprintf(cmd, sizeof(cmd), "-D bw_happy_box -j REJECT");
+    runIpxtablesCmd(cmd, IptJumpNoAdd);
+    snprintf(cmd, sizeof(cmd), "-A bw_happy_box -j REJECT");
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
+
+    return res;
+}
+
+int BandwidthController::disableHappyBox(void) {
+    char cmd[MAX_CMD_LEN];
+
+    /* Best effort */
+    snprintf(cmd, sizeof(cmd), "-D bw_penalty_box -j bw_happy_box");
+    runIpxtablesCmd(cmd, IptJumpNoAdd);
+    niceAppUids.clear();
+    snprintf(cmd, sizeof(cmd), "-F bw_happy_box");
+    runIpxtablesCmd(cmd, IptJumpNoAdd);
+    snprintf(cmd, sizeof(cmd), "-X bw_happy_box");
+    runIpxtablesCmd(cmd, IptJumpNoAdd);
+
+    return 0;
+}
+
 int BandwidthController::addNaughtyApps(int numUids, char *appUids[]) {
-    return maninpulateNaughtyApps(numUids, appUids, NaughtyAppOpAdd);
+    return manipulateNaughtyApps(numUids, appUids, SpecialAppOpAdd);
 }
 
 int BandwidthController::removeNaughtyApps(int numUids, char *appUids[]) {
-    return maninpulateNaughtyApps(numUids, appUids, NaughtyAppOpRemove);
+    return manipulateNaughtyApps(numUids, appUids, SpecialAppOpRemove);
 }
 
-int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[], NaughtyAppOp appOp) {
+int BandwidthController::addNiceApps(int numUids, char *appUids[]) {
+    return manipulateNiceApps(numUids, appUids, SpecialAppOpAdd);
+}
+
+int BandwidthController::removeNiceApps(int numUids, char *appUids[]) {
+    return manipulateNiceApps(numUids, appUids, SpecialAppOpRemove);
+}
+
+int BandwidthController::manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp) {
+    return manipulateSpecialApps(numUids, appStrUids, "bw_penalty_box", naughtyAppUids, IptJumpReject, appOp);
+}
+
+int BandwidthController::manipulateNiceApps(int numUids, char *appStrUids[], SpecialAppOp appOp) {
+    return manipulateSpecialApps(numUids, appStrUids, "bw_happy_box", niceAppUids, IptJumpReturn, appOp);
+}
+
+
+int BandwidthController::manipulateSpecialApps(int numUids, char *appStrUids[],
+                                               const char *chain,
+                                               std::list<int /*appUid*/> &specialAppUids,
+                                               IptJumpOp jumpHandling, SpecialAppOp appOp) {
+
     char cmd[MAX_CMD_LEN];
     int uidNum;
     const char *failLogTemplate;
     IptOp op;
     int appUids[numUids];
-    std::string naughtyCmd;
+    std::string iptCmd;
     std::list<int /*uid*/>::iterator it;
 
     switch (appOp) {
-    case NaughtyAppOpAdd:
+    case SpecialAppOpAdd:
         op = IptOpInsert;
-        failLogTemplate = "Failed to add app uid %d to penalty box.";
+        failLogTemplate = "Failed to add app uid %s(%d) to %s.";
         break;
-    case NaughtyAppOpRemove:
+    case SpecialAppOpRemove:
         op = IptOpDelete;
-        failLogTemplate = "Failed to delete app uid %d from penalty box.";
+        failLogTemplate = "Failed to delete app uid %s(%d) from %s box.";
         break;
     default:
         ALOGE("Unexpected app Op %d", appOp);
@@ -328,38 +424,39 @@ int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[],
     }
 
     for (uidNum = 0; uidNum < numUids; uidNum++) {
-        appUids[uidNum] = atol(appStrUids[uidNum]);
-        if (appUids[uidNum] == 0) {
-            ALOGE(failLogTemplate, appUids[uidNum]);
+        char *end;
+        appUids[uidNum] = strtoul(appStrUids[uidNum], &end, 0);
+        if (*end || !*appStrUids[uidNum]) {
+            ALOGE(failLogTemplate, appStrUids[uidNum], appUids[uidNum], chain);
             goto fail_parse;
         }
     }
 
     for (uidNum = 0; uidNum < numUids; uidNum++) {
         int uid = appUids[uidNum];
-        for (it = naughtyAppUids.begin(); it != naughtyAppUids.end(); it++) {
+        for (it = specialAppUids.begin(); it != specialAppUids.end(); it++) {
             if (*it == uid)
                 break;
         }
-        bool found = (it != naughtyAppUids.end());
+        bool found = (it != specialAppUids.end());
 
-        if (appOp == NaughtyAppOpRemove) {
+        if (appOp == SpecialAppOpRemove) {
             if (!found) {
                 ALOGE("No such appUid %d to remove", uid);
                 return -1;
             }
-            naughtyAppUids.erase(it);
+            specialAppUids.erase(it);
         } else {
             if (found) {
                 ALOGE("appUid %d exists already", uid);
                 return -1;
             }
-            naughtyAppUids.push_front(uid);
+            specialAppUids.push_front(uid);
         }
 
-        naughtyCmd = makeIptablesNaughtyCmd(op, uid);
-        if (runIpxtablesCmd(naughtyCmd.c_str(), IptRejectAdd)) {
-            ALOGE(failLogTemplate, uid);
+        iptCmd = makeIptablesSpecialAppCmd(op, uid, chain);
+        if (runIpxtablesCmd(iptCmd.c_str(), jumpHandling)) {
+            ALOGE(failLogTemplate, appStrUids[uidNum], uid, chain);
             goto fail_with_uidNum;
         }
     }
@@ -367,8 +464,8 @@ int BandwidthController::maninpulateNaughtyApps(int numUids, char *appStrUids[],
 
 fail_with_uidNum:
     /* Try to remove the uid that failed in any case*/
-    naughtyCmd = makeIptablesNaughtyCmd(IptOpDelete, appUids[uidNum]);
-    runIpxtablesCmd(naughtyCmd.c_str(), IptRejectAdd);
+    iptCmd = makeIptablesSpecialAppCmd(IptOpDelete, appUids[uidNum], chain);
+    runIpxtablesCmd(iptCmd.c_str(), jumpHandling);
 fail_parse:
     return -1;
 }
@@ -397,7 +494,7 @@ std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *cost
     }
 
     // The requried IP version specific --jump REJECT ... will be added later.
-    asprintf(&buff, "%s costly_%s -m quota2 ! --quota %lld --name %s", opFlag, costName, quota,
+    asprintf(&buff, "%s bw_costly_%s -m quota2 ! --quota %lld --name %s", opFlag, costName, quota,
              costName);
     res = buff;
     free(buff);
@@ -414,25 +511,25 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
     /* The "-N costly" is created upfront, no need to handle it here. */
     switch (quotaType) {
     case QuotaUnique:
-        costString = "costly_";
+        costString = "bw_costly_";
         costString += ifn;
         costCString = costString.c_str();
         /*
-         * Flush the costly_<iface> is allowed to fail in case it didn't exist.
+         * Flush the bw_costly_<iface> is allowed to fail in case it didn't exist.
          * Creating a new one is allowed to fail in case it existed.
          * This helps with netd restarts.
          */
         snprintf(cmd, sizeof(cmd), "-F %s", costCString);
-        res1 = runIpxtablesCmd(cmd, IptRejectNoAdd, IptFailHide);
+        res1 = runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
         snprintf(cmd, sizeof(cmd), "-N %s", costCString);
-        res2 = runIpxtablesCmd(cmd, IptRejectNoAdd, IptFailHide);
+        res2 = runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
         res = (res1 && res2) || (!res1 && !res2);
 
-        snprintf(cmd, sizeof(cmd), "-A %s -j penalty_box", costCString);
-        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+        snprintf(cmd, sizeof(cmd), "-A %s -j bw_penalty_box", costCString);
+        res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
         break;
     case QuotaShared:
-        costCString = "costly_shared";
+        costCString = "bw_costly_shared";
         break;
     default:
         ALOGE("Unexpected quotatype %d", quotaType);
@@ -445,16 +542,16 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
     }
 
     snprintf(cmd, sizeof(cmd), "-D bw_INPUT -i %s --jump %s", ifn, costCString);
-    runIpxtablesCmd(cmd, IptRejectNoAdd, IptFailHide);
+    runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
 
     snprintf(cmd, sizeof(cmd), "-I bw_INPUT %d -i %s --jump %s", ruleInsertPos, ifn, costCString);
-    res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
 
     snprintf(cmd, sizeof(cmd), "-D bw_OUTPUT -o %s --jump %s", ifn, costCString);
-    runIpxtablesCmd(cmd, IptRejectNoAdd, IptFailHide);
+    runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
 
     snprintf(cmd, sizeof(cmd), "-I bw_OUTPUT %d -o %s --jump %s", ruleInsertPos, ifn, costCString);
-    res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
     return res;
 }
 
@@ -466,12 +563,12 @@ int BandwidthController::cleanupCostlyIface(const char *ifn, QuotaType quotaType
 
     switch (quotaType) {
     case QuotaUnique:
-        costString = "costly_";
+        costString = "bw_costly_";
         costString += ifn;
         costCString = costString.c_str();
         break;
     case QuotaShared:
-        costCString = "costly_shared";
+        costCString = "bw_costly_shared";
         break;
     default:
         ALOGE("Unexpected quotatype %d", quotaType);
@@ -479,16 +576,16 @@ int BandwidthController::cleanupCostlyIface(const char *ifn, QuotaType quotaType
     }
 
     snprintf(cmd, sizeof(cmd), "-D bw_INPUT -i %s --jump %s", ifn, costCString);
-    res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
     snprintf(cmd, sizeof(cmd), "-D bw_OUTPUT -o %s --jump %s", ifn, costCString);
-    res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
 
-    /* The "-N costly_shared" is created upfront, no need to handle it here. */
+    /* The "-N bw_costly_shared" is created upfront, no need to handle it here. */
     if (quotaType == QuotaUnique) {
         snprintf(cmd, sizeof(cmd), "-F %s", costCString);
-        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+        res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
         snprintf(cmd, sizeof(cmd), "-X %s", costCString);
-        res |= runIpxtablesCmd(cmd, IptRejectNoAdd);
+        res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
     }
     return res;
 }
@@ -528,7 +625,7 @@ int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxB
         res |= prepCostlyIface(ifn, QuotaShared);
         if (sharedQuotaIfaces.empty()) {
             quotaCmd = makeIptablesQuotaCmd(IptOpInsert, costName, maxBytes);
-            res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
+            res |= runIpxtablesCmd(quotaCmd.c_str(), IptJumpReject);
             if (res) {
                 ALOGE("Failed set quota rule");
                 goto fail;
@@ -589,7 +686,7 @@ int BandwidthController::removeInterfaceSharedQuota(const char *iface) {
     if (sharedQuotaIfaces.empty()) {
         std::string quotaCmd;
         quotaCmd = makeIptablesQuotaCmd(IptOpDelete, costName, sharedQuotaBytes);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
+        res |= runIpxtablesCmd(quotaCmd.c_str(), IptJumpReject);
         sharedQuotaBytes = 0;
         if (sharedAlertBytes) {
             removeSharedAlert();
@@ -630,15 +727,15 @@ int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) 
     }
 
     if (it == quotaIfaces.end()) {
-        /* Preparing the iface adds a penalty_box check */
+        /* Preparing the iface adds a penalty/happy box check */
         res |= prepCostlyIface(ifn, QuotaUnique);
-	/*
-	 * The rejecting quota limit should go after the penalty box checks
-	 * or else a naughty app could just eat up the quota.
-	 * So we append here.
-	 */
+        /*
+         * The rejecting quota limit should go after the penalty/happy box checks
+         * or else a naughty app could just eat up the quota.
+         * So we append here.
+         */
         quotaCmd = makeIptablesQuotaCmd(IptOpAppend, costName, maxBytes);
-        res |= runIpxtablesCmd(quotaCmd.c_str(), IptRejectAdd);
+        res |= runIpxtablesCmd(quotaCmd.c_str(), IptJumpReject);
         if (res) {
             ALOGE("Failed set quota rule");
             goto fail;
@@ -761,11 +858,11 @@ int BandwidthController::runIptablesAlertCmd(IptOp op, const char *alertName, in
 
     asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_INPUT",
         bytes, alertName);
-    res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
     free(alertQuotaCmd);
     asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_OUTPUT",
         bytes, alertName);
-    res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
     free(alertQuotaCmd);
     return res;
 }
@@ -793,7 +890,7 @@ int BandwidthController::runIptablesAlertFwdCmd(IptOp op, const char *alertName,
 
     asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, opFlag, "bw_FORWARD",
         bytes, alertName);
-    res = runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+    res = runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
     free(alertQuotaCmd);
     return res;
 }
@@ -947,9 +1044,9 @@ int BandwidthController::setCostlyAlert(const char *costName, int64_t bytes, int
     if (*alertBytes) {
         res = updateQuota(alertName, *alertBytes);
     } else {
-        asprintf(&chainName, "costly_%s", costName);
+        asprintf(&chainName, "bw_costly_%s", costName);
         asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-A", chainName, bytes, alertName);
-        res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+        res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
         free(alertQuotaCmd);
         free(chainName);
     }
@@ -970,9 +1067,9 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
         return -1;
     }
 
-    asprintf(&chainName, "costly_%s", costName);
+    asprintf(&chainName, "bw_costly_%s", costName);
     asprintf(&alertQuotaCmd, ALERT_IPT_TEMPLATE, "-D", chainName, *alertBytes, alertName);
-    res |= runIpxtablesCmd(alertQuotaCmd, IptRejectNoAdd);
+    res |= runIpxtablesCmd(alertQuotaCmd, IptJumpNoAdd);
     free(alertQuotaCmd);
     free(chainName);
 
@@ -983,23 +1080,32 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
 
 /*
  * Parse the ptks and bytes out of:
- * Chain FORWARD (policy RETURN 0 packets, 0 bytes)
- *     pkts      bytes target     prot opt in     out     source               destination
- *        0        0 RETURN     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0            state RELATED,ESTABLISHED
- *        0        0 DROP       all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0            state INVALID
- *        0        0 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0
- *
+ *   Chain natctrl_tether_counters (4 references)
+ *       pkts      bytes target     prot opt in     out     source               destination
+ *         26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0            counter wlan0_rmnet0: 0 bytes
+ *         27     2002 RETURN     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0            counter rmnet0_wlan0: 0 bytes
+ *       1040   107471 RETURN     all  --  bt-pan rmnet0  0.0.0.0/0            0.0.0.0/0            counter bt-pan_rmnet0: 0 bytes
+ *       1450  1708806 RETURN     all  --  rmnet0 bt-pan  0.0.0.0/0            0.0.0.0/0            counter rmnet0_bt-pan: 0 bytes
  */
-int BandwidthController::parseForwardChainStats(TetherStats &stats, FILE *fp,
-                                                std::string &extraProcessingInfo) {
+int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherStats filter,
+                                                FILE *fp, std::string &extraProcessingInfo) {
     int res;
     char lineBuffer[MAX_IPT_OUTPUT_LINE_LEN];
     char iface0[MAX_IPT_OUTPUT_LINE_LEN];
     char iface1[MAX_IPT_OUTPUT_LINE_LEN];
     char rest[MAX_IPT_OUTPUT_LINE_LEN];
 
+    TetherStats stats;
     char *buffPtr;
     int64_t packets, bytes;
+
+    bool filterPair = filter.intIface[0] && filter.extIface[0];
+
+    char *filterMsg = filter.getStatsLine();
+    ALOGV("filter: %s",  filterMsg);
+    free(filterMsg);
+
+    stats = filter;
 
     while (NULL != (buffPtr = fgets(lineBuffer, MAX_IPT_OUTPUT_LINE_LEN, fp))) {
         /* Clean up, so a failed parse can still print info */
@@ -1013,38 +1119,82 @@ int BandwidthController::parseForwardChainStats(TetherStats &stats, FILE *fp,
         if (res != 5) {
             continue;
         }
-        if ((stats.ifaceIn == iface0) && (stats.ifaceOut == iface1)) {
-            ALOGV("iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
-            stats.rxPackets = packets;
-            stats.rxBytes = bytes;
-        } else if ((stats.ifaceOut == iface0) && (stats.ifaceIn == iface1)) {
-            ALOGV("iface_in=%s iface_out=%s tx_bytes=%lld tx_packets=%lld ", iface1, iface0, bytes, packets);
-            stats.txPackets = packets;
-            stats.txBytes = bytes;
+        /*
+         * The following assumes that the 1st rule has in:extIface out:intIface,
+         * which is what NatController sets up.
+         * If not filtering, the 1st match rx, and sets up the pair for the tx side.
+         */
+        if (filter.intIface[0] && filter.extIface[0]) {
+            if (filter.intIface == iface0 && filter.extIface == iface1) {
+                ALOGV("2Filter RX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                stats.rxPackets = packets;
+                stats.rxBytes = bytes;
+            } else if (filter.intIface == iface1 && filter.extIface == iface0) {
+                ALOGV("2Filter TX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                stats.txPackets = packets;
+                stats.txBytes = bytes;
+            }
+        } else if (filter.intIface[0] || filter.extIface[0]) {
+            if (filter.intIface == iface0 || filter.extIface == iface1) {
+                ALOGV("1Filter RX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                stats.intIface = iface0;
+                stats.extIface = iface1;
+                stats.rxPackets = packets;
+                stats.rxBytes = bytes;
+            } else if (filter.intIface == iface1 || filter.extIface == iface0) {
+                ALOGV("1Filter TX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                stats.intIface = iface1;
+                stats.extIface = iface0;
+                stats.txPackets = packets;
+                stats.txBytes = bytes;
+            }
+        } else /* if (!filter.intFace[0] && !filter.extIface[0]) */ {
+            if (!stats.intIface[0]) {
+                ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                stats.intIface = iface0;
+                stats.extIface = iface1;
+                stats.rxPackets = packets;
+                stats.rxBytes = bytes;
+            } else if (stats.intIface == iface1 && stats.extIface == iface0) {
+                ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                stats.txPackets = packets;
+                stats.txBytes = bytes;
+            }
+        }
+        if (stats.rxBytes != -1 && stats.txBytes != -1) {
+            ALOGV("rx_bytes=%lld tx_bytes=%lld filterPair=%d", stats.rxBytes, stats.txBytes, filterPair);
+            /* Send out stats, and prep for the next if needed. */
+            char *msg = stats.getStatsLine();
+            if (filterPair) {
+                cli->sendMsg(ResponseCode::TetheringStatsResult, msg, false);
+                return 0;
+            } else {
+                cli->sendMsg(ResponseCode::TetheringStatsListResult, msg, false);
+                stats = filter;
+            }
+            free(msg);
         }
     }
-    /* Failure if rx or tx was not found */
-    return (stats.rxBytes == -1 || stats.txBytes == -1) ? -1 : 0;
+    /* Successful if the last stats entry wasn't partial. */
+    if ((stats.rxBytes == -1) == (stats.txBytes == -1)) {
+        cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
+        return 0;
+    }
+    return -1;
 }
 
-
-char *BandwidthController::TetherStats::getStatsLine(void) {
+char *BandwidthController::TetherStats::getStatsLine(void) const {
     char *msg;
-    asprintf(&msg, "%s %s %lld %lld %lld %lld", ifaceIn.c_str(), ifaceOut.c_str(),
+    asprintf(&msg, "%s %s %lld %lld %lld %lld", intIface.c_str(), extIface.c_str(),
             rxBytes, rxPackets, txBytes, txPackets);
     return msg;
 }
 
-int BandwidthController::getTetherStats(TetherStats &stats, std::string &extraProcessingInfo) {
+int BandwidthController::getTetherStats(SocketClient *cli, TetherStats &stats, std::string &extraProcessingInfo) {
     int res;
     std::string fullCmd;
     FILE *iptOutput;
     const char *cmd;
-
-    if (stats.rxBytes != -1 || stats.txBytes != -1) {
-        ALOGE("Unexpected input stats. Byte counts should be -1.");
-        return -1;
-    }
 
     /*
      * Why not use some kind of lib to talk to iptables?
@@ -1054,16 +1204,65 @@ int BandwidthController::getTetherStats(TetherStats &stats, std::string &extraPr
      * the wanted info.
      */
     fullCmd = IPTABLES_PATH;
-    fullCmd += " -nvx -L natctrl_FORWARD";
+    fullCmd += " -nvx -L ";
+    fullCmd += NatController::LOCAL_TETHER_COUNTERS_CHAIN;
     iptOutput = popen(fullCmd.c_str(), "r");
     if (!iptOutput) {
             ALOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
             extraProcessingInfo += "Failed to run iptables.";
         return -1;
     }
-    res = parseForwardChainStats(stats, iptOutput, extraProcessingInfo);
+    res = parseForwardChainStats(cli, stats, iptOutput, extraProcessingInfo);
     pclose(iptOutput);
 
     /* Currently NatController doesn't do ipv6 tethering, so we are done. */
     return res;
+}
+
+void BandwidthController::flushExistingCostlyTables(bool doClean) {
+    int res;
+    std::string fullCmd;
+    FILE *iptOutput;
+    const char *cmd;
+
+    /* Only lookup ip4 table names as ip6 will have the same tables ... */
+    fullCmd = IPTABLES_PATH;
+    fullCmd += " -S";
+    iptOutput = popen(fullCmd.c_str(), "r");
+    if (!iptOutput) {
+            ALOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
+        return;
+    }
+    /* ... then flush/clean both ip4 and ip6 iptables. */
+    parseAndFlushCostlyTables(iptOutput, doClean);
+    pclose(iptOutput);
+}
+
+void BandwidthController::parseAndFlushCostlyTables(FILE *fp, bool doRemove) {
+    int res;
+    char lineBuffer[MAX_IPT_OUTPUT_LINE_LEN];
+    char costlyIfaceName[MAX_IPT_OUTPUT_LINE_LEN];
+    char cmd[MAX_CMD_LEN];
+    char *buffPtr;
+
+    while (NULL != (buffPtr = fgets(lineBuffer, MAX_IPT_OUTPUT_LINE_LEN, fp))) {
+        costlyIfaceName[0] = '\0';   /* So that debugging output always works */
+        res = sscanf(buffPtr, "-N bw_costly_%s", costlyIfaceName);
+        ALOGV("parse res=%d costly=<%s> orig line=<%s>", res,
+            costlyIfaceName, buffPtr);
+        if (res != 1) {
+            continue;
+        }
+        /* Exclusions: "shared" is not an ifacename */
+        if (!strcmp(costlyIfaceName, "shared")) {
+            continue;
+        }
+
+        snprintf(cmd, sizeof(cmd), "-F bw_costly_%s", costlyIfaceName);
+        runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
+        if (doRemove) {
+            snprintf(cmd, sizeof(cmd), "-X bw_costly_%s", costlyIfaceName);
+            runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
+        }
+    }
 }

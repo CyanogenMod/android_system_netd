@@ -33,7 +33,7 @@ public:
     static const int TetherInterfaceListResult = 111;
     static const int TetherDnsFwdTgtListResult = 112;
     static const int TtyListResult             = 113;
-
+    static const int TetheringStatsListResult  = 114;
 
     // 200 series - Requested action has been successfully completed
     static const int CommandOkay               = 200;
@@ -50,8 +50,10 @@ public:
     static const int TetheringStatsResult      = 221;
     static const int DnsProxyQueryResult       = 222;
     static const int ClatdStatusResult         = 223;
-    static const int V6RtrAdvResult            = 224;
-    static const int RouteConfigurationResult  = 225;
+    static const int InterfaceGetMtuResult     = 224;
+    static const int GetMarkResult             = 225;
+    static const int V6RtrAdvResult            = 226;
+    static const int RouteConfigurationResult  = 227;
 
     // 400 series - The command was accepted but the requested action
     // did not take place.
@@ -80,5 +82,6 @@ public:
     static const int ServiceGetAddrInfoFailed       = 611;
     static const int ServiceGetAddrInfoSuccess      = 612;
     static const int InterfaceClassActivity         = 613;
+    static const int InterfaceAddressChange         = 614;
 };
 #endif

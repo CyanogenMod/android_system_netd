@@ -21,6 +21,7 @@ LOCAL_SRC_FILES:=                                      \
                   SecondaryTableController.cpp         \
                   TetherController.cpp                 \
                   oem_iptables_hook.cpp                \
+                  UidMarkMap.cpp                       \
                   main.cpp                             \
                   RouteController.cpp
 
@@ -51,11 +52,6 @@ ifneq ($(BOARD_HOSTAPD_DRIVER),)
   ifneq ($(BOARD_HOSTAPD_DRIVER_NAME),)
     LOCAL_CFLAGS += -DHOSTAPD_DRIVER_NAME=\"$(BOARD_HOSTAPD_DRIVER_NAME)\"
   endif
-endif
-
-ifeq ($(BOARD_HAVE_BLUETOOTH),true)
-  LOCAL_SHARED_LIBRARIES := $(LOCAL_SHARED_LIBRARIES) libbluedroid
-  LOCAL_CFLAGS := $(LOCAL_CFLAGS) -DHAVE_BLUETOOTH
 endif
 
 ifeq ($(BOARD_HAS_QCOM_WLAN_SDK), true)

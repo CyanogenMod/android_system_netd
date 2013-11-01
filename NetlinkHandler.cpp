@@ -67,6 +67,14 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
             notifyInterfaceLinkChanged(iface, true);
         } else if (action == evt->NlActionLinkDown) {
             notifyInterfaceLinkChanged(iface, false);
+        } else if (action == evt->NlActionAddressUpdated ||
+                   action == evt->NlActionAddressRemoved) {
+            const char *address = evt->findParam("ADDRESS");
+            const char *flags = evt->findParam("FLAGS");
+            const char *scope = evt->findParam("SCOPE");
+            if (iface && flags && scope) {
+                notifyAddressChanged(action, address, iface, flags, scope);
+            }
         }
 
     } else if (!strcmp(subsys, "qlog")) {
@@ -144,4 +152,16 @@ void NetlinkHandler::notifyInterfaceClassActivity(const char *name,
     ALOGV("Broadcasting interface activity msg: %s", msg);
     mNm->getBroadcaster()->sendBroadcast(
         ResponseCode::InterfaceClassActivity, msg, false);
+}
+
+void NetlinkHandler::notifyAddressChanged(int action, const char *addr,
+                                          const char *iface, const char *flags,
+                                          const char *scope) {
+    char msg[255];
+    snprintf(msg, sizeof(msg), "Address %s %s %s %s %s",
+             (action == NetlinkEvent::NlActionAddressUpdated) ?
+             "updated" : "removed", addr, iface, flags, scope);
+
+    mNm->getBroadcaster()->sendBroadcast(ResponseCode::InterfaceAddressChange,
+            msg, false);
 }
