@@ -28,6 +28,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <string.h>
+#include <ctype.h>
 #include <linux/if.h>
 
 #define LOG_TAG "CommandListener"
@@ -142,6 +143,48 @@ static void createChildChains(IptablesTarget target, const char* table, const ch
         execIptables(target, "-t", table, "-N", *childChain, NULL);
         execIptables(target, "-t", table, "-A", parentChain, "-j", *childChain, NULL);
     } while (*(++childChain) != NULL);
+}
+
+/**
+ * Check if string is a valid interface name.
+ * Utilize if_nametoindex, on success it returns ifindex, and on error 0.
+ */
+static bool isValidIface(const char* iface) {
+    return (0 != if_nametoindex(iface));
+}
+
+/**
+ * Check if string is a valid IPv4 or IPv6 address
+ * Utilize inet_pton, on success it returns 1, and on error it returns 0 or -1.
+ * Error -1 means af is not a valid address family, but since v4/v6 is used, this is not applicable.
+ * Error 0 means string is not a valid address, and only this is applicable.
+ */
+static bool isValidIp(const char* str, const char* af) {
+    int ret;
+    unsigned char c;
+    if (!strcmp(af, "v4")) {
+        struct in_addr addr;
+        ret = inet_pton(AF_INET, str, &addr);
+    }
+    else if (!strcmp(af, "v6")) {
+        struct in6_addr addr6;
+        ret = inet_pton(AF_INET6, str, &addr6);
+    }
+    if ( ret == 1 )
+    {
+        /* There is limitation on inet_pton which on success case it allows trailing
+           character of '\0' or space. The '\0' is ensured not to be accepted by the caller,
+           but the spacing should be caught here.
+         */
+         c = *str;
+         while (c)
+         {
+             if ( isspace(c) ) return false;
+             c = *++str;
+         }
+         return true;
+    }
+    return false;
 }
 
 CommandListener::CommandListener(UidMarkMap *map) :
@@ -1729,7 +1772,14 @@ int CommandListener::RouteCmd::runCommand(SocketClient *cli, int argc, char **ar
                 return 0;
             }
 
-            int rid = atoi(argv[6]);
+            char* end;
+            long int rid =  strtol(argv[6], &end, 10);
+            if (*end != '\0')
+            {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "RouteID: invalid numerical value", false);
+                return 0;
+            }
             if ((rid < 1) || (rid > 252)) {
                 cli->sendMsg(ResponseCode::CommandParameterError,
                                 "0 < RouteID < 253", false);
@@ -1750,8 +1800,26 @@ int CommandListener::RouteCmd::runCommand(SocketClient *cli, int argc, char **ar
                  *network = NULL,
                  *gateway = NULL;
 
-            if (argc > 7)
+            if (false == isValidIface(iface)) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid interface", false);
+                return 0;
+            }
+
+            if (false == isValidIp(srcPrefix, argv[3]) ) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid IP address", false);
+                return 0;
+            }
+
+            if (argc > 7) {
                 gateway = argv[7];
+                if (false == isValidIp(gateway, argv[3]) ) {
+                    cli->sendMsg(ResponseCode::CommandParameterError,
+                            "invalid gateway", false);
+                    return 0;
+                }
+            }
 
             // compute the network block in CIDR notation (for IPv4 only)
             if (domain == AF_INET) {
@@ -1797,8 +1865,14 @@ int CommandListener::RouteCmd::runCommand(SocketClient *cli, int argc, char **ar
                 return 0;
             }
 
-            int rid = atoi(argv[4]);
-
+            char* end;
+            long int rid =  strtol(argv[4], &end, 10);
+            if (*end != '\0')
+            {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                        "RouteID: invalid numerical value", false);
+                return 0;
+            }
             if ((rid < 1) || (rid > 252)) {
                 cli->sendMsg(ResponseCode::CommandParameterError,
                             "RouteID: between 0 and 253", false);
@@ -1831,8 +1905,20 @@ int CommandListener::RouteCmd::runCommand(SocketClient *cli, int argc, char **ar
             char *iface = argv[4],
                  *gateway = NULL;
 
-            if (argc > 5)
+            if (false == isValidIface(iface)) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid interface", false);
+                return 0;
+            }
+
+            if (argc > 5) {
                 gateway = argv[5];
+                if (false == isValidIp(gateway, argv[3]) ) {
+                    cli->sendMsg(ResponseCode::CommandParameterError,
+                            "invalid gateway", false);
+                    return 0;
+                }
+            }
 
             std::string res =
                 sRouteCtrl->replaceDefRoute(iface, gateway, ipVer);
@@ -1854,8 +1940,20 @@ int CommandListener::RouteCmd::runCommand(SocketClient *cli, int argc, char **ar
                  *gateway = NULL;
             int metric = atoi(argv[5]);
 
-            if (argc > 6)
+            if (false == isValidIface(iface)) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid interface", false);
+                return 0;
+            }
+
+            if (argc > 6) {
                 gateway = argv[6];
+                if (false == isValidIp(gateway, argv[3]) ) {
+                    cli->sendMsg(ResponseCode::CommandParameterError,
+                            "invalid gateway", false);
+                    return 0;
+                }
+            }
 
             std::string res =
                 sRouteCtrl->addDefRoute(iface, gateway, ipVer, metric);
@@ -1885,8 +1983,26 @@ int CommandListener::RouteCmd::runCommand(SocketClient *cli, int argc, char **ar
                  *gateway = NULL;
             int metric = atoi(argv[5]);
 
-            if (argc > 7)
+            if (false == isValidIface(iface)) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid interface", false);
+                return 0;
+            }
+
+            if (false == isValidIp(dstPrefix, argv[3]) ) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid IP address", false);
+                return 0;
+            }
+
+            if (argc > 7) {
                 gateway = argv[7];
+                if (false == isValidIp(gateway, argv[3]) ) {
+                    cli->sendMsg(ResponseCode::CommandParameterError,
+                            "invalid gateway", false);
+                    return 0;
+                }
+            }
 
             std::string res =
                 sRouteCtrl->addDstRoute(iface, dstPrefix, gateway, metric);
@@ -1900,6 +2016,12 @@ int CommandListener::RouteCmd::runCommand(SocketClient *cli, int argc, char **ar
             if (argc != 5) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError,
                              "Usage: route del dst v[4|6] <ipaddr>", false);
+                return 0;
+            }
+
+            if (false == isValidIp(argv[4], argv[3]) ) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid IP address", false);
                 return 0;
             }
 
