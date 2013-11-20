@@ -104,7 +104,8 @@ int NetlinkManager::start() {
     if ((mRouteHandler = setupSocket(&mRouteSock, NETLINK_ROUTE,
                                      RTMGRP_LINK |
                                      RTMGRP_IPV4_IFADDR |
-                                     RTMGRP_IPV6_IFADDR,
+                                     RTMGRP_IPV6_IFADDR |
+                                     (1 << (RTNLGRP_ND_USEROPT - 1)),
          NetlinkListener::NETLINK_FORMAT_BINARY)) == NULL) {
         return -1;
     }
