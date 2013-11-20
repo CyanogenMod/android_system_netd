@@ -73,5 +73,6 @@ public:
     static const int ServiceGetAddrInfoFailed       = 611;
     static const int ServiceGetAddrInfoSuccess      = 612;
     static const int InterfaceClassActivity         = 613;
+    static const int InterfaceAddressChange         = 614;
 };
 #endif
