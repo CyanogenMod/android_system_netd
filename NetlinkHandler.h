@@ -33,6 +33,7 @@ public:
 protected:
     virtual void onEvent(NetlinkEvent *evt);
 
+    void notify(int code, const char *format, ...);
     void notifyInterfaceAdded(const char *name);
     void notifyInterfaceRemoved(const char *name);
     void notifyInterfaceChanged(const char *name, bool isUp);
