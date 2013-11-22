@@ -31,6 +31,7 @@
 #include "SecondaryTableController.h"
 #include "FirewallController.h"
 #include "ClatdController.h"
+#include "UidMarkMap.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
@@ -46,7 +47,7 @@ class CommandListener : public FrameworkListener {
     static ClatdController *sClatdCtrl;
 
 public:
-    CommandListener();
+    CommandListener(UidMarkMap *map);
     virtual ~CommandListener() {}
 
 private:

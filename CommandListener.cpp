@@ -77,6 +77,7 @@ static const char* FILTER_OUTPUT[] = {
         OEM_IPTABLES_FILTER_OUTPUT,
         FirewallController::LOCAL_OUTPUT,
         BandwidthController::LOCAL_OUTPUT,
+        SecondaryTableController::LOCAL_FILTER_OUTPUT,
         NULL,
 };
 
@@ -92,6 +93,12 @@ static const char* MANGLE_POSTROUTING[] = {
         NULL,
 };
 
+static const char* MANGLE_OUTPUT[] = {
+        SecondaryTableController::LOCAL_MANGLE_EXEMPT,
+        SecondaryTableController::LOCAL_MANGLE_OUTPUT,
+        NULL,
+};
+
 static const char* NAT_PREROUTING[] = {
         OEM_IPTABLES_NAT_PREROUTING,
         NULL,
@@ -99,6 +106,7 @@ static const char* NAT_PREROUTING[] = {
 
 static const char* NAT_POSTROUTING[] = {
         NatController::LOCAL_NAT_POSTROUTING,
+        SecondaryTableController::LOCAL_NAT_POSTROUTING,
         NULL,
 };
 
@@ -122,7 +130,7 @@ static void createChildChains(IptablesTarget target, const char* table, const ch
     } while (*(++childChain) != NULL);
 }
 
-CommandListener::CommandListener() :
+CommandListener::CommandListener(UidMarkMap *map) :
                  FrameworkListener("netd", true) {
     registerCmd(new InterfaceCmd());
     registerCmd(new IpFwdCmd());
@@ -138,7 +146,7 @@ CommandListener::CommandListener() :
     registerCmd(new ClatdCmd());
 
     if (!sSecondaryTableCtrl)
-        sSecondaryTableCtrl = new SecondaryTableController();
+        sSecondaryTableCtrl = new SecondaryTableController(map);
     if (!sTetherCtrl)
         sTetherCtrl = new TetherController();
     if (!sNatCtrl)
@@ -176,6 +184,7 @@ CommandListener::CommandListener() :
     createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT);
     createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING);
     createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING);
+    createChildChains(V4V6, "mangle", "OUTPUT", MANGLE_OUTPUT);
     createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING);
     createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING);
 
@@ -199,6 +208,8 @@ CommandListener::CommandListener() :
     sIdletimerCtrl->setupIptablesHooks();
 
     sBandwidthCtrl->enableBandwidthControl(false);
+
+    sSecondaryTableCtrl->setupIptablesHooks();
 }
 
 CommandListener::InterfaceCmd::InterfaceCmd() :
@@ -254,8 +265,143 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             return 0;
         }
 
-        //     0       1       2        3          4           5     6      7
-        // interface route add/remove iface default/secondary dest prefix gateway
+        //     0       1       2        3          4           5        6      7
+        // interface route add/remove iface default/secondary dest    prefix gateway
+        // interface fwmark  rule  add/remove    iface
+        // interface fwmark  route add/remove    iface        dest    prefix
+        // interface fwmark  uid   add/remove    iface      uid_start uid_end
+        // interface fwmark exempt add/remove    dest
+        // interface fwmark  get     protect
+        // interface fwmark  get     mark        uid
+        if (!strcmp(argv[1], "fwmark")) {
+            if (!strcmp(argv[2], "rule")) {
+                if (argc < 5) {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                    return 0;
+                }
+                if (!strcmp(argv[3], "add")) {
+                    if (!sSecondaryTableCtrl->addFwmarkRule(argv[4])) {
+                        cli->sendMsg(ResponseCode::CommandOkay,
+                                "Fwmark rule successfully added", false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to add fwmark rule",
+                                true);
+                    }
+                } else if (!strcmp(argv[3], "remove")) {
+                    if (!sSecondaryTableCtrl->removeFwmarkRule(argv[4])) {
+                        cli->sendMsg(ResponseCode::CommandOkay,
+                                "Fwmark rule successfully removed", false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed,
+                                "Failed to remove fwmark rule", true);
+                    }
+                } else {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark rule cmd",
+                            false);
+                }
+                return 0;
+            } else if (!strcmp(argv[2], "route")) {
+                if (argc < 7) {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                    return 0;
+                }
+                if (!strcmp(argv[3], "add")) {
+                    if (!sSecondaryTableCtrl->addFwmarkRoute(argv[4], argv[5], atoi(argv[6]))) {
+                        cli->sendMsg(ResponseCode::CommandOkay,
+                                "Fwmark route successfully added", false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed,
+                                "Failed to add fwmark route", true);
+                    }
+                } else if (!strcmp(argv[3], "remove")) {
+                    if (!sSecondaryTableCtrl->removeFwmarkRoute(argv[4], argv[5],
+                                atoi(argv[6]))) {
+                        cli->sendMsg(ResponseCode::CommandOkay,
+                                "Fwmark route successfully removed", false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed,
+                                "Failed to remove fwmark route", true);
+                    }
+                } else {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark route cmd",
+                            false);
+                }
+                return 0;
+
+            } else if (!strcmp(argv[2], "uid")) {
+                if (argc < 7) {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                    return 0;
+                }
+                if (!strcmp(argv[3], "add")) {
+                    if (!sSecondaryTableCtrl->addUidRule(argv[4], atoi(argv[5]), atoi(argv[6]))) {
+                        cli->sendMsg(ResponseCode::CommandOkay, "uid rule successfully added",
+                                false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to add uid rule", true);
+                    }
+                } else if (!strcmp(argv[3], "remove")) {
+                    if (!sSecondaryTableCtrl->removeUidRule(argv[4],
+                                atoi(argv[5]), atoi(argv[6]))) {
+                        cli->sendMsg(ResponseCode::CommandOkay, "uid rule successfully removed",
+                                false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove uid rule",
+                                true);
+                    }
+                } else {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown uid cmd", false);
+                }
+                return 0;
+            } else if (!strcmp(argv[2], "exempt")) {
+                if (argc < 5) {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                    return 0;
+                }
+                if (!strcmp(argv[3], "add")) {
+                    if (!sSecondaryTableCtrl->addHostExemption(argv[4])) {
+                        cli->sendMsg(ResponseCode::CommandOkay, "exemption rule successfully added",
+                                false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to add exemption rule",
+                                true);
+                    }
+                } else if (!strcmp(argv[3], "remove")) {
+                    if (!sSecondaryTableCtrl->removeHostExemption(argv[4])) {
+                        cli->sendMsg(ResponseCode::CommandOkay,
+                                "exemption rule successfully removed", false);
+                    } else {
+                        cli->sendMsg(ResponseCode::OperationFailed,
+                                "Failed to remove exemption rule", true);
+                    }
+                } else {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown exemption cmd", false);
+                }
+                return 0;
+            } else if (!strcmp(argv[2], "get")) {
+                if (argc < 4) {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                    return 0;
+                }
+                if (!strcmp(argv[3], "protect")) {
+                    sSecondaryTableCtrl->getProtectMark(cli);
+                    return 0;
+                } else if (!strcmp(argv[3], "mark")) {
+                    if (argc < 5) {
+                        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                        return 0;
+                    }
+                    sSecondaryTableCtrl->getUidMark(cli, atoi(argv[4]));
+                    return 0;
+                } else {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark get cmd", false);
+                    return 0;
+                }
+            } else {
+                cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark cmd", false);
+                return 0;
+            }
+        }
         if (!strcmp(argv[1], "route")) {
             int prefix_length = 0;
             if (argc < 8) {
@@ -460,6 +606,31 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             } else {
                 cli->sendMsg(ResponseCode::OperationFailed,
                         "Failed to change IPv6 state", true);
+            }
+            return 0;
+        } else if (!strcmp(argv[1], "getmtu")) {
+            char *msg = NULL;
+            int mtu = 0;
+            if (sInterfaceCtrl->getMtu(argv[2], &mtu) == 0) {
+                asprintf(&msg, "MTU = %d", mtu);
+                cli->sendMsg(ResponseCode::InterfaceGetMtuResult, msg, false);
+                free(msg);
+            } else {
+                cli->sendMsg(ResponseCode::OperationFailed,
+                        "Failed to get MTU", true);
+            }
+            return 0;
+        } else if (!strcmp(argv[1], "setmtu")) {
+            if (argc != 4) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError,
+                        "Usage: interface setmtu <interface> <val>", false);
+                return 0;
+            }
+            if (sInterfaceCtrl->setMtu(argv[2], argv[3]) == 0) {
+                cli->sendMsg(ResponseCode::CommandOkay, "MTU changed", false);
+            } else {
+                cli->sendMsg(ResponseCode::OperationFailed,
+                        "Failed to get MTU", true);
             }
             return 0;
         } else {
@@ -767,9 +938,10 @@ CommandListener::ResolverCmd::ResolverCmd() :
         NetdCommand("resolver") {
 }
 
-int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char **argv) {
+int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char **margv) {
     int rc = 0;
     struct in_addr addr;
+    const char **argv = const_cast<const char **>(margv);
 
     if (argc < 2) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Resolver missing arguments", false);
@@ -834,6 +1006,29 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver clearifaceforpid", false);
             return 0;
+        }
+    } else if (!strcmp(argv[1], "setifaceforuidrange")) { // resolver setifaceforuid <iface> <l> <h>
+        if (argc == 5) {
+            rc = sResolverCtrl->setDnsInterfaceForUidRange(argv[2], atoi(argv[3]), atoi(argv[4]));
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Wrong number of arguments to resolver setifaceforuid", false);
+            return 0;
+        }
+    } else if (!strcmp(argv[1], "clearifaceforuidrange")) { // resolver clearifaceforuid <l> <h>
+        if (argc == 4) {
+            rc = sResolverCtrl->clearDnsInterfaceForUidRange(atoi(argv[2]), atoi(argv[3]));
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Wrong number of arguments to resolver clearifaceforuid", false);
+            return 0;
+        }
+    } else if (!strcmp(argv[1], "clearifacemapping")) {
+        if (argc == 2) {
+            rc = sResolverCtrl->clearDnsInterfaceMappings();
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Wrong number of arugments to resolver clearifacemapping", false);
         }
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError,"Resolver unknown command", false);
@@ -1032,7 +1227,43 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         int rc = sBandwidthCtrl->removeNaughtyApps(argc - 2, argv + 2);
         sendGenericOkFail(cli, rc);
         return 0;
+    }
+    if (!strcmp(argv[1], "happybox")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "happybox (enable | disable)");
+            return 0;
+        }
+        if (!strcmp(argv[2], "enable")) {
+            int rc = sBandwidthCtrl->enableHappyBox();
+            sendGenericOkFail(cli, rc);
+            return 0;
 
+        }
+        if (!strcmp(argv[2], "disable")) {
+            int rc = sBandwidthCtrl->disableHappyBox();
+            sendGenericOkFail(cli, rc);
+            return 0;
+        }
+        sendGenericSyntaxError(cli, "happybox (enable | disable)");
+        return 0;
+    }
+    if (!strcmp(argv[1], "addniceapps") || !strcmp(argv[1], "aha")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "addniceapps <appUid> ...");
+            return 0;
+        }
+        int rc = sBandwidthCtrl->addNiceApps(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+    if (!strcmp(argv[1], "removeniceapps") || !strcmp(argv[1], "rha")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "removeniceapps <appUid> ...");
+            return 0;
+        }
+        int rc = sBandwidthCtrl->removeNiceApps(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
     }
     if (!strcmp(argv[1], "setglobalalert") || !strcmp(argv[1], "sga")) {
         if (argc != 3) {
@@ -1042,7 +1273,6 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         int rc = sBandwidthCtrl->setGlobalAlert(atoll(argv[2]));
         sendGenericOkFail(cli, rc);
         return 0;
-
     }
     if (!strcmp(argv[1], "debugsettetherglobalalert") || !strcmp(argv[1], "dstga")) {
         if (argc != 4) {
@@ -1119,23 +1349,18 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
     if (!strcmp(argv[1], "gettetherstats") || !strcmp(argv[1], "gts")) {
         BandwidthController::TetherStats tetherStats;
         std::string extraProcessingInfo = "";
-        if (argc != 4) {
-            sendGenericSyntaxError(cli, "gettetherstats <interface0> <interface1>");
+        if (argc < 2 || argc > 4) {
+            sendGenericSyntaxError(cli, "gettetherstats [<intInterface> <extInterface>]");
             return 0;
         }
-
-        tetherStats.ifaceIn = argv[2];
-        tetherStats.ifaceOut = argv[3];
-        int rc = sBandwidthCtrl->getTetherStats(tetherStats, extraProcessingInfo);
+        tetherStats.intIface = argc > 2 ? argv[2] : "";
+        tetherStats.extIface = argc > 3 ? argv[3] : "";
+        int rc = sBandwidthCtrl->getTetherStats(cli, tetherStats, extraProcessingInfo);
         if (rc) {
                 extraProcessingInfo.insert(0, "Failed to get tethering stats.\n");
                 sendGenericOpFailed(cli, extraProcessingInfo.c_str());
-            return 0;
+                return 0;
         }
-
-        char *msg = tetherStats.getStatsLine();
-        cli->sendMsg(ResponseCode::TetheringStatsResult, msg, false);
-        free(msg);
         return 0;
 
     }

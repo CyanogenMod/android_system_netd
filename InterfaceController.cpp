@@ -46,6 +46,8 @@ char set_cmd_fini_func_name[] = "net_iface_send_command_fini";
 
 const char ipv6_proc_path[] = "/proc/sys/net/ipv6/conf";
 
+const char sys_net_path[] = "/sys/class/net";
+
 InterfaceController::InterfaceController()
 	: sendCommand_(NULL) {
 	// Initial IPv6 settings.
@@ -162,4 +164,27 @@ int InterfaceController::setAcceptRA(const char *value) {
 	}
 	closedir(dir);
 	return 0;
+}
+
+int InterfaceController::getMtu(const char *interface, int *mtu)
+{
+	char buf[16];
+	int size = sizeof(buf);
+	char *path;
+	asprintf(&path, "%s/%s/mtu", sys_net_path, interface);
+	int success = readFile(path, buf, &size);
+	if (!success && mtu)
+		*mtu = atoi(buf);
+	free(path);
+	return success;
+
+}
+
+int InterfaceController::setMtu(const char *interface, const char *mtu)
+{
+	char *path;
+	asprintf(&path, "%s/%s/mtu", sys_net_path, interface);
+	int success = writeFile(path, mtu, strlen(mtu));
+	free(path);
+	return success;
 }

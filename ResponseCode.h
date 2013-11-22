@@ -28,7 +28,7 @@ public:
     static const int TetherInterfaceListResult = 111;
     static const int TetherDnsFwdTgtListResult = 112;
     static const int TtyListResult             = 113;
-
+    static const int TetheringStatsListResult  = 114;
 
     // 200 series - Requested action has been successfully completed
     static const int CommandOkay               = 200;
@@ -45,6 +45,8 @@ public:
     static const int TetheringStatsResult      = 221;
     static const int DnsProxyQueryResult       = 222;
     static const int ClatdStatusResult         = 223;
+    static const int InterfaceGetMtuResult     = 224;
+    static const int GetMarkResult             = 225;
 
     // 400 series - The command was accepted but the requested action
     // did not take place.

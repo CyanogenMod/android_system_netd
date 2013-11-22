@@ -25,6 +25,7 @@
 #define AP_BSS_STOP_DELAY	500000
 #define AP_SET_CFG_DELAY	500000
 #define AP_DRIVER_START_DELAY	800000
+#define AP_CHANNEL_DEFAULT	6
 
 class SoftapController {
 public:

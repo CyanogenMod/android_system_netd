@@ -65,13 +65,22 @@ int main(int argc, char **argv) {
 }
 
 static int do_cmd(int sock, int argc, char **argv) {
-    char *final_cmd = strdup("0 ");
-    if (final_cmd == NULL) {
-        perror("strdup");
-        return errno;
-    }
-
+    char *final_cmd;
+    char *conv_ptr;
     int i;
+
+    /* Check if 1st arg is cmd sequence number */ 
+    strtol(argv[1], &conv_ptr, 10);
+    if (conv_ptr == argv[1]) {
+        final_cmd = strdup("0 ");
+    } else {
+        final_cmd = strdup("");
+    }
+    if (final_cmd == NULL) {
+        int res = errno;
+        perror("strdup failed");
+        return res;
+    }
 
     for (i = 1; i < argc; i++) {
         if (index(argv[i], '"')) {
@@ -81,22 +90,24 @@ static int do_cmd(int sock, int argc, char **argv) {
         }
         bool needs_quoting = index(argv[i], ' ');
         const char *format = needs_quoting ? "%s\"%s\"%s" : "%s%s%s";
-        char *cmp;
+        char *tmp_final_cmd;
 
-        if (asprintf(&cmp, format, final_cmd, argv[i],
-                     (i == (argc -1)) ? "" : " ") < 0) {
-            perror("malloc");
+        if (asprintf(&tmp_final_cmd, format, final_cmd, argv[i],
+                     (i == (argc - 1)) ? "" : " ") < 0) {
+            int res = errno;
+            perror("failed asprintf");
             free(final_cmd);
-            return errno;
+            return res;
         }
         free(final_cmd);
-        final_cmd = cmp;
+        final_cmd = tmp_final_cmd;
     }
 
     if (write(sock, final_cmd, strlen(final_cmd) + 1) < 0) {
+        int res = errno;
         perror("write");
         free(final_cmd);
-        return errno;
+        return res;
     }
     free(final_cmd);
 
@@ -121,9 +132,10 @@ static int do_monitor(int sock, int stop_after_cmd) {
         FD_SET(sock, &read_fds);
 
         if ((rc = select(sock +1, &read_fds, NULL, NULL, &to)) < 0) {
+            int res = errno;
             fprintf(stderr, "Error in select (%s)\n", strerror(errno));
             free(buffer);
-            return errno;
+            return res;
         } else if (!rc) {
             continue;
             fprintf(stderr, "[TIMEOUT]\n");
@@ -131,6 +143,7 @@ static int do_monitor(int sock, int stop_after_cmd) {
         } else if (FD_ISSET(sock, &read_fds)) {
             memset(buffer, 0, 4096);
             if ((rc = read(sock, buffer, 4096)) <= 0) {
+                int res = errno;
                 if (rc == 0)
                     fprintf(stderr, "Lost connection to Netd - did it crash?\n");
                 else
@@ -138,7 +151,7 @@ static int do_monitor(int sock, int stop_after_cmd) {
                 free(buffer);
                 if (rc == 0)
                     return ECONNRESET;
-                return errno;
+                return res;
             }
 
             int offset = 0;
@@ -168,6 +181,6 @@ static int do_monitor(int sock, int stop_after_cmd) {
 }
 
 static void usage(char *progname) {
-    fprintf(stderr, "Usage: %s [sockname] <monitor>|<cmd> [arg1] [arg2...]\n", progname);
+    fprintf(stderr, "Usage: %s [<sockname>] ([monitor] | ([<cmd_seq_num>] <cmd> [arg ...]))\n", progname);
     exit(1);
 }

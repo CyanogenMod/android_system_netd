@@ -122,3 +122,24 @@ int writeFile(const char *path, const char *value, int size) {
     close(fd);
     return 0;
 }
+
+int readFile(const char *path, char *buf, int *sizep)
+{
+    int fd = open(path, O_RDONLY);
+    int size;
+
+    if (fd < 0) {
+        ALOGE("Failed to open %s: %s", path, strerror(errno));
+        return -1;
+    }
+
+    size = read(fd, buf, *sizep);
+    if (size < 0) {
+        ALOGE("Failed to write %s: %s", path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    *sizep = size;
+    close(fd);
+    return 0;
+}
