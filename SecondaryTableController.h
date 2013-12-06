@@ -60,6 +60,7 @@ public:
     int setupIptablesHooks();
 
     static const char* LOCAL_MANGLE_OUTPUT;
+    static const char* LOCAL_MANGLE_POSTROUTING;
     static const char* LOCAL_MANGLE_EXEMPT;
     static const char* LOCAL_MANGLE_IFACE_FORMAT;
     static const char* LOCAL_NAT_POSTROUTING;

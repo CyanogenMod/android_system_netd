@@ -103,6 +103,7 @@ static const char* RAW_PREROUTING[] = {
 static const char* MANGLE_POSTROUTING[] = {
         BandwidthController::LOCAL_MANGLE_POSTROUTING,
         IdletimerController::LOCAL_MANGLE_POSTROUTING,
+        SecondaryTableController::LOCAL_MANGLE_POSTROUTING,
         NULL,
 };
 
