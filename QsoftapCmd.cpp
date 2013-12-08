@@ -118,9 +118,9 @@ int CommandListener::QsoftapCmd::runCommand(SocketClient *cli,
 #endif //QSAP_STA_CONCURRENCY
         {
 
-            while(argc--) {
+            while (argc--) {
                 ret = snprintf(pCmdBuf, len, " %s", argv[i]);
-                if ( ret == len ) {
+                if ((ret < 0) || (ret >= len)) {
                     /* Error case */
                     /* TODO: Command too long send the error message */
                     *pCmdBuf = '\0';
