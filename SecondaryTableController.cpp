@@ -535,7 +535,7 @@ int SecondaryTableController::addFwmarkRoute(const char* iface, const char *dest
 }
 
 int SecondaryTableController::removeFwmarkRoute(const char* iface, const char *dest, int prefix) {
-    return setFwmarkRoute(iface, dest, prefix, true);
+    return setFwmarkRoute(iface, dest, prefix, false);
 }
 
 int SecondaryTableController::setFwmarkRoute(const char* iface, const char *dest, int prefix,
