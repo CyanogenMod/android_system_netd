@@ -177,14 +177,6 @@ int SecondaryTableController::modifyRoute(SocketClient *cli, const char *action,
         return -1;
     }
 
-    if (strcmp(action, ADD) == 0) {
-        mInterfaceRuleCount[tableIndex]++;
-    } else {
-        if (--mInterfaceRuleCount[tableIndex] < 1) {
-            mInterfaceRuleCount[tableIndex] = 0;
-            mInterfaceTable[tableIndex][0] = 0;
-        }
-    }
     modifyRuleCount(tableIndex, action);
     cli->sendMsg(ResponseCode::CommandOkay, "Route modified", false);
     return 0;
