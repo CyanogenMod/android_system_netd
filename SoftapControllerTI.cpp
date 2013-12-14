@@ -174,15 +174,15 @@ int SoftapController::clientsSoftap(char **retbuf)
  * Arguments:
  *	argv[2] - wlan interface
  *	argv[3] - SSID
- *	argv[4] - Security
- *	argv[5] - Key
- *	argv[6] - Channel
- *	argv[7] - Preamble
- *	argv[8] - Max SCB
+ *	argv[4] - Broadcast/Hidden
+ *	argv[5] - Channel
+ *	argv[6] - Security
+ *	argv[7] - Key
  */
 int SoftapController::setSoftap(int argc, char *argv[]) {
     int ret = 0;
     char buf[1024];
+    int channel = AP_CHANNEL_DEFAULT;
 
     ALOGD("%s - %s - %s - %s - %s - %s",argv[2],argv[3],argv[4],argv[5],argv[6],argv[7]);
 
@@ -220,21 +220,36 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
     sprintf(buf, "interface=%s\n", AP_INTERFACE);
     fputs(buf, fp2);
 
+    // Update interface path
+    sprintf(buf, "ctrl_interface=%s\n", AP_INTERFACE_PATH);
+    fputs(buf, fp2);
+
     // Update SSID
     sprintf(buf, "ssid=%s\n",argv[3]);
     fputs(buf, fp2);
 
-    // Update security
-    if(strncmp(argv[4],"wpa2-psk",8) == 0) {
-        sprintf(buf, "wpa=2\nwpa_passphrase=%s\nwpa_key_mgmt=WPA-PSK\n"
-                  "wpa_pairwise=CCMP\nrsn_pairwise=CCMP\n", argv[5]);
-        fputs(buf, fp2);
+    // Update Channel
+    if (argc >= 5) {
+        channel = atoi(argv[5]);
+        if (channel <= 0) {
+            channel = AP_CHANNEL_DEFAULT;
+        }
+        sprintf(buf, "channel=%d\n",channel);
     }
 
-    if(strncmp(argv[4],"wpa-psk",7) == 0) {
-        sprintf(buf, "wpa=1\nwpa_passphrase=%s\nwpa_key_mgmt=WPA-PSK\n"
-                  "wpa_pairwise=TKIP\nrsn_pairwise=TKIP\n", argv[5]);
-        fputs(buf, fp2);
+    // Update security
+    if (argc > 7) {
+        if(strncmp(argv[6],"wpa2-psk",8) == 0) {
+            sprintf(buf, "wpa=2\nwpa_passphrase=%s\nwpa_key_mgmt=WPA-PSK\n"
+                      "wpa_pairwise=CCMP\nrsn_pairwise=CCMP\n", argv[7]);
+            fputs(buf, fp2);
+        }
+
+        if(strncmp(argv[6],"wpa-psk",7) == 0) {
+            sprintf(buf, "wpa=1\nwpa_passphrase=%s\nwpa_key_mgmt=WPA-PSK\n"
+                      "wpa_pairwise=TKIP\nrsn_pairwise=TKIP\n", argv[7]);
+            fputs(buf, fp2);
+        }
     }
 
     fclose(fp);

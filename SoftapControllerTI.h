@@ -37,6 +37,9 @@
 #define HOSTAPD_STOP_DELAY_US 100000
 
 #define AP_INTERFACE  "wlan0"
+#define AP_INTERFACE_PATH  "/data/misc/wifi/hostapd"
+
+#define AP_CHANNEL_DEFAULT	6
 
 class SoftapController {
     bool mHostapdStarted;
