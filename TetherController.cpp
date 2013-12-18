@@ -96,7 +96,7 @@ bool TetherController::getIpFwdEnabled() {
     return (enabled  == '1' ? true : false);
 }
 
-#define TETHER_START_CONST_ARG		8
+#define TETHER_START_CONST_ARG        8
 
 int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
     if (mDaemonPid != 0) {
