@@ -145,6 +145,7 @@ bool TetherController::getIpFwdEnabled() {
     return (enabled  == '1' ? true : false);
 }
 
+#define TETHER_START_CONST_ARG		8
 int TetherController::startTethering(int num_addrs, struct in_addr* addrs, int lease_time) {
     if (mDaemonPid != 0) {
         ALOGE("Tethering already started");
@@ -188,19 +189,20 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs, int l
             close(pipefd[0]);
         }
 
-        int num_processed_args = 7 + (num_addrs/2) + 1; // 1 null for termination
+        int num_processed_args = TETHER_START_CONST_ARG + (num_addrs/2) + 1; // 1 null for termination
         char **args = (char **)malloc(sizeof(char *) * num_processed_args);
         args[num_processed_args - 1] = NULL;
         args[0] = (char *)"/system/bin/dnsmasq";
         args[1] = (char *)"--keep-in-foreground";
         args[2] = (char *)"--no-resolv";
         args[3] = (char *)"--no-poll";
+        args[4] = (char *)"--dhcp-authoritative";
         // TODO: pipe through metered status from ConnService
-        args[4] = (char *)"--dhcp-option-force=43,ANDROID_METERED";
-        args[5] = (char *)"--pid-file";
-        args[6] = (char *)"";
+        args[5] = (char *)"--dhcp-option-force=43,ANDROID_METERED";
+        args[6] = (char *)"--pid-file";
+        args[7] = (char *)"";
 
-        int nextArg = 7;
+        int nextArg = TETHER_START_CONST_ARG;
         for (int addrIndex=0; addrIndex < num_addrs;) {
             char *start = strdup(inet_ntoa(addrs[addrIndex++]));
             char *end = strdup(inet_ntoa(addrs[addrIndex++]));
