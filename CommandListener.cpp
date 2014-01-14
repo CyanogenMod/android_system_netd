@@ -49,7 +49,7 @@
 #define INET_ADDRSTRLEN 16
 #endif
 
-#ifdef QCOM_WLAN
+#ifdef QSAP_WLAN
 #include "qsap_api.h"
 #endif
 
@@ -152,11 +152,11 @@ CommandListener::CommandListener(UidMarkMap *map) :
     registerCmd(new NatCmd());
     registerCmd(new ListTtysCmd());
     registerCmd(new PppdCmd());
-#ifdef QCOM_WLAN
-    registerCmd(new QualcommSoftapCmd());
-#else /* QCOM_WLAN */
+#ifdef QSAP_WLAN
+    registerCmd(new QsoftapCmd());
+#else /* QSAP_WLAN */
     registerCmd(new SoftapCmd());
-#endif /* QCOM_WLAN */
+#endif /* QSAP_WLAN */
     registerCmd(new BandwidthControlCmd());
     registerCmd(new IdletimerControlCmd());
     registerCmd(new ResolverCmd());

@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define LOG_TAG "QualcommSoftapCmd"
+#define LOG_TAG "QsoftapCmd"
 #include <cutils/log.h>
 
 #include "CommandListener.h"
@@ -32,11 +32,11 @@
 #include <cutils/properties.h>
 static char ath6kl_supported[PROPERTY_VALUE_MAX];
 
-CommandListener::QualcommSoftapCmd::QualcommSoftapCmd() :
+CommandListener::QsoftapCmd::QsoftapCmd() :
   SoftapCmd::SoftapCmd() {
 }
 
-int CommandListener::QualcommSoftapCmd::runCommand(SocketClient *cli,
+int CommandListener::QsoftapCmd::runCommand(SocketClient *cli,
                                         int argc, char **argv) {
     int rc = 0, flag = 0;
     char *retbuf = NULL;
@@ -48,8 +48,8 @@ int CommandListener::QualcommSoftapCmd::runCommand(SocketClient *cli,
 
     if (!strcmp(argv[1], "qccmd")) {
 #define MAX_CMD_SIZE 256
-        char qccmdbuf[MAX_CMD_SIZE], *pcmdbuf;
-        int len = MAX_CMD_SIZE, i=2, ret;
+        char qcCmdBuf[MAX_CMD_SIZE], *pCmdBuf;
+        int len = MAX_CMD_SIZE, i = 2, ret;
 
         if ( argc < 4 ) {
             cli->sendMsg(ResponseCode::OperationFailed, "failure: invalid arguments", true);
@@ -57,8 +57,8 @@ int CommandListener::QualcommSoftapCmd::runCommand(SocketClient *cli,
         }
 
         argc -= 2;
-        pcmdbuf = qccmdbuf;
-#ifdef QCOM_SAP_STA_CONCURRENCY
+        pCmdBuf = qcCmdBuf;
+#ifdef QSAP_STA_CONCURRENCY
         //SAP STA Concurrency Customization
         // Cmd Format Example "set sap_sta_concurrency=6" where 6 is STA Mode channel
         if (!strncmp(argv[3], "sap_sta_concurrency=",20) && !strcmp(argv[2], "set")) {
@@ -66,14 +66,14 @@ int CommandListener::QualcommSoftapCmd::runCommand(SocketClient *cli,
             int sta_channel = atoi(&argv[3][20]);
             int sap_channel;
             //Get SAP Mode channel from SoftAP SDK
-            ret = snprintf(pcmdbuf, len, " get channel");
+            ret = snprintf(pCmdBuf, len, " get channel");
             len = MAX_CMD_SIZE;
             //Send cmd to SoftAP SDK
-            qsap_hostd_exec_cmd(qccmdbuf, qccmdbuf, (u32*)&len);
-            cli->sendMsg(qccmdbuf);
+            qsap_hostd_exec_cmd(qcCmdBuf, qcCmdBuf, (u32*)&len);
+            cli->sendMsg(qcCmdBuf);
 
-            sap_channel = atoi(&qccmdbuf[16]);
-            ALOGD("SAP STA Concurrency GET CHANNEL Rsp %s STA Channel %d SAP Channel %d",qccmdbuf,sta_channel,sap_channel);
+            sap_channel = atoi(&qcCmdBuf[16]);
+            ALOGD("SAP STA Concurrency GET CHANNEL Rsp %s STA Channel %d SAP Channel %d",qcCmdBuf,sta_channel,sap_channel);
 
             //StopSoftAP and exitAP if channels are different
             if(sta_channel != sap_channel) {
@@ -85,10 +85,10 @@ int CommandListener::QualcommSoftapCmd::runCommand(SocketClient *cli,
                 }
                 //Send exitAP cmd to SoftAP SDK
                 len = MAX_CMD_SIZE;
-                ret = snprintf(pcmdbuf, len, " set reset_ap=5");
-                qsap_hostd_exec_cmd(qccmdbuf, qccmdbuf, (u32*)&len);
-                cli->sendMsg(qccmdbuf);
-                ALOGD("SAP STA Concurrency result for exitAP %s",qccmdbuf);
+                ret = snprintf(pCmdBuf, len, " set reset_ap=5");
+                qsap_hostd_exec_cmd(qcCmdBuf, qcCmdBuf, (u32*)&len);
+                cli->sendMsg(qcCmdBuf);
+                ALOGD("SAP STA Concurrency result for exitAP %s",qcCmdBuf);
             }
 
             return 0;
@@ -99,11 +99,11 @@ int CommandListener::QualcommSoftapCmd::runCommand(SocketClient *cli,
             if(!sSoftapCtrl->isSoftapStarted()) {
                 //Send initAP cmd to SoftAP SDK
                 len = MAX_CMD_SIZE;
-                ret = snprintf(pcmdbuf, len, " set reset_ap=4");
+                ret = snprintf(pCmdBuf, len, " set reset_ap=4");
                 //Send cmd to SoftAP SDK
-                qsap_hostd_exec_cmd(qccmdbuf, qccmdbuf, (u32*)&len);
-                cli->sendMsg(qccmdbuf);
-                ALOGD("SAP STA Concurrency result for initAP %s",qccmdbuf);
+                qsap_hostd_exec_cmd(qcCmdBuf, qcCmdBuf, (u32*)&len);
+                cli->sendMsg(qcCmdBuf);
+                ALOGD("SAP STA Concurrency result for initAP %s",qcCmdBuf);
 
                 rc = sSoftapCtrl->startSoftap();
                 if (!rc) {
@@ -115,25 +115,25 @@ int CommandListener::QualcommSoftapCmd::runCommand(SocketClient *cli,
             return 0;
         } //SAP STA Concurrency Customization Ends
         else
-#endif //QCOM_SAP_STA_CONCURRENCY
+#endif //QSAP_STA_CONCURRENCY
         {
 
             while(argc--) {
-                ret = snprintf(pcmdbuf, len, " %s", argv[i]);
+                ret = snprintf(pCmdBuf, len, " %s", argv[i]);
                 if ( ret == len ) {
                     /* Error case */
                     /* TODO: Command too long send the error message */
-                    *pcmdbuf = '\0';
+                    *pCmdBuf = '\0';
                     break;
                 }
-                pcmdbuf += ret;
+                pCmdBuf += ret;
                 len -= ret;
                 i++;
             }
 
             len = MAX_CMD_SIZE;
-            qsap_hostd_exec_cmd(qccmdbuf, qccmdbuf, (u32*)&len);
-            cli->sendMsg(ResponseCode::CommandOkay, qccmdbuf, false);
+            qsap_hostd_exec_cmd(qcCmdBuf, qcCmdBuf, (u32*)&len);
+            cli->sendMsg(ResponseCode::CommandOkay, qcCmdBuf, false);
             return 0;
         }
     } else if (!strcmp(argv[1], "set")) {
@@ -149,7 +149,7 @@ int CommandListener::QualcommSoftapCmd::runCommand(SocketClient *cli,
            just the settings supported by the Android framework, and
            will do this every time Soft AP is enabled.  This will
            destroy the hostapd.conf used to store the settings used by
-           the Qualcomm SoftAP SDK */
+           the QSoftAP SDK */
         ALOGD("Got softap set command we are overriding");
         rc = qsapsetSoftap(argc, argv);
     } else {

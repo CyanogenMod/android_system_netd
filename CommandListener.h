@@ -64,11 +64,11 @@ private:
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
 
-#ifdef QCOM_WLAN
-    class QualcommSoftapCmd : public SoftapCmd {
+#ifdef QSAP_WLAN
+    class QsoftapCmd : public SoftapCmd {
     public:
-        QualcommSoftapCmd();
-        virtual ~QualcommSoftapCmd() {}
+        QsoftapCmd();
+        virtual ~QsoftapCmd() {}
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
 #endif

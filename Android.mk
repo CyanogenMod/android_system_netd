@@ -55,8 +55,8 @@ ifneq ($(BOARD_HOSTAPD_DRIVER),)
 endif
 
 ifeq ($(BOARD_HAS_QCOM_WLAN_SDK), true)
-  LOCAL_SRC_FILES += QualcommSoftapCmd.cpp
-  LOCAL_CFLAGS += -DQCOM_WLAN
+  LOCAL_SRC_FILES += QsoftapCmd.cpp
+  LOCAL_CFLAGS += -DQSAP_WLAN
   LOCAL_SHARED_LIBRARIES += libqsap_sdk
   LOCAL_C_INCLUDES += $(LOCAL_PATH)/../qcom/softap/sdk/
 endif
