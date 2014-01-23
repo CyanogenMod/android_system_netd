@@ -28,7 +28,7 @@ LOCAL_SRC_FILES:=                                      \
 
 LOCAL_MODULE:= netd
 
-LOCAL_C_INCLUDES := $(KERNEL_HEADERS) \
+LOCAL_C_INCLUDES := \
                     external/mdnsresponder/mDNSShared \
                     external/openssl/include \
                     external/stlport/stlport \
@@ -50,7 +50,7 @@ LOCAL_SRC_FILES:=          \
 
 LOCAL_MODULE:= ndc
 
-LOCAL_C_INCLUDES := $(KERNEL_HEADERS)
+LOCAL_C_INCLUDES :=
 
 LOCAL_CFLAGS := 
 
