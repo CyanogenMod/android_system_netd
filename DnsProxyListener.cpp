@@ -345,10 +345,10 @@ void DnsProxyListener::GetHostByNameHandler::run() {
     hp = android_gethostbynameforiface(mName, mAf, mIface ? mIface : iface, mMark);
 
     if (DBG) {
-        ALOGD("GetHostByNameHandler::run gethostbyname errno: %s hp->h_name = %s, name_len = %d\n",
+        ALOGD("GetHostByNameHandler::run gethostbyname errno: %s hp->h_name = %s, name_len = %zu\n",
                 hp ? "success" : strerror(errno),
-                (hp && hp->h_name) ? hp->h_name: "null",
-                (hp && hp->h_name) ? strlen(hp->h_name)+ 1 : 0);
+                (hp && hp->h_name) ? hp->h_name : "null",
+                (hp && hp->h_name) ? strlen(hp->h_name) + 1 : 0);
     }
 
     bool success = true;
@@ -483,10 +483,10 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
             mIface ? mIface : tmp, mark);
 
     if (DBG) {
-        ALOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %d\n",
+        ALOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %zu\n",
                 hp ? "success" : strerror(errno),
-                (hp && hp->h_name) ? hp->h_name: "null",
-                (hp && hp->h_name) ? strlen(hp->h_name)+ 1 : 0);
+                (hp && hp->h_name) ? hp->h_name : "null",
+                (hp && hp->h_name) ? strlen(hp->h_name) + 1 : 0);
     }
 
     bool success = true;
