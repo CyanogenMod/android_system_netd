@@ -28,6 +28,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define __STDC_FORMAT_MACROS 1
+#include <inttypes.h>
+
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -48,7 +51,7 @@
 #include "ResponseCode.h"
 
 /* Alphabetical */
-#define ALERT_IPT_TEMPLATE "%s %s -m quota2 ! --quota %lld --name %s"
+#define ALERT_IPT_TEMPLATE "%s %s -m quota2 ! --quota %"PRId64" --name %s"
 const char BandwidthController::ALERT_GLOBAL_NAME[] = "globalAlert";
 const char* BandwidthController::LOCAL_INPUT = "bw_INPUT";
 const char* BandwidthController::LOCAL_FORWARD = "bw_FORWARD";
@@ -475,7 +478,7 @@ std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *cost
     char *buff;
     const char *opFlag;
 
-    ALOGV("makeIptablesQuotaCmd(%d, %lld)", op, quota);
+    ALOGV("makeIptablesQuotaCmd(%d, %"PRId64")", op, quota);
 
     switch (op) {
     case IptOpInsert:
@@ -494,7 +497,7 @@ std::string BandwidthController::makeIptablesQuotaCmd(IptOp op, const char *cost
     }
 
     // The requried IP version specific --jump REJECT ... will be added later.
-    asprintf(&buff, "%s bw_costly_%s -m quota2 ! --quota %lld --name %s", opFlag, costName, quota,
+    asprintf(&buff, "%s bw_costly_%s -m quota2 ! --quota %"PRId64" --name %s", opFlag, costName, quota,
              costName);
     res = buff;
     free(buff);
@@ -780,8 +783,8 @@ int BandwidthController::getInterfaceQuota(const char *costName, int64_t *bytes)
         ALOGE("Reading quota %s failed (%s)", costName, strerror(errno));
         return -1;
     }
-    scanRes = fscanf(fp, "%lld", bytes);
-    ALOGV("Read quota res=%d bytes=%lld", scanRes, *bytes);
+    scanRes = fscanf(fp, "%"PRId64, bytes);
+    ALOGV("Read quota res=%d bytes=%"PRId64, scanRes, *bytes);
     fclose(fp);
     return scanRes == 1 ? 0 : -1;
 }
@@ -830,7 +833,7 @@ int BandwidthController::updateQuota(const char *quotaName, int64_t bytes) {
         ALOGE("Updating quota %s failed (%s)", quotaName, strerror(errno));
         return -1;
     }
-    fprintf(fp, "%lld\n", bytes);
+    fprintf(fp, "%"PRId64"\n", bytes);
     fclose(fp);
     return 0;
 }
@@ -1110,9 +1113,9 @@ int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherS
     while (NULL != (buffPtr = fgets(lineBuffer, MAX_IPT_OUTPUT_LINE_LEN, fp))) {
         /* Clean up, so a failed parse can still print info */
         iface0[0] = iface1[0] = rest[0] = packets = bytes = 0;
-        res = sscanf(buffPtr, "%lld %lld RETURN all -- %s %s 0.%s",
+        res = sscanf(buffPtr, "%"PRId64" %"PRId64" RETURN all -- %s %s 0.%s",
                 &packets, &bytes, iface0, iface1, rest);
-        ALOGV("parse res=%d iface0=<%s> iface1=<%s> pkts=%lld bytes=%lld rest=<%s> orig line=<%s>", res,
+        ALOGV("parse res=%d iface0=<%s> iface1=<%s> pkts=%"PRId64" bytes=%"PRId64" rest=<%s> orig line=<%s>", res,
              iface0, iface1, packets, bytes, rest, buffPtr);
         extraProcessingInfo += buffPtr;
 
@@ -1126,23 +1129,23 @@ int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherS
          */
         if (filter.intIface[0] && filter.extIface[0]) {
             if (filter.intIface == iface0 && filter.extIface == iface1) {
-                ALOGV("2Filter RX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                ALOGV("2Filter RX iface_in=%s iface_out=%s rx_bytes=%"PRId64" rx_packets=%"PRId64" ", iface0, iface1, bytes, packets);
                 stats.rxPackets = packets;
                 stats.rxBytes = bytes;
             } else if (filter.intIface == iface1 && filter.extIface == iface0) {
-                ALOGV("2Filter TX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                ALOGV("2Filter TX iface_in=%s iface_out=%s rx_bytes=%"PRId64" rx_packets=%"PRId64" ", iface0, iface1, bytes, packets);
                 stats.txPackets = packets;
                 stats.txBytes = bytes;
             }
         } else if (filter.intIface[0] || filter.extIface[0]) {
             if (filter.intIface == iface0 || filter.extIface == iface1) {
-                ALOGV("1Filter RX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                ALOGV("1Filter RX iface_in=%s iface_out=%s rx_bytes=%"PRId64" rx_packets=%"PRId64" ", iface0, iface1, bytes, packets);
                 stats.intIface = iface0;
                 stats.extIface = iface1;
                 stats.rxPackets = packets;
                 stats.rxBytes = bytes;
             } else if (filter.intIface == iface1 || filter.extIface == iface0) {
-                ALOGV("1Filter TX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                ALOGV("1Filter TX iface_in=%s iface_out=%s rx_bytes=%"PRId64" rx_packets=%"PRId64" ", iface0, iface1, bytes, packets);
                 stats.intIface = iface1;
                 stats.extIface = iface0;
                 stats.txPackets = packets;
@@ -1150,19 +1153,19 @@ int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherS
             }
         } else /* if (!filter.intFace[0] && !filter.extIface[0]) */ {
             if (!stats.intIface[0]) {
-                ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%"PRId64" rx_packets=%"PRId64" ", iface0, iface1, bytes, packets);
                 stats.intIface = iface0;
                 stats.extIface = iface1;
                 stats.rxPackets = packets;
                 stats.rxBytes = bytes;
             } else if (stats.intIface == iface1 && stats.extIface == iface0) {
-                ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%lld rx_packets=%lld ", iface0, iface1, bytes, packets);
+                ALOGV("0Filter TX iface_in=%s iface_out=%s rx_bytes=%"PRId64" rx_packets=%"PRId64" ", iface0, iface1, bytes, packets);
                 stats.txPackets = packets;
                 stats.txBytes = bytes;
             }
         }
         if (stats.rxBytes != -1 && stats.txBytes != -1) {
-            ALOGV("rx_bytes=%lld tx_bytes=%lld filterPair=%d", stats.rxBytes, stats.txBytes, filterPair);
+            ALOGV("rx_bytes=%"PRId64" tx_bytes=%"PRId64" filterPair=%d", stats.rxBytes, stats.txBytes, filterPair);
             /* Send out stats, and prep for the next if needed. */
             char *msg = stats.getStatsLine();
             if (filterPair) {
@@ -1185,7 +1188,7 @@ int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherS
 
 char *BandwidthController::TetherStats::getStatsLine(void) const {
     char *msg;
-    asprintf(&msg, "%s %s %lld %lld %lld %lld", intIface.c_str(), extIface.c_str(),
+    asprintf(&msg, "%s %s %"PRId64" %"PRId64" %"PRId64" %"PRId64, intIface.c_str(), extIface.c_str(),
             rxBytes, rxPackets, txBytes, txPackets);
     return msg;
 }
