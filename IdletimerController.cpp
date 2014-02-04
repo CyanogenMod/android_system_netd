@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-// #define LOG_NDEBUG 0
-
 /*
  * MODUS OPERANDI
  * --------------
@@ -95,6 +93,8 @@
  *
  */
 
+#define LOG_NDEBUG 0
+
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/socket.h>
@@ -123,11 +123,27 @@ IdletimerController::~IdletimerController() {
 }
 /* return 0 or non-zero */
 int IdletimerController::runIpxtablesCmd(int argc, const char **argv) {
-    int res;
+    int resIpv4, resIpv6;
 
-    res = android_fork_execvp(argc, (char **)argv, NULL, false, false);
-    ALOGV("runCmd() res=%d", res);
-    return res;
+    // Running for IPv4
+    argv[0] = IPTABLES_PATH;
+    resIpv4 = android_fork_execvp(argc, (char **)argv, NULL, false, false);
+
+    // Running for IPv6
+    argv[0] = IP6TABLES_PATH;
+    resIpv6 = android_fork_execvp(argc, (char **)argv, NULL, false, false);
+
+#if !LOG_NDEBUG
+    std::string full_cmd = argv[0];
+    argc--; argv++;
+    for (; argc; argc--, argv++) {
+        full_cmd += " ";
+        full_cmd += argv[0];
+    }
+    ALOGV("runCmd(%s) res_ipv4=%d, res_ipv6=%d", full_cmd.c_str(), resIpv4, resIpv6);
+#endif
+
+    return (resIpv4 == 0 && resIpv6 == 0) ? 0 : -1;
 }
 
 bool IdletimerController::setupIptablesHooks() {
@@ -137,7 +153,7 @@ bool IdletimerController::setupIptablesHooks() {
 int IdletimerController::setDefaults() {
   int res;
   const char *cmd1[] = {
-      IPTABLES_PATH,
+      NULL, // To be filled inside runIpxtablesCmd
       "-t",
       "raw",
       "-F",
@@ -149,7 +165,7 @@ int IdletimerController::setDefaults() {
     return res;
 
   const char *cmd2[] = {
-      IPTABLES_PATH,
+      NULL, // To be filled inside runIpxtablesCmd
       "-t",
       "mangle",
       "-F",
@@ -179,7 +195,7 @@ int IdletimerController::modifyInterfaceIdletimer(IptOp op, const char *iface,
   snprintf(timeout_str, sizeof(timeout_str), "%u", timeout);
 
   const char *cmd1[] = {
-      IPTABLES_PATH,
+      NULL, // To be filled inside runIpxtablesCmd
       "-t",
       "raw",
       (op == IptOpAdd) ? "-A" : "-D",
@@ -201,7 +217,7 @@ int IdletimerController::modifyInterfaceIdletimer(IptOp op, const char *iface,
     return res;
 
   const char *cmd2[] = {
-      IPTABLES_PATH,
+      NULL, // To be filled inside runIpxtablesCmd
       "-t",
       "mangle",
       (op == IptOpAdd) ? "-A" : "-D",
