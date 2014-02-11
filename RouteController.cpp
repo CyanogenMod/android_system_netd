@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -43,6 +43,7 @@
 const char *TAG = "RouteController";
 static char IP_PATH[] = "/system/bin/ip";
 const char *RouteController::MAIN_TABLE = "254";
+const char *RouteController::SOURCE_POLICY_RULE_PRIO = "150";
 const int MAXSIZE = 256;
 
 
@@ -281,7 +282,8 @@ std::string RouteController::_addRule
     char buffer[255];
 
     snprintf(buffer, sizeof buffer,
-            "%s rule add from %s lookup %s", ipver, address, table);
+            "%s rule add from %s lookup %s prio %s", ipver, address, table,
+             SOURCE_POLICY_RULE_PRIO);
 
     return _runIpCmd(buffer);
 }

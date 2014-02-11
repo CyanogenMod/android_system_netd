@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -81,7 +81,7 @@ public:
 
 private:
     const static char *MAIN_TABLE;
-
+    const static char *SOURCE_POLICY_RULE_PRIO;
     std::string _runIpCmd
     (
         const char *cmd
