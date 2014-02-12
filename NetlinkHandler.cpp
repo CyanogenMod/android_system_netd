@@ -91,12 +91,8 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
 
     } else if (!strcmp(subsys, "xt_idletimer")) {
         int action = evt->getAction();
-        const char *label = evt->findParam("LABEL");
+        const char *label = evt->findParam("INTERFACE");
         const char *state = evt->findParam("STATE");
-        // if no LABEL, use INTERFACE instead
-        if (label == NULL) {
-            label = evt->findParam("INTERFACE");
-        }
         if (state)
             notifyInterfaceClassActivity(label, !strcmp("active", state));
 
