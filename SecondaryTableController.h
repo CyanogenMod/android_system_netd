@@ -17,42 +17,62 @@
 #ifndef _SECONDARY_TABLE_CONTROLLER_H
 #define _SECONDARY_TABLE_CONTROLLER_H
 
+#include <map>
+
 #include <sysutils/FrameworkListener.h>
 
 #include <net/if.h>
-#include "UidMarkMap.h"
 #include "NetdConstants.h"
+#include "NetworkController.h"
 
 #ifndef IFNAMSIZ
 #define IFNAMSIZ 16
 #endif
 
-static const int INTERFACES_TRACKED = 10;
 static const int BASE_TABLE_NUMBER = 60;
-static int MAX_TABLE_NUMBER = BASE_TABLE_NUMBER + INTERFACES_TRACKED;
 static const int PROTECT_MARK = 0x1;
 static const char *EXEMPT_PRIO = "99";
 static const char *RULE_PRIO = "100";
 
+// SecondaryTableController is responsible for maintaining the "secondary" routing tables, where
+// "secondary" means not the main table.  The "secondary" tables are used for VPNs.
 class SecondaryTableController {
 
 public:
-    SecondaryTableController(UidMarkMap *map);
+    SecondaryTableController(NetworkController* controller);
     virtual ~SecondaryTableController();
 
+    // Add/remove a particular route in a particular interface's table.
     int addRoute(SocketClient *cli, char *iface, char *dest, int prefixLen, char *gateway);
     int removeRoute(SocketClient *cli, char *iface, char *dest, int prefixLen, char *gateway);
-    int findTableNumber(const char *iface);
-    int modifyFromRule(int tableIndex, const char *action, const char *addr);
-    int modifyLocalRoute(int tableIndex, const char *action, const char *iface, const char *addr);
+
+    int modifyFromRule(unsigned netId, const char *action, const char *addr);
+    int modifyLocalRoute(unsigned netId, const char *action, const char *iface, const char *addr);
+
+    // Add/remove rules to force packets in a particular range of UIDs over a particular interface.
+    // This is accomplished with a rule specifying these UIDs use the interface's routing chain.
     int addUidRule(const char *iface, int uid_start, int uid_end);
     int removeUidRule(const char *iface, int uid_start, int uid_end);
+
+    // Add/remove rules and chains so packets intended for a particular interface use that
+    // interface.
     int addFwmarkRule(const char *iface);
     int removeFwmarkRule(const char *iface);
+
+    // Add/remove rules so packets going to a particular range of IPs use a particular interface.
+    // This is accomplished by adding/removeing a rule to/from an interface’s chain to mark packets
+    // destined for the IP address range with the mark for the interface’s table.
     int addFwmarkRoute(const char* iface, const char *dest, int prefix);
     int removeFwmarkRoute(const char* iface, const char *dest, int prefix);
+
+    // Add/remove rules so packets going to a particular IP address use the main table (i.e. not
+    // the VPN tables).  This is used in conjunction with adding a specific route to the main
+    // table.  This is to support requestRouteToHost().
+    // This is accomplished by marking these packets with the protect mark and adding a rule to
+    // use the main table.
     int addHostExemption(const char *host);
     int removeHostExemption(const char *host);
+
     void getUidMark(SocketClient *cli, int uid);
     void getProtectMark(SocketClient *cli);
 
@@ -66,19 +86,17 @@ public:
 
 
 private:
-    UidMarkMap *mUidMarkMap;
+    NetworkController *mNetCtrl;
 
     int setUidRule(const char* iface, int uid_start, int uid_end, bool add);
     int setFwmarkRule(const char *iface, bool add);
     int setFwmarkRoute(const char* iface, const char *dest, int prefix, bool add);
     int setHostExemption(const char *host, bool add);
     int modifyRoute(SocketClient *cli, const char *action, char *iface, char *dest, int prefix,
-            char *gateway, int tableIndex);
+            char *gateway, unsigned netId);
 
-    char mInterfaceTable[INTERFACES_TRACKED][IFNAMSIZ + 1];
-    int mInterfaceRuleCount[INTERFACES_TRACKED];
-    void modifyRuleCount(int tableIndex, const char *action);
-    int verifyTableIndex(int tableIndex);
+    std::map<unsigned, int> mNetIdRuleCount;
+    void modifyRuleCount(unsigned netId, const char *action);
     const char *getVersion(const char *addr);
     IptablesTarget getIptablesTarget(const char *addr);
 

@@ -21,105 +21,30 @@
 
 #include <net/if.h>
 
-// NOTE: <resolv_iface.h> is a private C library header that provides
-//       declarations for _resolv_set_default_iface() and others.
-#include <resolv_iface.h>
+// NOTE: <resolv_netid.h> is a private C library header that provides
+//       declarations for _resolv_set_nameservers_for_net and
+//       _resolv_flush_cache_for_net
+#include <resolv_netid.h>
 
 #include "ResolverController.h"
 
-int ResolverController::setDefaultInterface(const char* iface) {
-    if (DBG) {
-        ALOGD("setDefaultInterface iface = %s\n", iface);
-    }
-
-    _resolv_set_default_iface(iface);
-
-    return 0;
-}
-
-int ResolverController::setInterfaceDnsServers(const char* iface, const char* domains,
+int ResolverController::setDnsServers(unsigned netId, const char* domains,
         const char** servers, int numservers) {
     if (DBG) {
-        ALOGD("setInterfaceDnsServers iface = %s\n", iface);
+        ALOGD("setDnsServers netId = %u\n", netId);
     }
-    _resolv_set_nameservers_for_iface(iface, servers, numservers, domains);
+    _resolv_set_nameservers_for_net(netId, servers, numservers, domains);
 
     return 0;
 }
 
-int ResolverController::setInterfaceAddress(const char* iface, struct in_addr* addr) {
+int ResolverController::flushDnsCache(unsigned netId) {
     if (DBG) {
-        ALOGD("setInterfaceAddress iface = %s\n", iface);
+        ALOGD("flushDnsCache netId = %u\n", netId);
     }
 
-    _resolv_set_addr_of_iface(iface, addr);
+    _resolv_flush_cache_for_net(netId);
 
     return 0;
 }
 
-int ResolverController::flushDefaultDnsCache() {
-    if (DBG) {
-        ALOGD("flushDefaultDnsCache\n");
-    }
-
-    _resolv_flush_cache_for_default_iface();
-
-    return 0;
-}
-
-int ResolverController::flushInterfaceDnsCache(const char* iface) {
-    if (DBG) {
-        ALOGD("flushInterfaceDnsCache iface = %s\n", iface);
-    }
-
-    _resolv_flush_cache_for_iface(iface);
-
-    return 0;
-}
-
-int ResolverController::setDnsInterfaceForPid(const char* iface, int pid) {
-    if (DBG) {
-        ALOGD("setDnsIfaceForPid iface = %s, pid = %d\n", iface, pid);
-    }
-
-    _resolv_set_iface_for_pid(iface, pid);
-
-    return 0;
-}
-
-int ResolverController::clearDnsInterfaceForPid(int pid) {
-    if (DBG) {
-        ALOGD("clearDnsIfaceForPid pid = %d\n", pid);
-    }
-
-    _resolv_clear_iface_for_pid(pid);
-
-    return 0;
-}
-
-int ResolverController::setDnsInterfaceForUidRange(const char* iface, int uid_start, int uid_end) {
-    if (DBG) {
-        ALOGD("setDnsIfaceForUidRange iface = %s, range = [%d,%d]\n", iface, uid_start, uid_end);
-    }
-
-    return _resolv_set_iface_for_uid_range(iface, uid_start, uid_end);
-}
-
-int ResolverController::clearDnsInterfaceForUidRange(int uid_start, int uid_end) {
-    if (DBG) {
-        ALOGD("clearDnsIfaceForUidRange range = [%d,%d]\n", uid_start, uid_end);
-    }
-
-    return _resolv_clear_iface_for_uid_range(uid_start, uid_end);
-}
-
-int ResolverController::clearDnsInterfaceMappings()
-{
-    if (DBG) {
-        ALOGD("clearInterfaceMappings\n");
-    }
-    _resolv_clear_iface_uid_range_mapping();
-    _resolv_clear_iface_pid_mapping();
-
-    return 0;
-}
