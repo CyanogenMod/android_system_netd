@@ -415,7 +415,7 @@ int MDnsSdListener::Handler::runCommand(SocketClient *cli,
     } else if (strcmp(cmd, "stop-discover") == 0) {
         stop(cli, argc, argv, "discover");
     } else if (strcmp(cmd, "register") == 0) {
-        if (argc != 6) {
+        if (argc < 6) {
             cli->sendMsg(ResponseCode::CommandParameterError,
                     "Invalid number of arguments to mdnssd register", false);
             return 0;
@@ -427,11 +427,29 @@ int MDnsSdListener::Handler::runCommand(SocketClient *cli,
         char *interfaceName = NULL; // will use all
         char *domain = NULL;        // will use default
         char *host = NULL;          // will use default hostname
-        int textLen = 0;
-        void *textRecord = NULL;
-
+        unsigned char txtRecord[2048] = "";
+        unsigned char *ptr = txtRecord;
+        for (int i = 6; i < argc; ++i) {
+          int dataLength = strlen(argv[i]);
+          if (dataLength < 1) {
+            continue;
+          }
+          if (dataLength > 255) {
+            cli->sendMsg(ResponseCode::CommandParameterError,
+                    "TXT record fields must not be longer than 255 characters", false);
+            return 0;
+          }
+          if (ptr + dataLength + 1 > txtRecord + sizeof(txtRecord)) {
+            cli->sendMsg(ResponseCode::CommandParameterError,
+                    "Total length of TXT record must be smaller than 2048 bytes", false);
+            return 0;
+          }
+          *ptr++ = dataLength;
+          strcpy( (char*) ptr, argv[i]);
+          ptr += dataLength;
+        }
         serviceRegister(cli, requestId, interfaceName, serviceName,
-                serviceType, domain, host, port, textLen, textRecord);
+                serviceType, domain, host, port, ptr - txtRecord, txtRecord);
     } else if (strcmp(cmd, "stop-register") == 0) {
         stop(cli, argc, argv, "register");
     } else if (strcmp(cmd, "resolve") == 0) {
