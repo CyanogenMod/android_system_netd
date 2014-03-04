@@ -33,7 +33,7 @@ LOCAL_C_INCLUDES := \
                     external/openssl/include \
                     external/stlport/stlport \
                     bionic \
-                    bionic/libc/private \
+                    bionic/libc/dns/include \
                     $(call include-path-for, libhardware_legacy)/hardware_legacy
 
 LOCAL_CFLAGS := -Werror=format
@@ -52,7 +52,7 @@ LOCAL_MODULE:= ndc
 
 LOCAL_C_INCLUDES :=
 
-LOCAL_CFLAGS := 
+LOCAL_CFLAGS :=
 
 LOCAL_SHARED_LIBRARIES := libcutils
 
