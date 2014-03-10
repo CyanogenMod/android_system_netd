@@ -632,6 +632,10 @@ int MDnsSdListener::Monitor::rescan() {
             Element *cur = *prevPtr;
             *prevPtr = (cur)->mNext; // change our notion of this element and don't advance
             delete cur;
+        } else if ((*prevPtr)->mReady == 0) {
+            // Not ready so just skip this node and continue on
+            if (DBG_RESCAN) ALOGD("%p not ready.  Continuing.", *prevPtr);
+            prevPtr = &((*prevPtr)->mNext);
         }
     }
     pthread_mutex_unlock(&mHeadMutex);
