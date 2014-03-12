@@ -39,7 +39,8 @@ protected:
     void notifyInterfaceChanged(const char *name, bool isUp);
     void notifyInterfaceLinkChanged(const char *name, bool isUp);
     void notifyQuotaLimitReached(const char *name, const char *iface);
-    void notifyInterfaceClassActivity(const char *name, bool isActive);
+    void notifyInterfaceClassActivity(const char *name, bool isActive,
+                                      const char *timestamp);
     void notifyAddressChanged(int action, const char *addr, const char *iface,
                               const char *flags, const char *scope);
     void notifyInterfaceDnsServers(const char *iface, const char *lifetime,

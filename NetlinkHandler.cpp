@@ -93,8 +93,9 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
         int action = evt->getAction();
         const char *label = evt->findParam("INTERFACE");
         const char *state = evt->findParam("STATE");
+        const char *timestamp = evt->findParam("TIME_NS");
         if (state)
-            notifyInterfaceClassActivity(label, !strcmp("active", state));
+            notifyInterfaceClassActivity(label, !strcmp("active", state), timestamp);
 
 #if !LOG_NDEBUG
     } else if (strcmp(subsys, "platform") && strcmp(subsys, "backlight")) {
@@ -140,9 +141,13 @@ void NetlinkHandler::notifyQuotaLimitReached(const char *name, const char *iface
 }
 
 void NetlinkHandler::notifyInterfaceClassActivity(const char *name,
-                                                  bool isActive) {
-    notify(ResponseCode::InterfaceClassActivity,
+                                                  bool isActive, const char *timestamp) {
+    if (timestamp == NULL)
+        notify(ResponseCode::InterfaceClassActivity,
            "IfaceClass %s %s", isActive ? "active" : "idle", name);
+    else
+        notify(ResponseCode::InterfaceClassActivity,
+           "IfaceClass %s %s %s", isActive ? "active" : "idle", name, timestamp);
 }
 
 void NetlinkHandler::notifyAddressChanged(int action, const char *addr,
