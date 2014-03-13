@@ -31,6 +31,7 @@ const char * const IP6TABLES_PATH = "/system/bin/ip6tables";
 const char * const TC_PATH = "/system/bin/tc";
 const char * const IP_PATH = "/system/bin/ip";
 const char * const ADD = "add";
+const char * const APPEND = "append";
 const char * const DEL = "del";
 
 static void logExecError(const char* argv[], int res, int status) {

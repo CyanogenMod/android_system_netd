@@ -27,6 +27,7 @@ extern const char * const IP_PATH;
 extern const char * const TC_PATH;
 extern const char * const OEM_SCRIPT_PATH;
 extern const char * const ADD;
+extern const char * const APPEND;
 extern const char * const DEL;
 
 enum IptablesTarget { V4, V6, V4V6 };

@@ -271,6 +271,14 @@ int SecondaryTableController::modifyFromRule(int tableIndex, const char *action,
 int SecondaryTableController::modifyLocalRoute(int tableIndex, const char *action,
         const char *iface, const char *addr) {
     char tableIndex_str[11];
+    char action_local[IPARGSIZ];
+    /* append ensures that routes are successfully added for
+    the same address but with different interface names */
+    if ( strcmp( action, ADD ) == 0 ) {
+      strncpy(action_local, APPEND, strlen(APPEND)+1);
+    } else {
+      strncpy(action_local, action, IPARGSIZ);
+    }
 
     if (verifyTableIndex(tableIndex)) {
         return -1;
@@ -283,7 +291,7 @@ int SecondaryTableController::modifyLocalRoute(int tableIndex, const char *actio
     const char *cmd[] = {
             IP_PATH,
             "route",
-            action,
+            action_local,
             addr,
             "dev",
             iface,
