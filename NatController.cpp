@@ -112,12 +112,6 @@ int NatController::setDefaults() {
         {{IPTABLES_PATH, "-F", LOCAL_FORWARD,}, 1},
         {{IPTABLES_PATH, "-A", LOCAL_FORWARD, "-j", "DROP"}, 1},
         {{IPTABLES_PATH, "-t", "nat", "-F", LOCAL_NAT_POSTROUTING}, 1},
-        {{IP_PATH, "rule", "flush"}, 0},
-        {{IP_PATH, "-6", "rule", "flush"}, 0},
-        {{IP_PATH, "rule", "add", "from", "all", "lookup", "default", "prio", "32767"}, 0},
-        {{IP_PATH, "rule", "add", "from", "all", "lookup", "main", "prio", "32766"}, 0},
-        {{IP_PATH, "-6", "rule", "add", "from", "all", "lookup", "default", "prio", "32767"}, 0},
-        {{IP_PATH, "-6", "rule", "add", "from", "all", "lookup", "main", "prio", "32766"}, 0},
         {{IP_PATH, "route", "flush", "cache"}, 0},
     };
     for (unsigned int cmdNum = 0; cmdNum < ARRAY_SIZE(defaultCommands); cmdNum++) {
@@ -126,32 +120,6 @@ int NatController::setDefaults() {
                 return -1;
         }
     }
-
-    const char *cmd1[] = {
-        IPTABLES_PATH,
-        "-F",
-        "natctrl_FORWARD"
-    };
-    if (runCmd(ARRAY_SIZE(cmd1), cmd1))
-        return -1;
-
-    const char *cmd2[] = {
-        IPTABLES_PATH,
-        "-t",
-        "nat",
-        "-F",
-        "natctrl_nat_POSTROUTING"
-    };
-    if (runCmd(ARRAY_SIZE(cmd2), cmd2))
-        return -1;
-
-    const char *cmd3[] = {
-        IP_PATH,
-        "route",
-        "flush",
-        "cache"
-    };
-    runCmd(ARRAY_SIZE(cmd3), cmd3);
 
     natCount = 0;
 
