@@ -1113,7 +1113,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         }
 
         char *msg;
-        asprintf(&msg, "%"PRId64, bytes);
+        asprintf(&msg, "%" PRId64, bytes);
         cli->sendMsg(ResponseCode::QuotaCounterResult, msg, false);
         free(msg);
         return 0;
@@ -1132,7 +1132,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
             return 0;
         }
         char *msg;
-        asprintf(&msg, "%"PRId64, bytes);
+        asprintf(&msg, "%" PRId64, bytes);
         cli->sendMsg(ResponseCode::QuotaCounterResult, msg, false);
         free(msg);
         return 0;
