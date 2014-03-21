@@ -28,16 +28,9 @@ bool UidMarkMap::add(int uid_start, int uid_end, int mark) {
     if (uid_start > uid_end) {
         return false;
     }
-    android::netd::List<UidMarkEntry*>::iterator it;
-    for (it = mMap.begin(); it != mMap.end(); it++) {
-        UidMarkEntry *entry = *it;
-        if (entry->uid_start <= uid_end && uid_start <= entry->uid_end) {
-            return false;
-        }
-    }
 
     UidMarkEntry *e = new UidMarkEntry(uid_start, uid_end, mark);
-    mMap.push_back(e);
+    mMap.push_front(e);
     return true;
 };
 
