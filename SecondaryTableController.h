@@ -30,7 +30,6 @@
 static const int INTERFACES_TRACKED = 10;
 static const int BASE_TABLE_NUMBER = 60;
 static int MAX_TABLE_NUMBER = BASE_TABLE_NUMBER + INTERFACES_TRACKED;
-static const int PROTECT_MARK = 0x1;
 static const char *EXEMPT_PRIO = "99";
 static const char *RULE_PRIO = "100";
 
