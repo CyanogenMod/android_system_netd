@@ -133,8 +133,7 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     if (mIface == NULL) {
         //fall back to the per uid interface if no per pid interface exists
         if(!_resolv_get_pids_associated_interface(mPid, tmp, sizeof(tmp)))
-            if(!_resolv_get_uids_associated_interface(mUid, tmp, sizeof(tmp)))
-                mark = -1; // if we don't have a targeted iface don't use a mark
+            _resolv_get_uids_associated_interface(mUid, tmp, sizeof(tmp));
     }
 
     struct addrinfo* result = NULL;
@@ -473,8 +472,7 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     if (mIface == NULL) {
         //fall back to the per uid interface if no per pid interface exists
         if(!_resolv_get_pids_associated_interface(mPid, tmp, sizeof(tmp)))
-            if(!_resolv_get_uids_associated_interface(mUid, tmp, sizeof(tmp)))
-                mark = -1;
+            _resolv_get_uids_associated_interface(mUid, tmp, sizeof(tmp));
     }
     struct hostent* hp;
 
