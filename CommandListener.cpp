@@ -77,7 +77,6 @@ static const char* FILTER_OUTPUT[] = {
         OEM_IPTABLES_FILTER_OUTPUT,
         FirewallController::LOCAL_OUTPUT,
         BandwidthController::LOCAL_OUTPUT,
-        SecondaryTableController::LOCAL_FILTER_OUTPUT,
         NULL,
 };
 
@@ -95,7 +94,6 @@ static const char* MANGLE_POSTROUTING[] = {
 };
 
 static const char* MANGLE_OUTPUT[] = {
-        SecondaryTableController::LOCAL_MANGLE_EXEMPT,
         SecondaryTableController::LOCAL_MANGLE_OUTPUT,
         NULL,
 };
