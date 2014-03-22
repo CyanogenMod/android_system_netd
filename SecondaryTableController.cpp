@@ -38,10 +38,7 @@
 
 const char* SecondaryTableController::LOCAL_MANGLE_OUTPUT = "st_mangle_OUTPUT";
 const char* SecondaryTableController::LOCAL_MANGLE_POSTROUTING = "st_mangle_POSTROUTING";
-const char* SecondaryTableController::LOCAL_MANGLE_EXEMPT = "st_mangle_EXEMPT";
-const char* SecondaryTableController::LOCAL_MANGLE_IFACE_FORMAT = "st_mangle_%s_OUTPUT";
 const char* SecondaryTableController::LOCAL_NAT_POSTROUTING = "st_nat_POSTROUTING";
-const char* SecondaryTableController::LOCAL_FILTER_OUTPUT = "st_filter_OUTPUT";
 
 SecondaryTableController::SecondaryTableController(UidMarkMap *map) : mUidMarkMap(map) {
     int i;
@@ -62,15 +59,7 @@ int SecondaryTableController::setupIptablesHooks() {
             "-F",
             LOCAL_MANGLE_OUTPUT,
             NULL);
-    res |= execIptables(V4V6,
-            "-t",
-            "mangle",
-            "-F",
-            LOCAL_MANGLE_EXEMPT,
-            NULL);
-    // rule for skipping anything marked with the PROTECT_MARK
-    char protect_mark_str[11];
-    snprintf(protect_mark_str, sizeof(protect_mark_str), "%d", PROTECT_MARK);
+    // Do not mark sockets that have already been marked elsewhere(for example in DNS or protect).
     res |= execIptables(V4V6,
             "-t",
             "mangle",
@@ -78,8 +67,9 @@ int SecondaryTableController::setupIptablesHooks() {
             LOCAL_MANGLE_OUTPUT,
             "-m",
             "mark",
+            "!",
             "--mark",
-            protect_mark_str,
+            "0",
             "-j",
             "RETURN",
             NULL);
@@ -325,7 +315,38 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
     }
 
     snprintf(mark_str, sizeof(mark_str), "%d", mark);
-    //add the catch all route to the tun. Route rules will make sure the right packets hit the table
+    // Flush any marked routes we added
+    if (!add) {
+        // iproute2 rule del will delete anything that matches, but only one rule at a time.
+        // So clearing the rules requires a bunch of calls.
+        // ip rule del will fail once there are no remaining rules that match.
+        const char *v4_cmd[] = {
+            IP_PATH,
+            "-4",
+            "rule",
+            "del",
+            "fwmark",
+            mark_str,
+            "table",
+            mark_str
+        };
+        while(!runCmd(ARRAY_SIZE(v4_cmd), v4_cmd)) {}
+
+        const char *v6_cmd[] = {
+            IP_PATH,
+            "-6",
+            "rule",
+            "del",
+            "fwmark",
+            mark_str,
+            "table",
+            mark_str
+        };
+        while(!runCmd(ARRAY_SIZE(v6_cmd), v6_cmd)) {}
+    }
+    // Add a route to the table to send all traffic to iface.
+    // We only need a default route because this table is only selected if a packet matches an
+    // IP rule that checks both the route and the mark.
     const char *route_cmd[] = {
         IP_PATH,
         "route",
@@ -337,22 +358,10 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
         mark_str
     };
     ret = runCmd(ARRAY_SIZE(route_cmd), route_cmd);
+    // The command might fail during delete if the iface is gone
+    if (add && ret) return ret;
 
-    const char *fwmark_cmd[] = {
-        IP_PATH,
-        "rule",
-        add ? "add" : "del",
-        "prio",
-        RULE_PRIO,
-        "fwmark",
-        mark_str,
-        "table",
-        mark_str
-    };
-    ret = runCmd(ARRAY_SIZE(fwmark_cmd), fwmark_cmd);
-    if (ret) return ret;
-
-    //add rules for v6
+    // As above for IPv6
     const char *route6_cmd[] = {
         IP_PATH,
         "-6",
@@ -365,120 +374,25 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
         mark_str
     };
     ret = runCmd(ARRAY_SIZE(route6_cmd), route6_cmd);
+    // The command might fail during delete if the iface is gone
+    if (add && ret) return ret;
 
-    const char *fwmark6_cmd[] = {
-        IP_PATH,
-        "-6",
-        "rule",
-        add ? "add" : "del",
-        "prio",
-        RULE_PRIO,
-        "fwmark",
-        mark_str,
-        "table",
-        mark_str
-    };
-    ret = runCmd(ARRAY_SIZE(fwmark6_cmd), fwmark6_cmd);
+    /* Best effort, because some kernels might not have the needed TCPMSS */
+    execIptables(V4V6,
+            "-t",
+            "mangle",
+            add ? "-A" : "-D",
+            LOCAL_MANGLE_POSTROUTING,
+            "-p", "tcp", "-o", iface, "--tcp-flags", "SYN,RST", "SYN",
+            "-j",
+            "TCPMSS",
+            "--clamp-mss-to-pmtu",
+            NULL);
 
-
-    if (ret) return ret;
-
-    //create the route rule chain
-    char chain_str[IFNAMSIZ + 18];
-    snprintf(chain_str, sizeof(chain_str), LOCAL_MANGLE_IFACE_FORMAT, iface);
-    //code split due to ordering requirements
-    if (add) {
-        ret = execIptables(V4V6,
-                "-t",
-                "mangle",
-                "-N",
-                chain_str,
-                NULL);
-        //set up the rule for sending premarked packets to the VPN chain
-        //Insert these at the top of the chain so they trigger before any UID rules
-        ret |= execIptables(V4V6,
-                "-t",
-                "mangle",
-                "-I",
-                LOCAL_MANGLE_OUTPUT,
-                "3",
-                "-m",
-                "mark",
-                "--mark",
-                mark_str,
-                "-g",
-                chain_str,
-                NULL);
-        //add a rule to clear the mark in the VPN chain
-        //packets marked with SO_MARK already have the iface's mark set but unless they match a
-        //route they should hit the network instead of the VPN
-        ret |= execIptables(V4V6,
-                "-t",
-                "mangle",
-                "-A",
-                chain_str,
-                "-j",
-                "MARK",
-                "--set-mark",
-                "0",
-                NULL);
-
-        /* Best effort, because some kernels might not have the needed TCPMSS */
-        execIptables(V4V6,
-                "-t",
-                "mangle",
-                "-A",
-                LOCAL_MANGLE_POSTROUTING,
-                "-p", "tcp", "-o", iface, "--tcp-flags", "SYN,RST", "SYN",
-                "-j",
-                "TCPMSS",
-                "--clamp-mss-to-pmtu",
-                NULL);
-
-    } else {
-        ret = execIptables(V4V6,
-                "-t",
-                "mangle",
-                "-D",
-                LOCAL_MANGLE_OUTPUT,
-                "-m",
-                "mark",
-                "--mark",
-                mark_str,
-                "-g",
-                chain_str,
-                NULL);
-
-        //clear and delete the chain
-        ret |= execIptables(V4V6,
-                "-t",
-                "mangle",
-                "-F",
-                chain_str,
-                NULL);
-
-        ret |= execIptables(V4V6,
-                "-t",
-                "mangle",
-                "-X",
-                chain_str,
-                NULL);
-
-        /* Best effort, because some kernels might not have the needed TCPMSS */
-        execIptables(V4V6,
-                "-t",
-                "mangle",
-                "-D",
-                LOCAL_MANGLE_POSTROUTING,
-                "-p", "tcp", "-o", iface, "--tcp-flags", "SYN,RST", "SYN",
-                "-j",
-                "TCPMSS",
-                "--clamp-mss-to-pmtu",
-                NULL);
-    }
-
-    //set up the needed source IP rewriting
-    //NOTE: Without ipv6 NAT in the kernel <3.7 only support V4 NAT
+    // Because the mark gets set after the intial routing decision the source IP address is that
+    // of the original out interface. The only way to change the source IP address to that of the
+    // VPN iface is using source NAT.
+    // TODO: Remove this when we get the mark set correctly before the first routing pass.
     ret = execIptables(V4,
             "-t",
             "nat",
@@ -496,7 +410,7 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
 
     if (ret) return ret;
 
-    //try and set up for ipv6. ipv6 nat came in the kernel only in 3.7, so this can fail
+    // Try and set up NAT for IPv6 as well. This was only added in Linux 3.7 so this may fail.
     ret = execIptables(V6,
             "-t",
             "nat",
@@ -512,21 +426,28 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
             "MASQUERADE",
             NULL);
     if (ret) {
-        //Without V6 NAT we can't do V6 over VPNs.
-        ret = execIptables(V6,
-                "-t",
-                "filter",
-                add ? "-A" : "-D",
-                LOCAL_FILTER_OUTPUT,
-                "-m",
-                "mark",
-                "--mark",
-                mark_str,
-                "-j",
-                "REJECT",
-                NULL);
+        // Without V6 NAT we can't do V6 over VPNs. If an IPv6 packet matches a VPN rule, then it
+        // will go out on the VPN interface, but without NAT, it will have the wrong source
+        // address. So reject all these packets.
+        // Due to rule application by the time the connection hits the output filter chain the
+        // routing pass based on the new mark has not yet happened. Reject in ip instead.
+        // TODO: Make the VPN code refuse to install IPv6 routes until we don't need IPv6 NAT.
+        const char *reject_cmd[] = {
+            IP_PATH,
+            "-6",
+            "route",
+            add ? "replace" : "del",
+            "unreachable",
+            "default",
+            "table",
+            mark_str
+        };
+        ret = runCmd(ARRAY_SIZE(reject_cmd), reject_cmd);
+        // The command might fail during delete if the iface is gone
+        if (add && ret) return ret;
+
     }
-    return ret;
+    return 0;
 
 }
 
@@ -547,24 +468,25 @@ int SecondaryTableController::setFwmarkRoute(const char* iface, const char *dest
     }
     int mark = tableIndex + BASE_TABLE_NUMBER;
     char mark_str[11] = {0};
-    char chain_str[IFNAMSIZ + 18];
     char dest_str[44]; // enough to store an IPv6 address + 3 character bitmask
 
     snprintf(mark_str, sizeof(mark_str), "%d", mark);
-    snprintf(chain_str, sizeof(chain_str), LOCAL_MANGLE_IFACE_FORMAT, iface);
     snprintf(dest_str, sizeof(dest_str), "%s/%d", dest, prefix);
-    return execIptables(getIptablesTarget(dest),
-            "-t",
-            "mangle",
-            add ? "-A" : "-D",
-            chain_str,
-            "-d",
-            dest_str,
-            "-j",
-            "MARK",
-            "--set-mark",
-            mark_str,
-            NULL);
+    const char *rule_cmd[] = {
+        IP_PATH,
+        getVersion(dest_str),
+        "rule",
+        add ? "add" : "del",
+        "prio",
+        RULE_PRIO,
+        "to",
+        dest_str,
+        "fwmark",
+        mark_str,
+        "table",
+        mark_str
+    };
+    return runCmd(ARRAY_SIZE(rule_cmd), rule_cmd);
 }
 
 int SecondaryTableController::addUidRule(const char *iface, int uid_start, int uid_end) {
@@ -594,9 +516,9 @@ int SecondaryTableController::setUidRule(const char *iface, int uid_start, int u
         }
     }
     char uid_str[24] = {0};
-    char chain_str[IFNAMSIZ + 18];
     snprintf(uid_str, sizeof(uid_str), "%d-%d", uid_start, uid_end);
-    snprintf(chain_str, sizeof(chain_str), LOCAL_MANGLE_IFACE_FORMAT, iface);
+    char mark_str[11] = {0};
+    snprintf(mark_str, sizeof(mark_str), "%d", mark);
     return execIptables(V4V6,
             "-t",
             "mangle",
@@ -606,8 +528,10 @@ int SecondaryTableController::setUidRule(const char *iface, int uid_start, int u
             "owner",
             "--uid-owner",
             uid_str,
-            "-g",
-            chain_str,
+            "-j",
+            "MARK",
+            "--set-mark",
+            mark_str,
             NULL);
 }
 
@@ -620,21 +544,6 @@ int SecondaryTableController::removeHostExemption(const char *host) {
 }
 
 int SecondaryTableController::setHostExemption(const char *host, bool add) {
-    IptablesTarget target = !strcmp(getVersion(host), "-4") ? V4 : V6;
-    char protect_mark_str[11];
-    snprintf(protect_mark_str, sizeof(protect_mark_str), "%d", PROTECT_MARK);
-    int ret = execIptables(target,
-            "-t",
-            "mangle",
-            add ? "-A" : "-D",
-            LOCAL_MANGLE_EXEMPT,
-            "-d",
-            host,
-            "-j",
-            "MARK",
-            "--set-mark",
-            protect_mark_str,
-            NULL);
     const char *cmd[] = {
         IP_PATH,
         getVersion(host),
@@ -647,8 +556,7 @@ int SecondaryTableController::setHostExemption(const char *host, bool add) {
         "table",
         "main"
     };
-    ret |= runCmd(ARRAY_SIZE(cmd), cmd);
-    return ret;
+    return runCmd(ARRAY_SIZE(cmd), cmd);
 }
 
 void SecondaryTableController::getUidMark(SocketClient *cli, int uid) {
