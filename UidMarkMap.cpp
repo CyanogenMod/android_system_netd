@@ -15,6 +15,7 @@
  */
 
 #include "UidMarkMap.h"
+#include "NetdConstants.h"
 
 UidMarkMap::UidMarkEntry::UidMarkEntry(int start, int end, int new_mark) :
                                             uid_start(start),
@@ -63,7 +64,9 @@ int UidMarkMap::getMark(int uid) {
             return entry->mark;
         }
     }
-    return -1;
+    // If the uid has no mark specified then it should be protected from any VPN rules that might
+    // be affecting the service acting on its behalf.
+    return PROTECT_MARK;
 };
 
 bool UidMarkMap::anyRulesForMark(int mark) {
