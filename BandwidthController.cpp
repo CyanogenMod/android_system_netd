@@ -783,7 +783,7 @@ int BandwidthController::getInterfaceQuota(const char *costName, int64_t *bytes)
         ALOGE("Reading quota %s failed (%s)", costName, strerror(errno));
         return -1;
     }
-    scanRes = fscanf(fp, "%" PRId64, bytes);
+    scanRes = fscanf(fp, "%" SCNd64, bytes);
     ALOGV("Read quota res=%d bytes=%" PRId64, scanRes, *bytes);
     fclose(fp);
     return scanRes == 1 ? 0 : -1;
@@ -1113,7 +1113,7 @@ int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherS
     while (NULL != (buffPtr = fgets(lineBuffer, MAX_IPT_OUTPUT_LINE_LEN, fp))) {
         /* Clean up, so a failed parse can still print info */
         iface0[0] = iface1[0] = rest[0] = packets = bytes = 0;
-        res = sscanf(buffPtr, "%" PRId64" %" PRId64" RETURN all -- %s %s 0.%s",
+        res = sscanf(buffPtr, "%" SCNd64" %" SCNd64" RETURN all -- %s %s 0.%s",
                 &packets, &bytes, iface0, iface1, rest);
         ALOGV("parse res=%d iface0=<%s> iface1=<%s> pkts=%" PRId64" bytes=%" PRId64" rest=<%s> orig line=<%s>", res,
              iface0, iface1, packets, bytes, rest, buffPtr);
