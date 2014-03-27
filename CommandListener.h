@@ -144,6 +144,16 @@ private:
         virtual ~ClatdCmd() {}
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
+
+    class NetworkCmd : public NetdCommand {
+    public:
+        NetworkCmd();
+        virtual ~NetworkCmd() {}
+        int runCommand(SocketClient* c, int argc, char** argv);
+    private:
+        int syntaxError(SocketClient* cli, const char* message);
+        int paramError(SocketClient* cli, const char* message);
+    };
 };
 
 #endif

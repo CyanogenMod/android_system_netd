@@ -14,6 +14,7 @@ LOCAL_SRC_FILES:=                                      \
                   NatController.cpp                    \
                   NetdCommand.cpp                      \
                   NetdConstants.cpp                    \
+                  NetId.cpp                            \
                   NetlinkHandler.cpp                   \
                   NetlinkManager.cpp                   \
                   NetworkController.cpp                \

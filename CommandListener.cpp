@@ -44,6 +44,7 @@
 #include "oem_iptables_hook.h"
 #include "NetdConstants.h"
 #include "FirewallController.h"
+#include "NetId.h"
 
 NetworkController *CommandListener::sNetCtrl = NULL;
 TetherController *CommandListener::sTetherCtrl = NULL;
@@ -148,6 +149,7 @@ CommandListener::CommandListener() :
     registerCmd(new ResolverCmd());
     registerCmd(new FirewallCmd());
     registerCmd(new ClatdCmd());
+    registerCmd(new NetworkCmd());
 
     if (!sNetCtrl)
         sNetCtrl = new NetworkController();
@@ -1586,4 +1588,96 @@ int CommandListener::ClatdCmd::runCommand(SocketClient *cli, int argc,
     }
 
     return 0;
+}
+
+CommandListener::NetworkCmd::NetworkCmd() : NetdCommand("network") {
+}
+
+int CommandListener::NetworkCmd::syntaxError(SocketClient* cli, const char* message) {
+    cli->sendMsg(ResponseCode::CommandSyntaxError, message, false);
+    return 0;
+}
+
+int CommandListener::NetworkCmd::paramError(SocketClient* cli, const char* message) {
+    cli->sendMsg(ResponseCode::CommandParameterError, message, false);
+    return 0;
+}
+
+int CommandListener::NetworkCmd::runCommand(SocketClient* cli, int argc, char** argv) {
+    if (argc < 2) {
+        return syntaxError(cli, "Missing argument");
+    }
+    //    0      1       2         3         4
+    // network create <netId> <interface> [CNS|CI]
+    if (!strcmp(argv[1], "create")) {
+        if (argc < 4) {
+            return syntaxError(cli, "Missing argument");
+        }
+        unsigned int netId = strtoul(argv[2], NULL, 0);
+        if (!isNetIdValid(netId)) {
+            return paramError(cli, "Invalid NetId");
+        }
+        const char* iface = argv[3];
+        const char* perm = argc > 4 ? argv[4] : NULL;
+        if (perm && strcmp(perm, "CNS") && strcmp(perm, "CI")) {
+            return paramError(cli, "Invalid permission");
+        }
+        // netIdToInterfaces[netId].push_back(iface);
+        // bool is_cns = perm && !strcmp(perm, "CNS");
+        // bool is_ci = perm && !strcmp(perm, "CI");
+        // if (perm) netIdToPermission[netId] = perm;
+        // int table = ...;  // compute routing table number for iface
+        // int fwmark = getFwmark(netId, false, false, is_cns, is_ci);
+        // int mask = getFwmarkMask(true, false, false, is_cns, is_ci);
+        // int exp_fwmark = getFwmark(netId, true, false, is_cns, is_ci);
+        // int exp_mask = getFwmarkMask(true, true, false, is_cns, is_ci);
+        // ip rule add fwmark <exp_fwmark>/<exp_mask> table <table>
+        // ip rule add oif <iface> table <table>
+        // ip rule add fwmark <fwmark>/<mask> table <table>
+        return 0;
+    }
+    //    0       1       2
+    // network destroy <netId>
+    if (!strcmp(argv[1], "destroy")) {
+        if (argc < 3) {
+            return syntaxError(cli, "Missing argument");
+        }
+        unsigned int netId = strtoul(argv[2], NULL, 0);
+        if (!isNetIdValid(netId)) {
+            return paramError(cli, "Invalid NetId");
+        }
+        // const char* perm = netIdToPermission[netId].c_str();
+        // bool is_cns = !strcmp(perm, "CNS");
+        // bool is_ci = !strcmp(perm, "CI");
+        // int fwmark = getFwmark(netId, false, false, is_cns, is_ci);
+        // int mask = getFwmarkMask(true, false, false, is_cns, is_ci);
+        // int exp_fwmark = getFwmark(netId, true, false, is_cns, is_ci);
+        // int exp_mask = getFwmarkMask(true, true, false, is_cns, is_ci);
+        // foreach iface in netIdToInterfaces[netId]:
+        //     int table = ...;  // compute routing table number for iface
+        //     ip rule del fwmark <exp_fwmark>/<exp_mask> table <table>
+        //     ip rule del oif <iface> table <table>
+        //     ip rule del fwmark <fwmark>/<mask> table <table>
+        //     ioctl(SIOCKILLADDR, ...);
+        // netIdToInterfaces.erase(netId);
+        // netIdToPermission.erase(netId);
+        return 0;
+    }
+    // network dns <add|remove> <netId> <num-resolvers> <resolver1> .. <resolverN> [searchDomain1] .. [searchDomainM]
+    // network route <add|remove> <other-route-params>
+    // network legacy <uid> route <add|remove> <other-route-params>
+    // network default set <netId> [kill-old-default's-sockets]
+    //     -- "kill-old-default's-sockets" is a bool
+    // network default clear
+    //     -- when no interfaces are active (e.g.: airplane mode)
+    // network permission add [CI] [CNS] <uid1> .. <uidN>
+    // network permission clear <uid1> .. <uidN>
+    // network vpn create <netId> [owner_uid]
+    // network vpn destroy <netId>
+    // network <bind|unbind> <netId> <uid1> .. <uidN>
+    //     -- uid range can be specified as "uidX-uidY"
+    // TODO:
+    //   o tethering
+    //   o p2p
+    return syntaxError(cli, "Unknown argument");
 }
