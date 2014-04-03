@@ -32,6 +32,7 @@
 #include <logwrap/logwrap.h>
 
 #include "NatController.h"
+#include "NetworkController.h"
 #include "SecondaryTableController.h"
 #include "NetdConstants.h"
 
@@ -39,8 +40,8 @@ const char* NatController::LOCAL_FORWARD = "natctrl_FORWARD";
 const char* NatController::LOCAL_NAT_POSTROUTING = "natctrl_nat_POSTROUTING";
 const char* NatController::LOCAL_TETHER_COUNTERS_CHAIN = "natctrl_tether_counters";
 
-NatController::NatController(SecondaryTableController *ctrl) {
-    secondaryTableCtrl = ctrl;
+NatController::NatController(SecondaryTableController *table_ctrl, NetworkController* net_ctrl) :
+        mSecondaryTableCtrl(table_ctrl), mNetCtrl(net_ctrl) {
 }
 
 NatController::~NatController() {
@@ -138,27 +139,25 @@ bool NatController::checkInterface(const char *iface) {
 }
 
 int NatController::routesOp(bool add, const char *intIface, const char *extIface, char **argv, int addrCount) {
-    int tableNumber = secondaryTableCtrl->findTableNumber(extIface);
+    unsigned netId = mNetCtrl->getNetworkId(extIface);
     int ret = 0;
 
-    if (tableNumber != -1) {
-        for (int i = 0; i < addrCount; i++) {
-            if (add) {
-                ret |= secondaryTableCtrl->modifyFromRule(tableNumber, ADD, argv[5+i]);
-                ret |= secondaryTableCtrl->modifyLocalRoute(tableNumber, ADD, intIface, argv[5+i]);
-            } else {
-                ret |= secondaryTableCtrl->modifyLocalRoute(tableNumber, DEL, intIface, argv[5+i]);
-                ret |= secondaryTableCtrl->modifyFromRule(tableNumber, DEL, argv[5+i]);
-            }
+    for (int i = 0; i < addrCount; i++) {
+        if (add) {
+            ret |= mSecondaryTableCtrl->modifyFromRule(netId, ADD, argv[5+i]);
+            ret |= mSecondaryTableCtrl->modifyLocalRoute(netId, ADD, intIface, argv[5+i]);
+        } else {
+            ret |= mSecondaryTableCtrl->modifyLocalRoute(netId, DEL, intIface, argv[5+i]);
+            ret |= mSecondaryTableCtrl->modifyFromRule(netId, DEL, argv[5+i]);
         }
-        const char *cmd[] = {
-                IP_PATH,
-                "route",
-                "flush",
-                "cache"
-        };
-        runCmd(ARRAY_SIZE(cmd), cmd);
     }
+    const char *cmd[] = {
+            IP_PATH,
+            "route",
+            "flush",
+            "cache"
+    };
+    runCmd(ARRAY_SIZE(cmd), cmd);
     return ret;
 }
 

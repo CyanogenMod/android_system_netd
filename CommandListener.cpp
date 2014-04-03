@@ -25,6 +25,7 @@
 #include <errno.h>
 #include <string.h>
 #include <linux/if.h>
+#include <resolv_netid.h>
 
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
@@ -44,6 +45,7 @@
 #include "NetdConstants.h"
 #include "FirewallController.h"
 
+NetworkController *CommandListener::sNetCtrl = NULL;
 TetherController *CommandListener::sTetherCtrl = NULL;
 NatController *CommandListener::sNatCtrl = NULL;
 PppController *CommandListener::sPppCtrl = NULL;
@@ -132,7 +134,7 @@ static void createChildChains(IptablesTarget target, const char* table, const ch
     } while (*(++childChain) != NULL);
 }
 
-CommandListener::CommandListener(UidMarkMap *map) :
+CommandListener::CommandListener() :
                  FrameworkListener("netd", true) {
     registerCmd(new InterfaceCmd());
     registerCmd(new IpFwdCmd());
@@ -147,12 +149,14 @@ CommandListener::CommandListener(UidMarkMap *map) :
     registerCmd(new FirewallCmd());
     registerCmd(new ClatdCmd());
 
+    if (!sNetCtrl)
+        sNetCtrl = new NetworkController();
     if (!sSecondaryTableCtrl)
-        sSecondaryTableCtrl = new SecondaryTableController(map);
+        sSecondaryTableCtrl = new SecondaryTableController(sNetCtrl);
     if (!sTetherCtrl)
         sTetherCtrl = new TetherController();
     if (!sNatCtrl)
-        sNatCtrl = new NatController(sSecondaryTableCtrl);
+        sNatCtrl = new NatController(sSecondaryTableCtrl, sNetCtrl);
     if (!sPppCtrl)
         sPppCtrl = new PppController();
     if (!sSoftapCtrl)
@@ -952,7 +956,8 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
 
     if (!strcmp(argv[1], "setdefaultif")) { // "resolver setdefaultif <iface>"
         if (argc == 3) {
-            rc = sResolverCtrl->setDefaultInterface(argv[2]);
+            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
+            sNetCtrl->setDefaultNetwork(netId);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver setdefaultif", false);
@@ -961,25 +966,16 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
     } else if (!strcmp(argv[1], "setifdns")) {
         // "resolver setifdns <iface> <domains> <dns1> <dns2> ..."
         if (argc >= 5) {
-            rc = sResolverCtrl->setInterfaceDnsServers(argv[2], argv[3], &argv[4], argc - 4);
+            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
+            rc = sResolverCtrl->setDnsServers(netId, argv[3], &argv[4], argc - 4);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver setifdns", false);
             return 0;
         }
-
-        // set the address of the interface to which the name servers
-        // are bound. Required in order to bind to right interface when
-        // doing the dns query.
-        if (!rc) {
-            ifc_init();
-            ifc_get_info(argv[2], &addr.s_addr, NULL, 0);
-
-            rc = sResolverCtrl->setInterfaceAddress(argv[2], &addr);
-        }
     } else if (!strcmp(argv[1], "flushdefaultif")) { // "resolver flushdefaultif"
         if (argc == 2) {
-            rc = sResolverCtrl->flushDefaultDnsCache();
+            rc = sResolverCtrl->flushDnsCache(sNetCtrl->getDefaultNetwork());
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver flushdefaultif", false);
@@ -987,7 +983,8 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
         }
     } else if (!strcmp(argv[1], "flushif")) { // "resolver flushif <iface>"
         if (argc == 3) {
-            rc = sResolverCtrl->flushInterfaceDnsCache(argv[2]);
+            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
+            rc = sResolverCtrl->flushDnsCache(netId);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver setdefaultif", false);
@@ -995,7 +992,8 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
         }
     } else if (!strcmp(argv[1], "setifaceforpid")) { // resolver setifaceforpid <iface> <pid>
         if (argc == 4) {
-            rc = sResolverCtrl->setDnsInterfaceForPid(argv[2], atoi(argv[3]));
+            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
+            sNetCtrl->setNetworkForPid(atoi(argv[3]), netId);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver setifaceforpid", false);
@@ -1003,15 +1001,17 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
         }
     } else if (!strcmp(argv[1], "clearifaceforpid")) { // resolver clearifaceforpid <pid>
         if (argc == 3) {
-            rc = sResolverCtrl->clearDnsInterfaceForPid(atoi(argv[2]));
+            sNetCtrl->setNetworkForPid(atoi(argv[2]), 0);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver clearifaceforpid", false);
             return 0;
         }
     } else if (!strcmp(argv[1], "setifaceforuidrange")) { // resolver setifaceforuid <iface> <l> <h>
+        // TODO: Merge this command with "interface fwmark uid add/remove iface uid_start uid_end
         if (argc == 5) {
-            rc = sResolverCtrl->setDnsInterfaceForUidRange(argv[2], atoi(argv[3]), atoi(argv[4]));
+            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
+            rc = !sNetCtrl->setNetworkForUidRange(atoi(argv[3]), atoi(argv[4]), netId, true);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver setifaceforuid", false);
@@ -1020,8 +1020,8 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
     } else if (!strcmp(argv[1], "clearifaceforuidrange")) {
         // resolver clearifaceforuid <if> <l> <h>
         if (argc == 5) {
-            rc = sResolverCtrl->clearDnsInterfaceForUidRange(argv[2], atoi(argv[3]),
-                    atoi(argv[4]));
+            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
+            rc = !sNetCtrl->clearNetworkForUidRange(atoi(argv[3]), atoi(argv[4]), netId);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver clearifaceforuid", false);
@@ -1029,7 +1029,7 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
         }
     } else if (!strcmp(argv[1], "clearifacemapping")) {
         if (argc == 2) {
-            rc = sResolverCtrl->clearDnsInterfaceMappings();
+            sNetCtrl->clearNetworkPreference();
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arugments to resolver clearifacemapping", false);

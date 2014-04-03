@@ -20,6 +20,7 @@
 #include <sysutils/FrameworkListener.h>
 
 #include "NetdCommand.h"
+#include "NetworkController.h"
 #include "TetherController.h"
 #include "NatController.h"
 #include "PppController.h"
@@ -31,7 +32,6 @@
 #include "SecondaryTableController.h"
 #include "FirewallController.h"
 #include "ClatdController.h"
-#include "UidMarkMap.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
@@ -47,7 +47,9 @@ class CommandListener : public FrameworkListener {
     static ClatdController *sClatdCtrl;
 
 public:
-    CommandListener(UidMarkMap *map);
+    static NetworkController *sNetCtrl;
+
+    CommandListener();
     virtual ~CommandListener() {}
 
 private:

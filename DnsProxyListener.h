@@ -20,22 +20,22 @@
 #include <sysutils/FrameworkListener.h>
 
 #include "NetdCommand.h"
-#include "UidMarkMap.h"
+#include "NetworkController.h"
 
 class DnsProxyListener : public FrameworkListener {
 public:
-    DnsProxyListener(UidMarkMap *map);
+    DnsProxyListener(const NetworkController* controller);
     virtual ~DnsProxyListener() {}
 
 private:
-    UidMarkMap *mUidMarkMap;
+    const NetworkController *mNetCtrl;
     class GetAddrInfoCmd : public NetdCommand {
     public:
-        GetAddrInfoCmd(UidMarkMap *uidMarkMap);
+        GetAddrInfoCmd(const NetworkController* controller);
         virtual ~GetAddrInfoCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
     private:
-        UidMarkMap *mUidMarkMap;
+        const NetworkController* mNetCtrl;
     };
 
     class GetAddrInfoHandler {
@@ -45,10 +45,7 @@ private:
                            char* host,
                            char* service,
                            struct addrinfo* hints,
-                           char* iface,
-                           pid_t pid,
-                           uid_t uid,
-                           int mark);
+                           unsigned netId);
         ~GetAddrInfoHandler();
 
         static void* threadStart(void* handler);
@@ -60,65 +57,53 @@ private:
         char* mHost;    // owned
         char* mService; // owned
         struct addrinfo* mHints;  // owned
-        char* mIface; // owned
-        pid_t mPid;
-        uid_t mUid;
-        int mMark;
+        unsigned mNetId;
     };
 
     /* ------ gethostbyname ------*/
     class GetHostByNameCmd : public NetdCommand {
     public:
-        GetHostByNameCmd(UidMarkMap *uidMarkMap);
+        GetHostByNameCmd(const NetworkController* controller);
         virtual ~GetHostByNameCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
     private:
-        UidMarkMap *mUidMarkMap;
+        const NetworkController* mNetCtrl;
     };
 
     class GetHostByNameHandler {
     public:
         GetHostByNameHandler(SocketClient *c,
-                            pid_t pid,
-                            uid_t uid,
-                            char *iface,
                             char *name,
                             int af,
-                            int mark);
+                            unsigned netId);
         ~GetHostByNameHandler();
         static void* threadStart(void* handler);
         void start();
     private:
         void run();
         SocketClient* mClient; //ref counted
-        pid_t mPid;
-        uid_t mUid;
-        char* mIface; // owned
         char* mName; // owned
         int mAf;
-        int mMark;
+        unsigned mNetId;
     };
 
     /* ------ gethostbyaddr ------*/
     class GetHostByAddrCmd : public NetdCommand {
     public:
-        GetHostByAddrCmd(UidMarkMap *uidMarkMap);
+        GetHostByAddrCmd(const NetworkController* controller);
         virtual ~GetHostByAddrCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
     private:
-        UidMarkMap *mUidMarkMap;
+        const NetworkController* mNetCtrl;
     };
 
     class GetHostByAddrHandler {
     public:
         GetHostByAddrHandler(SocketClient *c,
                             void* address,
-                            int   addressLen,
-                            int   addressFamily,
-                            char* iface,
-                            pid_t pid,
-                            uid_t uid,
-                            int mark);
+                            int addressLen,
+                            int addressFamily,
+                            unsigned netId);
         ~GetHostByAddrHandler();
 
         static void* threadStart(void* handler);
@@ -128,12 +113,9 @@ private:
         void run();
         SocketClient* mClient;  // ref counted
         void* mAddress;    // address to lookup; owned
-        int   mAddressLen; // length of address to look up
-        int   mAddressFamily;  // address family
-        char* mIface; // owned
-        pid_t mPid;
-        uid_t mUid;
-        int   mMark;
+        int mAddressLen; // length of address to look up
+        int mAddressFamily;  // address family
+        unsigned mNetId;
     };
 };
 
