@@ -25,17 +25,10 @@ public:
     ResolverController() {};
     virtual ~ResolverController() {};
 
-    int setDefaultInterface(const char* iface);
-    int setInterfaceDnsServers(const char* iface, const char * domains, const char** servers,
+    int setDnsServers(unsigned netid, const char * domains, const char** servers,
             int numservers);
-    int setInterfaceAddress(const char* iface, struct in_addr* addr);
-    int flushDefaultDnsCache();
-    int flushInterfaceDnsCache(const char* iface);
-    int setDnsInterfaceForPid(const char* iface, int pid);
-    int clearDnsInterfaceForPid(int pid);
-    int setDnsInterfaceForUidRange(const char* iface, int uid_start, int uid_end);
-    int clearDnsInterfaceForUidRange(int uid_start, int uid_end);
-    int clearDnsInterfaceMappings();
+    int flushDnsCache(unsigned netid);
+    // TODO: Add deleteDnsCache(unsigned netId)
 };
 
 #endif /* _RESOLVER_CONTROLLER_H_ */

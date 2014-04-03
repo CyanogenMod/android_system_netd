@@ -26,6 +26,7 @@
 
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <resolv_netid.h>
 
 #define LOG_TAG "SecondaryTablController"
 #include <cutils/log.h>
@@ -42,13 +43,8 @@ const char* SecondaryTableController::LOCAL_MANGLE_IFACE_FORMAT = "st_mangle_%s_
 const char* SecondaryTableController::LOCAL_NAT_POSTROUTING = "st_nat_POSTROUTING";
 const char* SecondaryTableController::LOCAL_FILTER_OUTPUT = "st_filter_OUTPUT";
 
-SecondaryTableController::SecondaryTableController(UidMarkMap *map) : mUidMarkMap(map) {
-    int i;
-    for (i=0; i < INTERFACES_TRACKED; i++) {
-        mInterfaceTable[i][0] = 0;
-        // TODO - use a hashtable or other prebuilt container class
-        mInterfaceRuleCount[i] = 0;
-    }
+SecondaryTableController::SecondaryTableController(NetworkController* controller) :
+        mNetCtrl(controller) {
 }
 
 SecondaryTableController::~SecondaryTableController() {
@@ -100,45 +96,20 @@ int SecondaryTableController::setupIptablesHooks() {
     return res;
 }
 
-int SecondaryTableController::findTableNumber(const char *iface) {
-    int i;
-    for (i = 0; i < INTERFACES_TRACKED; i++) {
-        // compare through the final null, hence +1
-        if (strncmp(iface, mInterfaceTable[i], IFNAMSIZ + 1) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 int SecondaryTableController::addRoute(SocketClient *cli, char *iface, char *dest, int prefix,
         char *gateway) {
-    int tableIndex = findTableNumber(iface);
-    if (tableIndex == -1) {
-        tableIndex = findTableNumber(""); // look for an empty slot
-        if (tableIndex == -1) {
-            ALOGE("Max number of NATed interfaces reached");
-            errno = ENODEV;
-            cli->sendMsg(ResponseCode::OperationFailed, "Max number NATed", true);
-            return -1;
-        }
-        strncpy(mInterfaceTable[tableIndex], iface, IFNAMSIZ);
-        // Ensure null termination even if truncation happened
-        mInterfaceTable[tableIndex][IFNAMSIZ] = 0;
-    }
-
-    return modifyRoute(cli, ADD, iface, dest, prefix, gateway, tableIndex);
+    return modifyRoute(cli, ADD, iface, dest, prefix, gateway, mNetCtrl->getNetworkId(iface));
 }
 
 int SecondaryTableController::modifyRoute(SocketClient *cli, const char *action, char *iface,
-        char *dest, int prefix, char *gateway, int tableIndex) {
+        char *dest, int prefix, char *gateway, unsigned netId) {
     char dest_str[44]; // enough to store an IPv6 address + 3 character bitmask
     char tableIndex_str[11];
     int ret;
 
     //  IP tool doesn't like "::" - the equiv of 0.0.0.0 that it accepts for ipv4
     snprintf(dest_str, sizeof(dest_str), "%s/%d", dest, prefix);
-    snprintf(tableIndex_str, sizeof(tableIndex_str), "%d", tableIndex + BASE_TABLE_NUMBER);
+    snprintf(tableIndex_str, sizeof(tableIndex_str), "%u", netId + BASE_TABLE_NUMBER);
 
     if (strcmp("::", gateway) == 0) {
         const char *cmd[] = {
@@ -169,44 +140,29 @@ int SecondaryTableController::modifyRoute(SocketClient *cli, const char *action,
     }
 
     if (ret) {
-        ALOGE("ip route %s failed: %s route %s %s/%d via %s dev %s table %d", action,
-                IP_PATH, action, dest, prefix, gateway, iface, tableIndex+BASE_TABLE_NUMBER);
+        ALOGE("ip route %s failed: %s route %s %s/%d via %s dev %s table %u", action,
+                IP_PATH, action, dest, prefix, gateway, iface, netId + BASE_TABLE_NUMBER);
         errno = ENODEV;
         cli->sendMsg(ResponseCode::OperationFailed, "ip route modification failed", true);
         return -1;
     }
 
-    if (strcmp(action, ADD) == 0) {
-        mInterfaceRuleCount[tableIndex]++;
-    } else {
-        if (--mInterfaceRuleCount[tableIndex] < 1) {
-            mInterfaceRuleCount[tableIndex] = 0;
-            mInterfaceTable[tableIndex][0] = 0;
-        }
-    }
-    modifyRuleCount(tableIndex, action);
+    modifyRuleCount(netId, action);
     cli->sendMsg(ResponseCode::CommandOkay, "Route modified", false);
     return 0;
 }
 
-void SecondaryTableController::modifyRuleCount(int tableIndex, const char *action) {
+void SecondaryTableController::modifyRuleCount(unsigned netId, const char *action) {
     if (strcmp(action, ADD) == 0) {
-        mInterfaceRuleCount[tableIndex]++;
+        if (mNetIdRuleCount.count(netId) == 0)
+            mNetIdRuleCount[netId] = 0;
+        mNetIdRuleCount[netId]++;
     } else {
-        if (--mInterfaceRuleCount[tableIndex] < 1) {
-            mInterfaceRuleCount[tableIndex] = 0;
-            mInterfaceTable[tableIndex][0] = 0;
+        if (mNetIdRuleCount.count(netId) > 0) {
+            if (--mNetIdRuleCount[netId] < 1) {
+                mNetIdRuleCount.erase(mNetIdRuleCount.find(netId));
+            }
         }
-    }
-}
-
-int SecondaryTableController::verifyTableIndex(int tableIndex) {
-    if ((tableIndex < 0) ||
-            (tableIndex >= INTERFACES_TRACKED) ||
-            (mInterfaceTable[tableIndex][0] == 0)) {
-        return -1;
-    } else {
-        return 0;
     }
 }
 
@@ -228,27 +184,14 @@ IptablesTarget SecondaryTableController::getIptablesTarget(const char *addr) {
 
 int SecondaryTableController::removeRoute(SocketClient *cli, char *iface, char *dest, int prefix,
         char *gateway) {
-    int tableIndex = findTableNumber(iface);
-    if (tableIndex == -1) {
-        ALOGE("Interface not found");
-        errno = ENODEV;
-        cli->sendMsg(ResponseCode::OperationFailed, "Interface not found", true);
-        return -1;
-    }
-
-    return modifyRoute(cli, DEL, iface, dest, prefix, gateway, tableIndex);
+    return modifyRoute(cli, DEL, iface, dest, prefix, gateway, mNetCtrl->getNetworkId(iface));
 }
 
-int SecondaryTableController::modifyFromRule(int tableIndex, const char *action,
+int SecondaryTableController::modifyFromRule(unsigned netId, const char *action,
         const char *addr) {
     char tableIndex_str[11];
 
-    if (verifyTableIndex(tableIndex)) {
-        return -1;
-    }
-
-    snprintf(tableIndex_str, sizeof(tableIndex_str), "%d", tableIndex +
-            BASE_TABLE_NUMBER);
+    snprintf(tableIndex_str, sizeof(tableIndex_str), "%u", netId + BASE_TABLE_NUMBER);
     const char *cmd[] = {
             IP_PATH,
             getVersion(addr),
@@ -263,22 +206,16 @@ int SecondaryTableController::modifyFromRule(int tableIndex, const char *action,
         return -1;
     }
 
-    modifyRuleCount(tableIndex, action);
+    modifyRuleCount(netId, action);
     return 0;
 }
 
-int SecondaryTableController::modifyLocalRoute(int tableIndex, const char *action,
+int SecondaryTableController::modifyLocalRoute(unsigned netId, const char *action,
         const char *iface, const char *addr) {
     char tableIndex_str[11];
 
-    if (verifyTableIndex(tableIndex)) {
-        return -1;
-    }
-
-    modifyRuleCount(tableIndex, action); // some del's will fail as the iface is already gone.
-
-    snprintf(tableIndex_str, sizeof(tableIndex_str), "%d", tableIndex +
-            BASE_TABLE_NUMBER);
+    modifyRuleCount(netId, action); // some del's will fail as the iface is already gone.
+    snprintf(tableIndex_str, sizeof(tableIndex_str), "%u", netId + BASE_TABLE_NUMBER);
     const char *cmd[] = {
             IP_PATH,
             "route",
@@ -301,29 +238,17 @@ int SecondaryTableController::removeFwmarkRule(const char *iface) {
 }
 
 int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
-    int tableIndex = findTableNumber(iface);
-    if (tableIndex == -1) {
-        tableIndex = findTableNumber(""); // look for an empty slot
-        if (tableIndex == -1) {
-            ALOGE("Max number of NATed interfaces reached");
-            errno = ENODEV;
-            return -1;
-        }
-        strncpy(mInterfaceTable[tableIndex], iface, IFNAMSIZ);
-        // Ensure null termination even if truncation happened
-        mInterfaceTable[tableIndex][IFNAMSIZ] = 0;
-    }
-    int mark = tableIndex + BASE_TABLE_NUMBER;
-    char mark_str[11];
-    int ret;
+    unsigned netId = mNetCtrl->getNetworkId(iface);
 
-    //fail fast if any rules already exist for this interface
-    if (mUidMarkMap->anyRulesForMark(mark)) {
+    // Fail fast if any rules already exist for this interface
+    if (mNetIdRuleCount.count(netId) > 0) {
         errno = EBUSY;
         return -1;
     }
 
-    snprintf(mark_str, sizeof(mark_str), "%d", mark);
+    int ret;
+    char mark_str[11];
+    snprintf(mark_str, sizeof(mark_str), "%u", netId + BASE_TABLE_NUMBER);
     //add the catch all route to the tun. Route rules will make sure the right packets hit the table
     const char *route_cmd[] = {
         IP_PATH,
@@ -510,22 +435,17 @@ int SecondaryTableController::addFwmarkRoute(const char* iface, const char *dest
 }
 
 int SecondaryTableController::removeFwmarkRoute(const char* iface, const char *dest, int prefix) {
-    return setFwmarkRoute(iface, dest, prefix, true);
+    return setFwmarkRoute(iface, dest, prefix, false);
 }
 
 int SecondaryTableController::setFwmarkRoute(const char* iface, const char *dest, int prefix,
                                              bool add) {
-    int tableIndex = findTableNumber(iface);
-    if (tableIndex == -1) {
-        errno = EINVAL;
-        return -1;
-    }
-    int mark = tableIndex + BASE_TABLE_NUMBER;
+    unsigned netId = mNetCtrl->getNetworkId(iface);
     char mark_str[11] = {0};
     char chain_str[IFNAMSIZ + 18];
     char dest_str[44]; // enough to store an IPv6 address + 3 character bitmask
 
-    snprintf(mark_str, sizeof(mark_str), "%d", mark);
+    snprintf(mark_str, sizeof(mark_str), "%u", netId + BASE_TABLE_NUMBER);
     snprintf(chain_str, sizeof(chain_str), LOCAL_MANGLE_IFACE_FORMAT, iface);
     snprintf(dest_str, sizeof(dest_str), "%s/%d", dest, prefix);
     return execIptables(getIptablesTarget(dest),
@@ -551,23 +471,12 @@ int SecondaryTableController::removeUidRule(const char *iface, int uid_start, in
 }
 
 int SecondaryTableController::setUidRule(const char *iface, int uid_start, int uid_end, bool add) {
-    int tableIndex = findTableNumber(iface);
-    if (tableIndex == -1) {
+    unsigned netId = mNetCtrl->getNetworkId(iface);
+    if (!mNetCtrl->setNetworkForUidRange(uid_start, uid_end, add ? netId : 0, false)) {
         errno = EINVAL;
         return -1;
     }
-    int mark = tableIndex + BASE_TABLE_NUMBER;
-    if (add) {
-        if (!mUidMarkMap->add(uid_start, uid_end, mark)) {
-            errno = EINVAL;
-            return -1;
-        }
-    } else {
-        if (!mUidMarkMap->remove(uid_start, uid_end, mark)) {
-            errno = EINVAL;
-            return -1;
-        }
-    }
+
     char uid_str[24] = {0};
     char chain_str[IFNAMSIZ + 18];
     snprintf(uid_str, sizeof(uid_str), "%d-%d", uid_start, uid_end);
@@ -627,9 +536,10 @@ int SecondaryTableController::setHostExemption(const char *host, bool add) {
 }
 
 void SecondaryTableController::getUidMark(SocketClient *cli, int uid) {
-    int mark = mUidMarkMap->getMark(uid);
+    unsigned netId = mNetCtrl->getNetwork(uid, NETID_UNSET, NetworkController::PID_UNSPECIFIED,
+            false);
     char mark_str[11];
-    snprintf(mark_str, sizeof(mark_str), "%d", mark);
+    snprintf(mark_str, sizeof(mark_str), "%u", netId + BASE_TABLE_NUMBER);
     cli->sendMsg(ResponseCode::GetMarkResult, mark_str, false);
 }
 
