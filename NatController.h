@@ -19,6 +19,7 @@
 
 #include <linux/in.h>
 #include <list>
+#include <string>
 
 class NetworkController;
 class SecondaryTableController;
