@@ -20,12 +20,13 @@
 #include <linux/in.h>
 #include <list>
 
-#include "SecondaryTableController.h"
+class NetworkController;
+class SecondaryTableController;
 
 class NatController {
 
 public:
-    NatController(SecondaryTableController *ctrl);
+    NatController(SecondaryTableController *table_ctrl, NetworkController* net_ctrl);
     virtual ~NatController();
 
     int enableNat(const int argc, char **argv);
@@ -41,7 +42,8 @@ public:
 
 private:
     int natCount;
-    SecondaryTableController *secondaryTableCtrl;
+    SecondaryTableController *mSecondaryTableCtrl;
+    NetworkController *mNetCtrl;
 
     bool checkTetherCountingRuleExist(const char *pair_name);
 

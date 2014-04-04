@@ -16,13 +16,13 @@ LOCAL_SRC_FILES:=                                      \
                   NetdConstants.cpp                    \
                   NetlinkHandler.cpp                   \
                   NetlinkManager.cpp                   \
+                  NetworkController.cpp                \
                   PppController.cpp                    \
                   ResolverController.cpp               \
                   SecondaryTableController.cpp         \
                   SoftapController.cpp                 \
                   TetherController.cpp                 \
                   oem_iptables_hook.cpp                \
-                  UidMarkMap.cpp                       \
                   main.cpp                             \
 
 
