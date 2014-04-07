@@ -14,8 +14,18 @@
  * limitations under the License.
  */
 
-#include "NetId.h"
+#include "Permission.h"
 
-bool isNetIdValid(unsigned int netId) {
-    return MIN_NET_ID <= netId && netId <= MAX_NET_ID;
+#include <string.h>
+
+Permission permissionFromString(const char* permission) {
+    if (permission) {
+        if (!strcmp(permission, "android.permission.CHANGE_NETWORK_STATE")) {
+            return PERMISSION_CHANGE_NETWORK_STATE;
+        }
+        if (!strcmp(permission, "android.permission.CONNECTIVITY_INTERNAL")) {
+            return PERMISSION_CONNECTIVITY_INTERNAL;
+        }
+    }
+    return PERMISSION_NONE;
 }

@@ -17,6 +17,8 @@
 #ifndef _NETD_NETWORKCONTROLLER_H
 #define _NETD_NETWORKCONTROLLER_H
 
+#include "Permission.h"
+
 #include <list>
 #include <map>
 #include <string>
@@ -24,6 +26,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <utils/RWLock.h>
+
+class PermissionsController;
+class RouteController;
 
 /*
  * Keeps track of default, per-pid, and per-uid-range network selection, as
@@ -38,7 +43,10 @@ public:
         PID_UNSPECIFIED = 0,
     };
 
-    NetworkController();
+    static bool isNetIdValid(unsigned netId);
+
+    NetworkController(PermissionsController* permCtrl,
+                      RouteController* routeCtrl);
 
     void clearNetworkPreference();
     unsigned getDefaultNetwork() const;
@@ -56,6 +64,9 @@ public:
 
     unsigned getNetworkId(const char* interface);
 
+    bool createNetwork(unsigned netId, const char* interface, Permission permission);
+    bool destroyNetwork(unsigned netId);
+
 private:
     struct UidEntry {
         int uid_start;
@@ -72,6 +83,11 @@ private:
 
     std::map<std::string, unsigned> mIfaceNetidMap;
     unsigned mNextFreeNetId;
+
+    PermissionsController* const mPermissionsController;
+    RouteController* const mRouteController;
+
+    std::multimap<unsigned, std::string> mNetIdToInterfaces;
 };
 
 #endif

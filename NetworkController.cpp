@@ -21,10 +21,28 @@
 
 #include "NetworkController.h"
 
-// Mark 1 is reserved for SecondaryTableController::PROTECT_MARK.
-NetworkController::NetworkController()
+#include "PermissionsController.h"
+#include "RouteController.h"
+
+namespace {
+
+// Keep these in sync with ConnectivityService.java.
+const unsigned int MIN_NET_ID = 10;
+const unsigned int MAX_NET_ID = 65535;
+
+}  // namespace
+
+bool NetworkController::isNetIdValid(unsigned netId) {
+    return MIN_NET_ID <= netId && netId <= MAX_NET_ID;
+}
+
+NetworkController::NetworkController(PermissionsController* permissionsController,
+                                     RouteController* routeController)
         : mDefaultNetId(NETID_UNSET),
-          mNextFreeNetId(10) {}
+          mNextFreeNetId(MIN_NET_ID),
+          mPermissionsController(permissionsController),
+          mRouteController(routeController) {
+}
 
 void NetworkController::clearNetworkPreference() {
     android::RWLock::AutoWLock lock(mRWLock);
@@ -53,7 +71,7 @@ void NetworkController::setNetworkForPid(int pid, unsigned netId) {
 bool NetworkController::setNetworkForUidRange(int uid_start, int uid_end, unsigned netId,
         bool forward_dns) {
     android::RWLock::AutoWLock lock(mRWLock);
-    if (uid_start > uid_end || netId == NETID_UNSET)
+    if (uid_start > uid_end || !isNetIdValid(netId))
         return false;
 
     for (std::list<UidEntry>::iterator it = mUidMap.begin(); it != mUidMap.end(); ++it) {
@@ -69,7 +87,7 @@ bool NetworkController::setNetworkForUidRange(int uid_start, int uid_end, unsign
 
 bool NetworkController::clearNetworkForUidRange(int uid_start, int uid_end, unsigned netId) {
     android::RWLock::AutoWLock lock(mRWLock);
-    if (uid_start > uid_end || netId == NETID_UNSET)
+    if (uid_start > uid_end || !isNetIdValid(netId))
         return false;
 
     for (std::list<UidEntry>::iterator it = mUidMap.begin(); it != mUidMap.end(); ++it) {
@@ -91,7 +109,7 @@ unsigned NetworkController::getNetwork(int uid, unsigned requested_netId, int pi
             break;
         return it->netId;
     }
-    if (requested_netId != NETID_UNSET)
+    if (isNetIdValid(requested_netId))
         return requested_netId;
     if (pid != PID_UNSPECIFIED) {
         std::map<int, unsigned>::const_iterator it = mPidMap.find(pid);
@@ -109,6 +127,53 @@ unsigned NetworkController::getNetworkId(const char* interface) {
     unsigned netId = mNextFreeNetId++;
     mIfaceNetidMap[interface] = netId;
     return netId;
+}
+
+bool NetworkController::createNetwork(unsigned netId, const char* interface,
+                                      Permission permission) {
+    if (!isNetIdValid(netId) || !interface) {
+        return false;
+    }
+
+    typedef std::multimap<unsigned, std::string>::const_iterator Iterator;
+    for (Iterator iter = mNetIdToInterfaces.begin(); iter != mNetIdToInterfaces.end(); ++iter) {
+        if (iter->second == interface) {
+            return false;
+        }
+    }
+
+    if (!mRouteController->createNetwork(netId, interface, permission)) {
+        return false;
+    }
+
+    mPermissionsController->setPermissionForNetwork(netId, permission);
+    mNetIdToInterfaces.insert(std::pair<unsigned, std::string>(netId, interface));
+    return true;
+}
+
+bool NetworkController::destroyNetwork(unsigned netId) {
+    if (!isNetIdValid(netId)) {
+        return false;
+    }
+
+    // TODO: ioctl(SIOCKILLADDR, ...);
+
+    bool status = true;
+
+    Permission permission = mPermissionsController->getPermissionForNetwork(netId);
+
+    typedef std::multimap<unsigned, std::string>::const_iterator Iterator;
+    std::pair<Iterator, Iterator> range = mNetIdToInterfaces.equal_range(netId);
+    for (Iterator iter = range.first; iter != range.second; ++iter) {
+        if (!mRouteController->destroyNetwork(netId, iter->second.c_str(), permission)) {
+            status = false;
+        }
+    }
+
+    mPermissionsController->clearPermissionForNetwork(netId);
+    mNetIdToInterfaces.erase(netId);
+
+    return status;
 }
 
 NetworkController::UidEntry::UidEntry(

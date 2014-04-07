@@ -14,13 +14,15 @@
  * limitations under the License.
  */
 
-#ifndef _NET_ID_H
-#define _NET_ID_H
+#ifndef SYSTEM_NETD_ROUTE_CONTROLLER_H
+#define SYSTEM_NETD_ROUTE_CONTROLLER_H
 
-// Keep these in sync with ConnectivityService.java.
-const unsigned int MIN_NET_ID = 10;
-const unsigned int MAX_NET_ID = 65535;
+#include "Permission.h"
 
-bool isNetIdValid(unsigned int netId);
+class RouteController {
+public:
+    static bool createNetwork(unsigned netId, const char* interface, Permission permission);
+    static bool destroyNetwork(unsigned netId, const char* interface, Permission permission);
+};
 
-#endif
+#endif  // SYSTEM_NETD_ROUTE_CONTROLLER_H

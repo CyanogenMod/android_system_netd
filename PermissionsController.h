@@ -14,20 +14,21 @@
  * limitations under the License.
  */
 
-#ifndef SYSTEM_NETD_FWMARK_H
-#define SYSTEM_NETD_FWMARK_H
+#ifndef SYSTEM_NETD_PERMISSIONS_CONTROLLER_H
+#define SYSTEM_NETD_PERMISSIONS_CONTROLLER_H
 
 #include "Permission.h"
 
-#include <stdint.h>
+#include <map>
 
-// Composes a fwmark comprising of |netId|, along with bits representing:
-//     |exp|: true if the |netId| is being explicitly requested
-//     |protect|: true if VPNs should be bypassed
-//     |permission|: != PERMISSION_NONE to assert that |permission| is held
-uint32_t getFwmark(unsigned netId, bool exp, bool protect, Permission permission);
+class PermissionsController {
+public:
+    Permission getPermissionForNetwork(unsigned netId) const;
+    void setPermissionForNetwork(unsigned netId, Permission permission);
+    void clearPermissionForNetwork(unsigned netId);
 
-// Composes a mask to test parts of the fwmark (see getFwmark() for details).
-uint32_t getFwmarkMask(bool netId, bool exp, bool protect, Permission permission);
+private:
+    std::map<unsigned, Permission> mNetworks;
+};
 
-#endif  // SYSTEM_NETD_FWMARK_H
+#endif  // SYSTEM_NETD_PERMISSIONS_CONTROLLER_H

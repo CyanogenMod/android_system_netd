@@ -8,18 +8,21 @@ LOCAL_SRC_FILES:=                                      \
                   CommandListener.cpp                  \
                   DnsProxyListener.cpp                 \
                   FirewallController.cpp               \
+                  Fwmark.cpp                           \
                   IdletimerController.cpp              \
                   InterfaceController.cpp              \
                   MDnsSdListener.cpp                   \
                   NatController.cpp                    \
                   NetdCommand.cpp                      \
                   NetdConstants.cpp                    \
-                  NetId.cpp                            \
                   NetlinkHandler.cpp                   \
                   NetlinkManager.cpp                   \
                   NetworkController.cpp                \
+                  Permission.cpp                       \
+                  PermissionsController.cpp            \
                   PppController.cpp                    \
                   ResolverController.cpp               \
+                  RouteController.cpp                  \
                   SecondaryTableController.cpp         \
                   SoftapController.cpp                 \
                   TetherController.cpp                 \
