@@ -38,16 +38,13 @@ bool NetworkController::isNetIdValid(unsigned netId) {
 
 NetworkController::NetworkController(PermissionsController* permissionsController,
                                      RouteController* routeController)
-        : mDefaultNetId(NETID_UNSET),
-          mNextFreeNetId(MIN_NET_ID),
-          mPermissionsController(permissionsController),
+        : mPermissionsController(permissionsController),
           mRouteController(routeController) {
 }
 
 void NetworkController::clearNetworkPreference() {
     android::RWLock::AutoWLock lock(mRWLock);
     mUidMap.clear();
-    mPidMap.clear();
 }
 
 unsigned NetworkController::getDefaultNetwork() const {
@@ -94,15 +91,6 @@ bool NetworkController::setDefaultNetwork(unsigned newNetId) {
     return status;
 }
 
-void NetworkController::setNetworkForPid(int pid, unsigned netId) {
-    android::RWLock::AutoWLock lock(mRWLock);
-    if (netId == 0) {
-        mPidMap.erase(pid);
-    } else {
-        mPidMap[pid] = netId;
-    }
-}
-
 bool NetworkController::setNetworkForUidRange(int uid_start, int uid_end, unsigned netId,
         bool forward_dns) {
     android::RWLock::AutoWLock lock(mRWLock);
@@ -134,8 +122,7 @@ bool NetworkController::clearNetworkForUidRange(int uid_start, int uid_end, unsi
     return false;
 }
 
-unsigned NetworkController::getNetwork(int uid, unsigned requested_netId, int pid,
-        bool for_dns) const {
+unsigned NetworkController::getNetwork(int uid, unsigned requested_netId, bool for_dns) const {
     android::RWLock::AutoRLock lock(mRWLock);
     for (std::list<UidEntry>::const_iterator it = mUidMap.begin(); it != mUidMap.end(); ++it) {
         if (uid < it->uid_start || it->uid_end < uid)
@@ -146,11 +133,6 @@ unsigned NetworkController::getNetwork(int uid, unsigned requested_netId, int pi
     }
     if (isNetIdValid(requested_netId))
         return requested_netId;
-    if (pid != PID_UNSPECIFIED) {
-        std::map<int, unsigned>::const_iterator it = mPidMap.find(pid);
-        if (it != mPidMap.end())
-            return it->second;
-    }
     return mDefaultNetId;
 }
 
@@ -158,10 +140,7 @@ unsigned NetworkController::getNetworkId(const char* interface) {
     std::map<std::string, unsigned>::const_iterator it = mIfaceNetidMap.find(interface);
     if (it != mIfaceNetidMap.end())
         return it->second;
-
-    unsigned netId = mNextFreeNetId++;
-    mIfaceNetidMap[interface] = netId;
-    return netId;
+    return NETID_UNSET;
 }
 
 bool NetworkController::createNetwork(unsigned netId, const char* interface,
@@ -183,6 +162,7 @@ bool NetworkController::createNetwork(unsigned netId, const char* interface,
 
     mPermissionsController->setPermissionForNetwork(permission, netId);
     mNetIdToInterfaces.insert(std::pair<unsigned, std::string>(netId, interface));
+    mIfaceNetidMap[interface] = netId;
     return true;
 }
 

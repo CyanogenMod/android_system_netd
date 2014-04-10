@@ -307,7 +307,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
         // interface route add/remove iface default/secondary dest    prefix gateway
         // interface fwmark  rule  add/remove    iface
         // interface fwmark  route add/remove    iface        dest    prefix
-        // interface fwmark  uid   add/remove    iface      uid_start uid_end
+        // interface fwmark  uid   add/remove    iface      uid_start uid_end forward_dns
         // interface fwmark exempt add/remove    dest
         // interface fwmark  get     protect
         // interface fwmark  get     mark        uid
@@ -367,12 +367,13 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 return 0;
 
             } else if (!strcmp(argv[2], "uid")) {
-                if (argc < 7) {
+                if (argc < 8) {
                     cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
                     return 0;
                 }
                 if (!strcmp(argv[3], "add")) {
-                    if (!sSecondaryTableCtrl->addUidRule(argv[4], atoi(argv[5]), atoi(argv[6]))) {
+                    if (!sSecondaryTableCtrl->addUidRule(argv[4], atoi(argv[5]), atoi(argv[6]),
+                            atoi(argv[7]))) {
                         cli->sendMsg(ResponseCode::CommandOkay, "uid rule successfully added",
                                 false);
                     } else {
@@ -986,85 +987,22 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
         return 0;
     }
 
-    if (!strcmp(argv[1], "setdefaultif")) { // "resolver setdefaultif <iface>"
-        if (argc == 3) {
-            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
-            sNetCtrl->setDefaultNetwork(netId);
-        } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver setdefaultif", false);
-            return 0;
-        }
-    } else if (!strcmp(argv[1], "setifdns")) {
-        // "resolver setifdns <iface> <domains> <dns1> <dns2> ..."
+    if (!strcmp(argv[1], "setnetdns")) {
+        // "resolver setnetdns <netId> <domains> <dns1> <dns2> ..."
         if (argc >= 5) {
-            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
-            rc = sResolverCtrl->setDnsServers(netId, argv[3], &argv[4], argc - 4);
+            rc = sResolverCtrl->setDnsServers(strtoul(argv[2], NULL, 0), argv[3], &argv[4], argc - 4);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver setifdns", false);
+                    "Wrong number of arguments to resolver setnetdns", false);
             return 0;
         }
-    } else if (!strcmp(argv[1], "flushdefaultif")) { // "resolver flushdefaultif"
-        if (argc == 2) {
-            rc = sResolverCtrl->flushDnsCache(sNetCtrl->getDefaultNetwork());
-        } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver flushdefaultif", false);
-            return 0;
-        }
-    } else if (!strcmp(argv[1], "flushif")) { // "resolver flushif <iface>"
+    } else if (!strcmp(argv[1], "flushnet")) { // "resolver flushnet <netId>"
         if (argc == 3) {
-            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
-            rc = sResolverCtrl->flushDnsCache(netId);
+            rc = sResolverCtrl->flushDnsCache(strtoul(argv[2], NULL, 0));
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver setdefaultif", false);
+                    "Wrong number of arguments to resolver flushnet", false);
             return 0;
-        }
-    } else if (!strcmp(argv[1], "setifaceforpid")) { // resolver setifaceforpid <iface> <pid>
-        if (argc == 4) {
-            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
-            sNetCtrl->setNetworkForPid(atoi(argv[3]), netId);
-        } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver setifaceforpid", false);
-            return 0;
-        }
-    } else if (!strcmp(argv[1], "clearifaceforpid")) { // resolver clearifaceforpid <pid>
-        if (argc == 3) {
-            sNetCtrl->setNetworkForPid(atoi(argv[2]), 0);
-        } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver clearifaceforpid", false);
-            return 0;
-        }
-    } else if (!strcmp(argv[1], "setifaceforuidrange")) { // resolver setifaceforuid <iface> <l> <h>
-        // TODO: Merge this command with "interface fwmark uid add/remove iface uid_start uid_end
-        if (argc == 5) {
-            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
-            rc = !sNetCtrl->setNetworkForUidRange(atoi(argv[3]), atoi(argv[4]), netId, true);
-        } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver setifaceforuid", false);
-            return 0;
-        }
-    } else if (!strcmp(argv[1], "clearifaceforuidrange")) {
-        // resolver clearifaceforuid <if> <l> <h>
-        if (argc == 5) {
-            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
-            rc = !sNetCtrl->clearNetworkForUidRange(atoi(argv[3]), atoi(argv[4]), netId);
-        } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver clearifaceforuid", false);
-            return 0;
-        }
-    } else if (!strcmp(argv[1], "clearifacemapping")) {
-        if (argc == 2) {
-            sNetCtrl->clearNetworkPreference();
-        } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arugments to resolver clearifacemapping", false);
         }
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError,"Resolver unknown command", false);
@@ -1685,7 +1623,10 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         if (!sNetCtrl->destroyNetwork(netId)) {
             return operationError(client, "destroyNetwork() failed");
         }
+// TODO: Uncomment once this API has been added to bionic.
+#if 0
         _resolv_delete_cache_for_net(netId);
+#endif
         return success(client);
     }
 

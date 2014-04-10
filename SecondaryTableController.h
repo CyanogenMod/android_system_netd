@@ -50,7 +50,7 @@ public:
 
     // Add/remove rules to force packets in a particular range of UIDs over a particular interface.
     // This is accomplished with a rule specifying these UIDs use the interface's routing chain.
-    int addUidRule(const char *iface, int uid_start, int uid_end);
+    int addUidRule(const char *iface, int uid_start, int uid_end, bool forward_dns);
     int removeUidRule(const char *iface, int uid_start, int uid_end);
 
     // Add/remove rules and chains so packets intended for a particular interface use that
@@ -85,7 +85,7 @@ public:
 private:
     NetworkController *mNetCtrl;
 
-    int setUidRule(const char* iface, int uid_start, int uid_end, bool add);
+    int setUidRule(const char* iface, int uid_start, int uid_end, bool add, bool foward_dns);
     int setFwmarkRule(const char *iface, bool add);
     int setFwmarkRoute(const char* iface, const char *dest, int prefix, bool add);
     int setHostExemption(const char *host, bool add);

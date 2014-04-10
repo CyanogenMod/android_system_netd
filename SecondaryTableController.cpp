@@ -409,19 +409,28 @@ int SecondaryTableController::setFwmarkRoute(const char* iface, const char *dest
     return runCmd(ARRAY_SIZE(rule_cmd), rule_cmd);
 }
 
-int SecondaryTableController::addUidRule(const char *iface, int uid_start, int uid_end) {
-    return setUidRule(iface, uid_start, uid_end, true);
+int SecondaryTableController::addUidRule(const char *iface, int uid_start, int uid_end,
+        bool forward_dns) {
+    return setUidRule(iface, uid_start, uid_end, true, forward_dns);
 }
 
 int SecondaryTableController::removeUidRule(const char *iface, int uid_start, int uid_end) {
-    return setUidRule(iface, uid_start, uid_end, false);
+    return setUidRule(iface, uid_start, uid_end, false, false);
 }
 
-int SecondaryTableController::setUidRule(const char *iface, int uid_start, int uid_end, bool add) {
+int SecondaryTableController::setUidRule(const char *iface, int uid_start, int uid_end, bool add,
+        bool forward_dns) {
     unsigned netId = mNetCtrl->getNetworkId(iface);
-    if (!mNetCtrl->setNetworkForUidRange(uid_start, uid_end, add ? netId : 0, false)) {
-        errno = EINVAL;
-        return -1;
+    if (add) {
+        if (!mNetCtrl->setNetworkForUidRange(uid_start, uid_end, netId, forward_dns)) {
+            errno = EINVAL;
+            return -1;
+        }
+    } else {
+        if (!mNetCtrl->clearNetworkForUidRange(uid_start, uid_end, netId)) {
+            errno = EINVAL;
+            return -1;
+        }
     }
 
     char uid_str[24] = {0};
@@ -469,8 +478,7 @@ int SecondaryTableController::setHostExemption(const char *host, bool add) {
 }
 
 void SecondaryTableController::getUidMark(SocketClient *cli, int uid) {
-    unsigned netId = mNetCtrl->getNetwork(uid, NETID_UNSET, NetworkController::PID_UNSPECIFIED,
-            false);
+    unsigned netId = mNetCtrl->getNetwork(uid, NETID_UNSET, false);
     char mark_str[11];
     snprintf(mark_str, sizeof(mark_str), "%u", netId + BASE_TABLE_NUMBER);
     cli->sendMsg(ResponseCode::GetMarkResult, mark_str, false);

@@ -189,10 +189,9 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     int ai_socktype = atoi(argv[5]);
     int ai_protocol = atoi(argv[6]);
     unsigned netId = strtoul(argv[7], NULL, 10);
-    pid_t pid = cli->getPid();
     uid_t uid = cli->getUid();
 
-    netId = mNetCtrl->getNetwork(uid, netId, pid, true);
+    netId = mNetCtrl->getNetwork(uid, netId, true);
 
     if (ai_flags != -1 || ai_family != -1 ||
         ai_socktype != -1 || ai_protocol != -1) {
@@ -210,10 +209,10 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     }
 
     if (DBG) {
-        ALOGD("GetAddrInfoHandler for %s / %s / %u / %d / %d",
+        ALOGD("GetAddrInfoHandler for %s / %s / %u / %d",
              name ? name : "[nullhost]",
              service ? service : "[nullservice]",
-             netId, pid, uid);
+             netId, uid);
     }
 
     cli->incRef();
@@ -248,7 +247,6 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
         return -1;
     }
 
-    pid_t pid = cli->getPid();
     uid_t uid = cli->getUid();
     unsigned netId = strtoul(argv[1], NULL, 10);
     char* name = argv[2];
@@ -260,7 +258,7 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
         name = strdup(name);
     }
 
-    netId = mNetCtrl->getNetwork(uid, netId, pid, true);
+    netId = mNetCtrl->getNetwork(uid, netId, true);
 
     cli->incRef();
     DnsProxyListener::GetHostByNameHandler* handler =
@@ -357,7 +355,6 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
     char* addrStr = argv[1];
     int addrLen = atoi(argv[2]);
     int addrFamily = atoi(argv[3]);
-    pid_t pid = cli->getPid();
     uid_t uid = cli->getUid();
     unsigned netId = strtoul(argv[4], NULL, 10);
 
@@ -374,7 +371,7 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
         return -1;
     }
 
-    netId = mNetCtrl->getNetwork(uid, netId, pid, true);
+    netId = mNetCtrl->getNetwork(uid, netId, true);
 
     cli->incRef();
     DnsProxyListener::GetHostByAddrHandler* handler =

@@ -39,11 +39,6 @@ class RouteController;
  */
 class NetworkController {
 public:
-    enum {
-        // For use with getNetwork().
-        PID_UNSPECIFIED = 0,
-    };
-
     static bool isNetIdValid(unsigned netId);
 
     NetworkController(PermissionsController* permissionsController,
@@ -52,16 +47,14 @@ public:
     void clearNetworkPreference();
     unsigned getDefaultNetwork() const;
     bool setDefaultNetwork(unsigned netId);
-    void setNetworkForPid(int pid, unsigned netId);
     bool setNetworkForUidRange(int uid_start, int uid_end, unsigned netId, bool forward_dns);
     bool clearNetworkForUidRange(int uid_start, int uid_end, unsigned netId);
 
     // Order of preference: UID-specific, requested_netId, PID-specific, default.
     // Specify NETID_UNSET for requested_netId if the default network is preferred.
-    // Specify PID_UNSPECIFIED for pid to ignore PID-specific overrides.
     // for_dns indicates if we're querrying the netId for a DNS request.  This avoids sending DNS
     // requests to VPNs without DNS servers.
-    unsigned getNetwork(int uid, unsigned requested_netId, int pid, bool for_dns) const;
+    unsigned getNetwork(int uid, unsigned requested_netId, bool for_dns) const;
 
     unsigned getNetworkId(const char* interface);
 
@@ -101,11 +94,9 @@ private:
 
     mutable android::RWLock mRWLock;
     std::list<UidEntry> mUidMap;
-    std::map<int, unsigned> mPidMap;
     unsigned mDefaultNetId;
 
     std::map<std::string, unsigned> mIfaceNetidMap;
-    unsigned mNextFreeNetId;
 
     PermissionsController* const mPermissionsController;
     RouteController* const mRouteController;
