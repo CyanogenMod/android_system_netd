@@ -21,12 +21,8 @@
 
 #include <logwrap/logwrap.h>
 #include <net/if.h>
-#include <stdio.h>
 
 namespace {
-
-// TODO: Keep this in sync with the kernel.
-const uint32_t ROUTE_TABLE_OFFSET_FROM_INDEX = 255;
 
 const char* const RULE_PRIORITY_PER_NETWORK_EXPLICIT = "300";
 const char* const RULE_PRIORITY_PER_NETWORK_OIF = "400";
@@ -36,10 +32,9 @@ const bool FWMARK_USE_NET_ID = true;
 const bool FWMARK_USE_EXPLICIT = true;
 const bool FWMARK_USE_PROTECT = true;
 
-// TODO: Tell the kernel about the offset using sysctls during init.
 uint32_t getRouteTableForInterface(const char* interface) {
-    uint32_t index = static_cast<uint32_t>(if_nametoindex(interface));
-    return index ? index + ROUTE_TABLE_OFFSET_FROM_INDEX : 0;
+    uint32_t index = if_nametoindex(interface);
+    return index ? index + RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX : 0;
 }
 
 bool runIpRuleCommand(const char* action, const char* priority, const char* table,
@@ -129,7 +124,7 @@ bool modifyNetwork(unsigned netId, const char* interface, Permission permission,
     //
     // This is so that the kernel can:
     // + Use the right fwmark for (and thus correctly route) replies (e.g.: TCP RST, ICMP errors,
-    //   ping replies, etc).
+    //   ping replies).
     // + Mark sockets that accept connections from this interface so that the connection stays on
     //   the same interface.
     action = add ? "-A" : "-D";

@@ -21,6 +21,8 @@
 
 class RouteController {
 public:
+    static const int ROUTE_TABLE_OFFSET_FROM_INDEX = 1000;
+
     static bool createNetwork(unsigned netId, const char* interface, Permission permission);
     static bool destroyNetwork(unsigned netId, const char* interface, Permission permission);
 };

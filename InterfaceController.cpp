@@ -38,6 +38,7 @@
 #include "NetdConstants.h"
 
 #include "InterfaceController.h"
+#include "RouteController.h"
 
 char if_cmd_lib_file_name[] = "libnetcmdiface.so";
 char set_cmd_func_name[] = "net_iface_send_command";
@@ -82,6 +83,8 @@ InterfaceController::InterfaceController()
 			return;
 		}
 	}
+
+	setAcceptRARouteTable(-RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX);
 }
 
 InterfaceController::~InterfaceController() {
@@ -143,27 +146,40 @@ int InterfaceController::isInterfaceName(const char *name) {
 		strcmp(name, "all");
 }
 
-int InterfaceController::setAcceptRA(const char *value) {
+void InterfaceController::setOnAllInterfaces(const char* filename, const char* value) {
 	// Set the default value, which is used by any interfaces that are created in the future.
-	writeIPv6ProcPath("default", "accept_ra", value);
+	writeIPv6ProcPath("default", filename, value);
 
-	// Set the value on all the interfaces.
-	DIR *dir = opendir(ipv6_proc_path);
+	// Set the value on all the interfaces that currently exist.
+	DIR* dir = opendir(ipv6_proc_path);
 	if (!dir) {
 		ALOGE("Can't list %s: %s", ipv6_proc_path, strerror(errno));
-		return -errno;
+		return;
 	}
-	struct dirent *d;
-	while((d = readdir(dir)) != NULL) {
+	dirent* d;
+	while ((d = readdir(dir))) {
 		if (d->d_type == DT_DIR && isInterfaceName(d->d_name)) {
-			if (writeIPv6ProcPath(d->d_name, "accept_ra", value) < 0) {
-				ALOGE("Can't write to %s/%s/accept_ra: %s", ipv6_proc_path,
-				      d->d_name, strerror(errno));
-			}
+			writeIPv6ProcPath(d->d_name, filename, value);
 		}
 	}
 	closedir(dir);
-	return 0;
+}
+
+void InterfaceController::setAcceptRA(const char *value) {
+	setOnAllInterfaces("accept_ra", value);
+}
+
+// |table_or_offset| is interpreted as:
+//     If == 0: default. Routes go into RT6_TABLE_MAIN.
+//     If > 0: user set. Routes go into the specified table.
+//     If < 0: automatic. The absolute value is intepreted as an offset and added to the interface
+//             ID to get the table. If it's set to -1000, routes from interface ID 5 will go into
+//             table 1005, etc.
+void InterfaceController::setAcceptRARouteTable(int table_or_offset) {
+	char* value;
+	asprintf(&value, "%d", table_or_offset);
+	setOnAllInterfaces("accept_ra_rt_table", value);
+	free(value);
 }
 
 int InterfaceController::getMtu(const char *interface, int *mtu)
