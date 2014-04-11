@@ -74,10 +74,10 @@ bool modifyNetwork(unsigned netId, const char* interface, Permission permission,
         return false;
     }
 
-    char table_string[sizeof("0x12345678")];
-    snprintf(table_string, sizeof(table_string), "0x%x", table);
+    char tableString[sizeof("0x12345678")];
+    snprintf(tableString, sizeof(tableString), "0x%x", table);
 
-    char mark_string[sizeof("0x12345678/0x12345678")];
+    char markString[sizeof("0x12345678/0x12345678")];
     const char* action = add ? ADD : DEL;
 
     // A rule to route traffic based on an explicitly chosen network.
@@ -89,8 +89,8 @@ bool modifyNetwork(unsigned netId, const char* interface, Permission permission,
     uint32_t fwmark = getFwmark(netId, FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
     uint32_t mask = getFwmarkMask(FWMARK_USE_NET_ID, FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT,
                                   permission);
-    snprintf(mark_string, sizeof(mark_string), "0x%x/0x%x", fwmark, mask);
-    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_EXPLICIT, table_string, mark_string,
+    snprintf(markString, sizeof(markString), "0x%x/0x%x", fwmark, mask);
+    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_EXPLICIT, tableString, markString,
                           NULL)) {
         return false;
     }
@@ -101,8 +101,8 @@ bool modifyNetwork(unsigned netId, const char* interface, Permission permission,
     // knows the outgoing interface (typically for link-local communications).
     fwmark = getFwmark(0, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
     mask = getFwmark(!FWMARK_USE_NET_ID, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
-    snprintf(mark_string, sizeof(mark_string), "0x%x/0x%x", fwmark, mask);
-    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_OIF, table_string, mark_string,
+    snprintf(markString, sizeof(markString), "0x%x/0x%x", fwmark, mask);
+    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_OIF, tableString, markString,
                           interface)) {
         return false;
     }
@@ -114,8 +114,8 @@ bool modifyNetwork(unsigned netId, const char* interface, Permission permission,
     // network stay on that network even if the default network changes.
     fwmark = getFwmark(netId, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
     mask = getFwmarkMask(FWMARK_USE_NET_ID, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
-    snprintf(mark_string, sizeof(mark_string), "0x%x/0x%x", fwmark, mask);
-    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_NORMAL, table_string, mark_string,
+    snprintf(markString, sizeof(markString), "0x%x/0x%x", fwmark, mask);
+    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_NORMAL, tableString, markString,
                           NULL)) {
         return false;
     }
@@ -128,9 +128,9 @@ bool modifyNetwork(unsigned netId, const char* interface, Permission permission,
     // + Mark sockets that accept connections from this interface so that the connection stays on
     //   the same interface.
     action = add ? "-A" : "-D";
-    snprintf(mark_string, sizeof(mark_string), "0x%x", netId);
+    snprintf(markString, sizeof(markString), "0x%x", netId);
     if (execIptables(V4V6, "-t", "mangle", action, "INPUT", "-i", interface, "-j", "MARK",
-                     "--set-mark", mark_string, NULL)) {
+                     "--set-mark", markString, NULL)) {
         return false;
     }
 

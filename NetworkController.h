@@ -45,8 +45,8 @@ public:
 
     static bool isNetIdValid(unsigned netId);
 
-    NetworkController(PermissionsController* permCtrl,
-                      RouteController* routeCtrl);
+    NetworkController(PermissionsController* permissionsController,
+                      RouteController* routeController);
 
     void clearNetworkPreference();
     unsigned getDefaultNetwork() const;

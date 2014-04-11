@@ -48,7 +48,7 @@ class InterfaceController {
 	int isInterfaceName(const char *name);
 	void setOnAllInterfaces(const char* filename, const char* value);
 	void setAcceptRA(const char* value);
-	void setAcceptRARouteTable(int table_or_offset);
+	void setAcceptRARouteTable(int tableOrOffset);
 };
 
 #endif

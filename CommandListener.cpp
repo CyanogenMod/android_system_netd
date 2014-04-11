@@ -1634,7 +1634,7 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         if (argc < 4) {
             return syntaxError(client, "Missing argument");
         }
-        // strtoul() returns 0 on errors, which is fine because 0 is an invalid NetId.
+        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
         unsigned netId = strtoul(argv[2], NULL, 0);
         if (!sNetCtrl->isNetIdValid(netId)) {
             return paramError(client, "Invalid netId");
@@ -1657,12 +1657,12 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     // network destroy <netId>
     if (!strcmp(argv[1], "destroy")) {
         if (argc < 3) {
-            return syntaxError(client, "Missing argument");
+            return syntaxError(client, "Missing netId");
         }
-        // strtoul() returns 0 on errors, which is fine because 0 is an invalid NetId.
+        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
         unsigned netId = strtoul(argv[2], NULL, 0);
         if (!sNetCtrl->isNetIdValid(netId)) {
-            return paramError(client, "Invalid NetId");
+            return paramError(client, "Invalid netId");
         }
         if (!sNetCtrl->destroyNetwork(netId)) {
             return operationError(client, "destroyNetwork() failed");
@@ -1673,12 +1673,10 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     // network dns <add|remove> <netId> <num-resolvers> <resolver1> .. <resolverN> [searchDomain1] .. [searchDomainM]
     // network route <add|remove> <other-route-params>
     // network legacy <uid> route <add|remove> <other-route-params>
-    // network default set <netId> [kill-old-default's-sockets]
-    //     -- "kill-old-default's-sockets" is a bool
+    // network default set <netId>
     // network default clear
-    //     -- when no interfaces are active (e.g.: airplane mode)
-    // network permission set [CI] [CNS] <uid1> .. <uidN>
-    // network permission clear <uid1> .. <uidN>
+    // network permission user|network set [CI] [CNS] <id1> .. <idN>
+    // network permission user|network clear <id1> .. <idN>
     // network vpn create <netId> [owner_uid]
     // network vpn destroy <netId>
     // network <bind|unbind> <netId> <uid1> .. <uidN>

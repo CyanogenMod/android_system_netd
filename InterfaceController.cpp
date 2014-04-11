@@ -169,15 +169,15 @@ void InterfaceController::setAcceptRA(const char *value) {
 	setOnAllInterfaces("accept_ra", value);
 }
 
-// |table_or_offset| is interpreted as:
+// |tableOrOffset| is interpreted as:
 //     If == 0: default. Routes go into RT6_TABLE_MAIN.
 //     If > 0: user set. Routes go into the specified table.
 //     If < 0: automatic. The absolute value is intepreted as an offset and added to the interface
 //             ID to get the table. If it's set to -1000, routes from interface ID 5 will go into
 //             table 1005, etc.
-void InterfaceController::setAcceptRARouteTable(int table_or_offset) {
+void InterfaceController::setAcceptRARouteTable(int tableOrOffset) {
 	char* value;
-	asprintf(&value, "%d", table_or_offset);
+	asprintf(&value, "%d", tableOrOffset);
 	setOnAllInterfaces("accept_ra_rt_table", value);
 	free(value);
 }
