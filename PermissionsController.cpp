@@ -16,19 +16,35 @@
 
 #include "PermissionsController.h"
 
-Permission PermissionsController::getPermissionForNetwork(unsigned netId) const {
-    std::map<unsigned, Permission>::const_iterator iter = mNetworks.find(netId);
-    return iter != mNetworks.end() ? iter->second : PERMISSION_NONE;
+namespace {
+
+Permission get(const std::map<unsigned, Permission>& map, unsigned id) {
+    std::map<unsigned, Permission>::const_iterator iter = map.find(id);
+    return iter != map.end() ? iter->second : PERMISSION_NONE;
 }
 
-void PermissionsController::setPermissionForNetwork(unsigned netId, Permission permission) {
+void set(std::map<unsigned, Permission>* map, Permission permission, unsigned id) {
     if (permission == PERMISSION_NONE) {
-        clearPermissionForNetwork(netId);
-        return;
+        map->erase(id);
+    } else {
+        (*map)[id] = permission;
     }
-    mNetworks[netId] = permission;
 }
 
-void PermissionsController::clearPermissionForNetwork(unsigned netId) {
-    mNetworks.erase(netId);
+}  // namespace
+
+Permission PermissionsController::getPermissionForUser(unsigned uid) const {
+    return get(mUsers, uid);
+}
+
+void PermissionsController::setPermissionForUser(Permission permission, unsigned uid) {
+    set(&mUsers, permission, uid);
+}
+
+Permission PermissionsController::getPermissionForNetwork(unsigned netId) const {
+    return get(mNetworks, netId);
+}
+
+void PermissionsController::setPermissionForNetwork(Permission permission, unsigned netId) {
+    set(&mNetworks, permission, netId);
 }

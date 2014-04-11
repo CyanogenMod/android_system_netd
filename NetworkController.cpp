@@ -132,12 +132,14 @@ unsigned NetworkController::getNetworkId(const char* interface) {
 bool NetworkController::createNetwork(unsigned netId, const char* interface,
                                       Permission permission) {
     if (!isNetIdValid(netId) || !interface) {
+        ALOGE("invalid netId %u or interface null", netId);
         return false;
     }
 
     typedef std::multimap<unsigned, std::string>::const_iterator Iterator;
     for (Iterator iter = mNetIdToInterfaces.begin(); iter != mNetIdToInterfaces.end(); ++iter) {
         if (iter->second == interface) {
+            ALOGE("interface %s already assigned to netId %u", interface, iter->first);
             return false;
         }
     }
@@ -146,17 +148,18 @@ bool NetworkController::createNetwork(unsigned netId, const char* interface,
         return false;
     }
 
-    mPermissionsController->setPermissionForNetwork(netId, permission);
+    mPermissionsController->setPermissionForNetwork(permission, netId);
     mNetIdToInterfaces.insert(std::pair<unsigned, std::string>(netId, interface));
     return true;
 }
 
 bool NetworkController::destroyNetwork(unsigned netId) {
     if (!isNetIdValid(netId)) {
+        ALOGE("invalid netId %u", netId);
         return false;
     }
 
-    // TODO: ioctl(SIOCKILLADDR, ...);
+    // TODO: ioctl(SIOCKILLADDR, ...) to kill all sockets on the old network.
 
     bool status = true;
 
@@ -170,8 +173,56 @@ bool NetworkController::destroyNetwork(unsigned netId) {
         }
     }
 
-    mPermissionsController->clearPermissionForNetwork(netId);
+    mPermissionsController->setPermissionForNetwork(PERMISSION_NONE, netId);
     mNetIdToInterfaces.erase(netId);
+
+    return status;
+}
+
+bool NetworkController::setPermissionForUser(Permission permission,
+                                             const std::vector<unsigned>& uid) {
+    for (size_t i = 0; i < uid.size(); ++i) {
+        mPermissionsController->setPermissionForUser(permission, uid[i]);
+    }
+    return true;
+}
+
+bool NetworkController::setPermissionForNetwork(Permission newPermission,
+                                                const std::vector<unsigned>& netId) {
+    bool status = true;
+
+    for (size_t i = 0; i < netId.size(); ++i) {
+        if (!isNetIdValid(netId[i])) {
+            ALOGE("invalid netId %u", netId[i]);
+            status = false;
+            continue;
+        }
+
+        typedef std::multimap<unsigned, std::string>::const_iterator Iterator;
+        std::pair<Iterator, Iterator> range = mNetIdToInterfaces.equal_range(netId[i]);
+        if (range.first == range.second) {
+            ALOGE("unknown netId %u", netId[i]);
+            status = false;
+            continue;
+        }
+
+        Permission oldPermission = mPermissionsController->getPermissionForNetwork(netId[i]);
+        if (oldPermission == newPermission) {
+            continue;
+        }
+
+        // TODO: ioctl(SIOCKILLADDR, ...) to kill sockets on the network that don't have
+        // newPermission.
+
+        for (Iterator iter = range.first; iter != range.second; ++iter) {
+            if (!mRouteController->modifyNetworkPermission(netId[i], iter->second.c_str(),
+                                                           oldPermission, newPermission)) {
+                status = false;
+            }
+        }
+
+        mPermissionsController->setPermissionForNetwork(newPermission, netId[i]);
+    }
 
     return status;
 }

@@ -50,6 +50,24 @@
 #include <string>
 #include <vector>
 
+namespace {
+
+// Parses string permissions in argv[*nextArg], argv[*nextArg + 1], etc. and converts them into a
+// Permission enum. On return, nextArg will point to one past the last valid permissions string.
+Permission parseMultiplePermissions(int argc, char** argv, int* nextArg) {
+    Permission permission = PERMISSION_NONE;
+    for (; *nextArg < argc; ++*nextArg) {
+        Permission p = permissionFromString(argv[*nextArg]);
+        if (p == PERMISSION_NONE) {
+            break;
+        }
+        permission = static_cast<Permission>(permission | p);
+    }
+    return permission;
+}
+
+}  // namespace
+
 PermissionsController* CommandListener::sPermissionsController = NULL;
 RouteController* CommandListener::sRouteController = NULL;
 NetworkController *CommandListener::sNetCtrl = NULL;
@@ -1628,8 +1646,8 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return syntaxError(client, "Missing argument");
     }
 
-    //    0      1       2         3         4
-    // network create <netId> <interface> [CNS|CI]
+    //    0      1       2         3            4
+    // network create <netId> <interface> [<permission> ...]
     if (!strcmp(argv[1], "create")) {
         if (argc < 4) {
             return syntaxError(client, "Missing argument");
@@ -1640,12 +1658,10 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
             return paramError(client, "Invalid netId");
         }
         const char* interface = argv[3];
-        Permission permission = PERMISSION_NONE;
-        if (argc > 4) {
-            permission = permissionFromString(argv[4]);
-            if (permission == PERMISSION_NONE) {
-                return paramError(client, "Invalid permission");
-            }
+        int nextArg = 4;
+        Permission permission = parseMultiplePermissions(argc, argv, &nextArg);
+        if (nextArg != argc) {
+            return syntaxError(client, "Unknown trailing argument(s)");
         }
         if (!sNetCtrl->createNetwork(netId, interface, permission)) {
             return operationError(client, "createNetwork() failed");
@@ -1656,8 +1672,8 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     //    0       1       2
     // network destroy <netId>
     if (!strcmp(argv[1], "destroy")) {
-        if (argc < 3) {
-            return syntaxError(client, "Missing netId");
+        if (argc != 3) {
+            return syntaxError(client, "Incorrect number of arguments");
         }
         // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
         unsigned netId = strtoul(argv[2], NULL, 0);
@@ -1670,13 +1686,53 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return success(client);
     }
 
+    //    0        1         2      3         4
+    // network permission   user   set  [<permission> ...]  <uid>  ...
+    // network permission   user  clear     <uid>     ...
+    // network permission network  set  [<permission> ...] <netId> ...
+    // network permission network clear    <netId>    ...
+    if (!strcmp(argv[1], "permission")) {
+        if (argc < 5) {
+            return syntaxError(client, "Missing argument");
+        }
+        int nextArg = 4;
+        Permission permission = PERMISSION_NONE;
+        if (!strcmp(argv[3], "set")) {
+            permission = parseMultiplePermissions(argc, argv, &nextArg);
+        } else if (strcmp(argv[3], "clear")) {
+            return syntaxError(client, "Unknown argument");
+        }
+        std::vector<unsigned> ids;
+        for (; nextArg < argc; ++nextArg) {
+            char* endPtr;
+            unsigned id = strtoul(argv[nextArg], &endPtr, 0);
+            if (!*argv[nextArg] || *endPtr) {
+                return syntaxError(client, "Invalid id");
+            }
+            ids.push_back(id);
+        }
+        if (ids.empty()) {
+            return syntaxError(client, "Missing id");
+        }
+        if (!strcmp(argv[2], "user")) {
+            if (!sNetCtrl->setPermissionForUser(permission, ids)) {
+                return operationError(client, "setPermissionForUser() failed");
+            }
+        } else if (!strcmp(argv[2], "network")) {
+            if (!sNetCtrl->setPermissionForNetwork(permission, ids)) {
+                return operationError(client, "setPermissionForNetwork() failed");
+            }
+        } else {
+            return syntaxError(client, "Unknown argument");
+        }
+        return success(client);
+    }
+
     // network dns <add|remove> <netId> <num-resolvers> <resolver1> .. <resolverN> [searchDomain1] .. [searchDomainM]
     // network route <add|remove> <other-route-params>
     // network legacy <uid> route <add|remove> <other-route-params>
     // network default set <netId>
     // network default clear
-    // network permission user|network set [CI] [CNS] <id1> .. <idN>
-    // network permission user|network clear <id1> .. <idN>
     // network vpn create <netId> [owner_uid]
     // network vpn destroy <netId>
     // network <bind|unbind> <netId> <uid1> .. <uidN>

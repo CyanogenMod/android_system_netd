@@ -25,6 +25,8 @@ public:
 
     static bool createNetwork(unsigned netId, const char* interface, Permission permission);
     static bool destroyNetwork(unsigned netId, const char* interface, Permission permission);
+    static bool modifyNetworkPermission(unsigned netId, const char* interface,
+                                        Permission oldPermission, Permission newPermission);
 };
 
 #endif  // SYSTEM_NETD_ROUTE_CONTROLLER_H

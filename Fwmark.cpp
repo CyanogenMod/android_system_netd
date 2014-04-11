@@ -34,11 +34,10 @@ uint32_t getFwmark(unsigned netId, bool exp, bool protect, Permission permission
     if (protect) {
         fwmark |= FWMARK_MASK_PROTECT;
     }
-    if (permission == PERMISSION_CHANGE_NETWORK_STATE) {
+    if (permission & PERMISSION_CHANGE_NETWORK_STATE) {
         fwmark |= FWMARK_MASK_CHANGE_NETWORK_STATE;
-    } else if (permission == PERMISSION_CONNECTIVITY_INTERNAL) {
-        // CONNECTIVITY_INTERNAL implies CHANGE_NETWORK_STATE.
-        fwmark |= FWMARK_MASK_CHANGE_NETWORK_STATE;
+    }
+    if (permission & PERMISSION_CONNECTIVITY_INTERNAL) {
         fwmark |= FWMARK_MASK_CONNECTIVITY_INTERNAL;
     }
     return fwmark;

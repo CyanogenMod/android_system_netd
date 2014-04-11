@@ -23,11 +23,14 @@
 
 class PermissionsController {
 public:
+    Permission getPermissionForUser(unsigned uid) const;
+    void setPermissionForUser(Permission permission, unsigned uid);
+
     Permission getPermissionForNetwork(unsigned netId) const;
-    void setPermissionForNetwork(unsigned netId, Permission permission);
-    void clearPermissionForNetwork(unsigned netId);
+    void setPermissionForNetwork(Permission permission, unsigned netId);
 
 private:
+    std::map<unsigned, Permission> mUsers;
     std::map<unsigned, Permission> mNetworks;
 };
 

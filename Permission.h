@@ -22,13 +22,17 @@
 // app must hold to be allowed to use the network. PERMISSION_NONE means "no special permission is
 // held by the app" or "no special permission is required to use the network".
 //
-// Currently, each permission includes all the permissions above it (i.e., CONNECTIVITY_INTERNAL
-// implies CHANGE_NETWORK_STATE), which is why these are not bit values that need to be OR'ed
-// together. This may change in the future.
+// Permissions are flags that can be OR'ed together to represent combinations of permissions.
+//
+// NOTE: netd doesn't enforce any semantics for the permission values. E.g., while all apps with
+// CONNECTIVITY_INTERNAL may also implicitly or explicitly have CHANGE_NETWORK_STATE, netd doesn't
+// enforce it. It's the responsibility of the caller to set all permissions bits explicitly. I.e.,
+// if you set the PERMISSION_CONNECTIVITY_INTERNAL bit, you should probably also set the
+// PERMISSION_CHANGE_NETWORK_STATE bit.
 enum Permission {
-    PERMISSION_NONE,
-    PERMISSION_CHANGE_NETWORK_STATE,
-    PERMISSION_CONNECTIVITY_INTERNAL
+    PERMISSION_NONE                  = 0x0,
+    PERMISSION_CHANGE_NETWORK_STATE  = 0x1,
+    PERMISSION_CONNECTIVITY_INTERNAL = 0x2
 };
 
 Permission permissionFromString(const char* permission);

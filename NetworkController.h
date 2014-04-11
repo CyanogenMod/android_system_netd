@@ -22,6 +22,7 @@
 #include <list>
 #include <map>
 #include <string>
+#include <vector>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -66,6 +67,9 @@ public:
 
     bool createNetwork(unsigned netId, const char* interface, Permission permission);
     bool destroyNetwork(unsigned netId);
+
+    bool setPermissionForUser(Permission permission, const std::vector<unsigned>& uid);
+    bool setPermissionForNetwork(Permission permission, const std::vector<unsigned>& netId);
 
 private:
     struct UidEntry {

@@ -77,7 +77,8 @@ bool runIpRuleCommand(const char* action, uint32_t priority, uint32_t table,
     return true;
 }
 
-bool modifyNetwork(unsigned netId, const char* interface, Permission permission, bool add) {
+bool modifyRules(unsigned netId, const char* interface, Permission permission, bool add,
+                 bool modifyIptables) {
     uint32_t table = getRouteTableForInterface(interface);
     if (!table) {
         return false;
@@ -126,12 +127,14 @@ bool modifyNetwork(unsigned netId, const char* interface, Permission permission,
     //   ping replies).
     // + Mark sockets that accept connections from this interface so that the connection stays on
     //   the same interface.
-    action = add ? "-A" : "-D";
-    char markString[UINT32_HEX_STRLEN];
-    snprintf(markString, sizeof(markString), "0x%x", netId);
-    if (execIptables(V4V6, "-t", "mangle", action, "INPUT", "-i", interface, "-j", "MARK",
-                     "--set-mark", markString, NULL)) {
-        return false;
+    if (modifyIptables) {
+        action = add ? "-A" : "-D";
+        char markString[UINT32_HEX_STRLEN];
+        snprintf(markString, sizeof(markString), "0x%x", netId);
+        if (execIptables(V4V6, "-t", "mangle", action, "INPUT", "-i", interface, "-j", "MARK",
+                         "--set-mark", markString, NULL)) {
+            return false;
+        }
     }
 
     return true;
@@ -140,9 +143,17 @@ bool modifyNetwork(unsigned netId, const char* interface, Permission permission,
 }  // namespace
 
 bool RouteController::createNetwork(unsigned netId, const char* interface, Permission permission) {
-    return modifyNetwork(netId, interface, permission, true);
+    return modifyRules(netId, interface, permission, true, true);
 }
 
 bool RouteController::destroyNetwork(unsigned netId, const char* interface, Permission permission) {
-    return modifyNetwork(netId, interface, permission, false);
+    return modifyRules(netId, interface, permission, false, true);
+    // TODO: Flush the routing table.
+}
+
+bool RouteController::modifyNetworkPermission(unsigned netId, const char* interface,
+                                              Permission oldPermission, Permission newPermission) {
+    // Add the new rules before deleting the old ones, to avoid race conditions.
+    return modifyRules(netId, interface, newPermission, true, false) &&
+           modifyRules(netId, interface, oldPermission, false, false);
 }
