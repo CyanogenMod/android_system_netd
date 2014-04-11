@@ -24,13 +24,14 @@
 
 namespace {
 
-const uint32_t RULE_PRIORITY_PER_NETWORK_EXPLICIT = 300;
-const uint32_t RULE_PRIORITY_PER_NETWORK_OIF = 400;
-const uint32_t RULE_PRIORITY_PER_NETWORK_NORMAL = 700;
+const uint32_t RULE_PRIORITY_PER_NETWORK_EXPLICIT  =  300;
+const uint32_t RULE_PRIORITY_PER_NETWORK_INTERFACE =  400;
+const uint32_t RULE_PRIORITY_PER_NETWORK_NORMAL    =  700;
+const uint32_t RULE_PRIORITY_DEFAULT_NETWORK       =  900;
 
-const bool FWMARK_USE_NET_ID = true;
+const bool FWMARK_USE_NET_ID   = true;
 const bool FWMARK_USE_EXPLICIT = true;
-const bool FWMARK_USE_PROTECT = true;
+const bool FWMARK_USE_PROTECT  = true;
 
 uint32_t getRouteTableForInterface(const char* interface) {
     uint32_t index = if_nametoindex(interface);
@@ -38,7 +39,7 @@ uint32_t getRouteTableForInterface(const char* interface) {
 }
 
 bool runIpRuleCommand(const char* action, uint32_t priority, uint32_t table,
-                      uint32_t fwmark, uint32_t mask, const char* oif) {
+                      uint32_t fwmark, uint32_t mask, const char* interface) {
 
     char priorityString[UINT32_STRLEN];
     char tableString[UINT32_STRLEN];
@@ -65,9 +66,9 @@ bool runIpRuleCommand(const char* action, uint32_t priority, uint32_t table,
             argv[argc++] = "fwmark";
             argv[argc++] = fwmarkString;
         }
-        if (oif) {
+        if (interface) {
             argv[argc++] = "oif";
-            argv[argc++] = oif;
+            argv[argc++] = interface;
         }
         if (android_fork_execvp(argc, const_cast<char**>(argv), NULL, false, false)) {
             return false;
@@ -77,8 +78,8 @@ bool runIpRuleCommand(const char* action, uint32_t priority, uint32_t table,
     return true;
 }
 
-bool modifyRules(unsigned netId, const char* interface, Permission permission, bool add,
-                 bool modifyIptables) {
+bool modifyPerNetworkRules(unsigned netId, const char* interface, Permission permission, bool add,
+                           bool modifyIptables) {
     uint32_t table = getRouteTableForInterface(interface);
     if (!table) {
         return false;
@@ -105,7 +106,8 @@ bool modifyRules(unsigned netId, const char* interface, Permission permission, b
     // knows the outgoing interface (typically for link-local communications).
     fwmark = getFwmark(0, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
     mask = getFwmark(!FWMARK_USE_NET_ID, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
-    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_OIF, table, fwmark, mask, interface)) {
+    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_INTERFACE, table, fwmark, mask,
+                          interface)) {
         return false;
     }
 
@@ -140,20 +142,45 @@ bool modifyRules(unsigned netId, const char* interface, Permission permission, b
     return true;
 }
 
+bool modifyDefaultNetworkRules(const char* interface, Permission permission, const char* action) {
+    uint32_t table = getRouteTableForInterface(interface);
+    if (!table) {
+        return false;
+    }
+
+    uint32_t fwmark = getFwmark(0, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
+    uint32_t mask = getFwmarkMask(FWMARK_USE_NET_ID, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT,
+                                  permission);
+
+    if (!runIpRuleCommand(action, RULE_PRIORITY_DEFAULT_NETWORK, table, fwmark, mask, NULL)) {
+        return false;
+    }
+
+    return true;
+}
+
 }  // namespace
 
 bool RouteController::createNetwork(unsigned netId, const char* interface, Permission permission) {
-    return modifyRules(netId, interface, permission, true, true);
+    return modifyPerNetworkRules(netId, interface, permission, true, true);
 }
 
 bool RouteController::destroyNetwork(unsigned netId, const char* interface, Permission permission) {
-    return modifyRules(netId, interface, permission, false, true);
+    return modifyPerNetworkRules(netId, interface, permission, false, true);
     // TODO: Flush the routing table.
 }
 
 bool RouteController::modifyNetworkPermission(unsigned netId, const char* interface,
                                               Permission oldPermission, Permission newPermission) {
     // Add the new rules before deleting the old ones, to avoid race conditions.
-    return modifyRules(netId, interface, newPermission, true, false) &&
-           modifyRules(netId, interface, oldPermission, false, false);
+    return modifyPerNetworkRules(netId, interface, newPermission, true, false) &&
+           modifyPerNetworkRules(netId, interface, oldPermission, false, false);
+}
+
+bool RouteController::addDefaultNetwork(const char* interface, Permission permission) {
+    return modifyDefaultNetworkRules(interface, permission, ADD);
+}
+
+bool RouteController::removeDefaultNetwork(const char* interface, Permission permission) {
+    return modifyDefaultNetworkRules(interface, permission, DEL);
 }

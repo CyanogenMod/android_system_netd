@@ -51,12 +51,51 @@ void NetworkController::clearNetworkPreference() {
 }
 
 unsigned NetworkController::getDefaultNetwork() const {
+    android::RWLock::AutoRLock lock(mRWLock);
     return mDefaultNetId;
 }
 
-void NetworkController::setDefaultNetwork(unsigned netId) {
-    android::RWLock::AutoWLock lock(mRWLock);
-    mDefaultNetId = netId;
+bool NetworkController::setDefaultNetwork(unsigned newNetId) {
+    unsigned oldNetId;
+    {
+        android::RWLock::AutoWLock lock(mRWLock);
+        oldNetId = mDefaultNetId;
+        mDefaultNetId = newNetId;
+    }
+
+    if (oldNetId == newNetId) {
+        return true;
+    }
+
+    bool status = true;
+
+    // Add default network rules for the new netId.
+    if (isNetIdValid(newNetId)) {
+        Permission permission = mPermissionsController->getPermissionForNetwork(newNetId);
+
+        typedef std::multimap<unsigned, std::string>::const_iterator Iterator;
+        std::pair<Iterator, Iterator> range = mNetIdToInterfaces.equal_range(newNetId);
+        for (Iterator iter = range.first; iter != range.second; ++iter) {
+            if (!mRouteController->addDefaultNetwork(iter->second.c_str(), permission)) {
+                status = false;
+            }
+        }
+    }
+
+    // Remove the old default network rules.
+    if (isNetIdValid(oldNetId)) {
+        Permission permission = mPermissionsController->getPermissionForNetwork(oldNetId);
+
+        typedef std::multimap<unsigned, std::string>::const_iterator Iterator;
+        std::pair<Iterator, Iterator> range = mNetIdToInterfaces.equal_range(oldNetId);
+        for (Iterator iter = range.first; iter != range.second; ++iter) {
+            if (!mRouteController->removeDefaultNetwork(iter->second.c_str(), permission)) {
+                status = false;
+            }
+        }
+    }
+
+    return status;
 }
 
 void NetworkController::setNetworkForPid(int pid, unsigned netId) {
@@ -175,6 +214,14 @@ bool NetworkController::destroyNetwork(unsigned netId) {
 
     mPermissionsController->setPermissionForNetwork(PERMISSION_NONE, netId);
     mNetIdToInterfaces.erase(netId);
+
+    if (netId == getDefaultNetwork()) {
+        // Could the default network have changed from below us, after we evaluated the 'if', thus
+        // making it wrong to call setDefaultNetwork() now? No, because the default can only change
+        // due to another command from CommandListener, and those are serialized (i.e., they can't
+        // happen in parallel with the destroyNetwork() that we are currently processing).
+        setDefaultNetwork(NETID_UNSET);
+    }
 
     return status;
 }

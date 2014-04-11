@@ -1728,11 +1728,35 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return success(client);
     }
 
+    //    0       1      2      3
+    // network default  set  <netId>
+    // network default clear
+    if (!strcmp(argv[1], "default")) {
+        if (argc < 3) {
+            return syntaxError(client, "Missing argument");
+        }
+        unsigned netId = NETID_UNSET;
+        if (!strcmp(argv[2], "set")) {
+            if (argc < 4) {
+                return syntaxError(client, "Missing netId");
+            }
+            // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
+            netId = strtoul(argv[3], NULL, 0);
+            if (!sNetCtrl->isNetIdValid(netId)) {
+                return paramError(client, "Invalid netId");
+            }
+        } else if (strcmp(argv[2], "clear")) {
+            return syntaxError(client, "Unknown argument");
+        }
+        if (!sNetCtrl->setDefaultNetwork(netId)) {
+            return operationError(client, "setDefaultNetwork() failed");
+        }
+        return success(client);
+    }
+
     // network dns <add|remove> <netId> <num-resolvers> <resolver1> .. <resolverN> [searchDomain1] .. [searchDomainM]
     // network route <add|remove> <other-route-params>
     // network legacy <uid> route <add|remove> <other-route-params>
-    // network default set <netId>
-    // network default clear
     // network vpn create <netId> [owner_uid]
     // network vpn destroy <netId>
     // network <bind|unbind> <netId> <uid1> .. <uidN>

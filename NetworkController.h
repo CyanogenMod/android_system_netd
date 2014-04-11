@@ -51,7 +51,7 @@ public:
 
     void clearNetworkPreference();
     unsigned getDefaultNetwork() const;
-    void setDefaultNetwork(unsigned netId);
+    bool setDefaultNetwork(unsigned netId);
     void setNetworkForPid(int pid, unsigned netId);
     bool setNetworkForUidRange(int uid_start, int uid_end, unsigned netId, bool forward_dns);
     bool clearNetworkForUidRange(int uid_start, int uid_end, unsigned netId);
@@ -91,6 +91,12 @@ private:
     PermissionsController* const mPermissionsController;
     RouteController* const mRouteController;
 
+    // Maps a netId to all its interfaces.
+    //
+    // We need to know interface names to configure incoming packet marking and because routing
+    // tables are associated with interfaces and not with netIds.
+    //
+    // An interface may belong to at most one netId, but a netId may have multiple interfaces.
     std::multimap<unsigned, std::string> mNetIdToInterfaces;
 };
 
