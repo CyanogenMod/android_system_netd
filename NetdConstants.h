@@ -40,4 +40,9 @@ int readFile(const char *path, char *buf, int *sizep);
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
+#define __INT_STRLEN(i) sizeof(#i)
+#define _INT_STRLEN(i) __INT_STRLEN(i)
+#define UINT32_STRLEN _INT_STRLEN(UINT32_MAX)
+#define UINT32_HEX_STRLEN sizeof("0x12345678")
+
 #endif
