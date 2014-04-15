@@ -190,6 +190,15 @@ bool modifyRoute(const char* interface, const char* destination, const char* nex
     return runIpRouteCommand(add ? ADD : DEL, table, interface, destination, nexthop);
 }
 
+bool flushRoutes(const char* interface) {
+    uint32_t table = getRouteTableForInterface(interface);
+    if (!table) {
+        return false;
+    }
+
+    return runIpRouteCommand("flush", table, NULL, NULL, NULL);
+}
+
 }  // namespace
 
 bool RouteController::createNetwork(unsigned netId, const char* interface, Permission permission) {
@@ -197,8 +206,8 @@ bool RouteController::createNetwork(unsigned netId, const char* interface, Permi
 }
 
 bool RouteController::destroyNetwork(unsigned netId, const char* interface, Permission permission) {
-    return modifyPerNetworkRules(netId, interface, permission, false, true);
-    // TODO: Flush the routing table.
+    return modifyPerNetworkRules(netId, interface, permission, false, true) &&
+           flushRoutes(interface);
 }
 
 bool RouteController::modifyNetworkPermission(unsigned netId, const char* interface,
