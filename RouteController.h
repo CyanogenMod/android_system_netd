@@ -30,6 +30,9 @@ public:
 
     static bool addDefaultNetwork(const char* interface, Permission permission);
     static bool removeDefaultNetwork(const char* interface, Permission permission);
+
+    static bool addRoute(const char* interface, const char* destination, const char* nexthop);
+    static bool removeRoute(const char* interface, const char* destination, const char* nexthop);
 };
 
 #endif  // SYSTEM_NETD_ROUTE_CONTROLLER_H

@@ -40,10 +40,10 @@ uint32_t getRouteTableForInterface(const char* interface) {
 
 bool runIpRuleCommand(const char* action, uint32_t priority, uint32_t table,
                       uint32_t fwmark, uint32_t mask, const char* interface) {
-
     char priorityString[UINT32_STRLEN];
-    char tableString[UINT32_STRLEN];
     snprintf(priorityString, sizeof(priorityString), "%u", priority);
+
+    char tableString[UINT32_STRLEN];
     snprintf(tableString, sizeof(tableString), "%u", table);
 
     char fwmarkString[sizeof("0x12345678/0x12345678")];
@@ -76,6 +76,32 @@ bool runIpRuleCommand(const char* action, uint32_t priority, uint32_t table,
     }
 
     return true;
+}
+
+bool runIpRouteCommand(const char* action, uint32_t table, const char* interface,
+                       const char* destination, const char* nexthop) {
+    char tableString[UINT32_STRLEN];
+    snprintf(tableString, sizeof(tableString), "%u", table);
+
+    int argc = 0;
+    const char* argv[16];
+
+    argv[argc++] = IP_PATH;
+    argv[argc++] = "route";
+    argv[argc++] = action;
+    argv[argc++] = "table";
+    argv[argc++] = tableString;
+    if (destination) {
+        argv[argc++] = destination;
+        argv[argc++] = "dev";
+        argv[argc++] = interface;
+        if (nexthop) {
+            argv[argc++] = "via";
+            argv[argc++] = nexthop;
+        }
+    }
+
+    return android_fork_execvp(argc, const_cast<char**>(argv), NULL, false, false);
 }
 
 bool modifyPerNetworkRules(unsigned netId, const char* interface, Permission permission, bool add,
@@ -152,11 +178,16 @@ bool modifyDefaultNetworkRules(const char* interface, Permission permission, con
     uint32_t mask = getFwmarkMask(FWMARK_USE_NET_ID, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT,
                                   permission);
 
-    if (!runIpRuleCommand(action, RULE_PRIORITY_DEFAULT_NETWORK, table, fwmark, mask, NULL)) {
+    return runIpRuleCommand(action, RULE_PRIORITY_DEFAULT_NETWORK, table, fwmark, mask, NULL);
+}
+
+bool modifyRoute(const char* interface, const char* destination, const char* nexthop, bool add) {
+    uint32_t table = getRouteTableForInterface(interface);
+    if (!table) {
         return false;
     }
 
-    return true;
+    return runIpRouteCommand(add ? ADD : DEL, table, interface, destination, nexthop);
 }
 
 }  // namespace
@@ -183,4 +214,14 @@ bool RouteController::addDefaultNetwork(const char* interface, Permission permis
 
 bool RouteController::removeDefaultNetwork(const char* interface, Permission permission) {
     return modifyDefaultNetworkRules(interface, permission, DEL);
+}
+
+bool RouteController::addRoute(const char* interface, const char* destination,
+                               const char* nexthop) {
+    return modifyRoute(interface, destination, nexthop, true);
+}
+
+bool RouteController::removeRoute(const char* interface, const char* destination,
+                                  const char* nexthop) {
+    return modifyRoute(interface, destination, nexthop, false);
 }

@@ -71,7 +71,26 @@ public:
     bool setPermissionForUser(Permission permission, const std::vector<unsigned>& uid);
     bool setPermissionForNetwork(Permission permission, const std::vector<unsigned>& netId);
 
+    // Routes are added to tables determined by the interface, so only |interface| is actually used.
+    // |netId| is given only to sanity check that the interface has the correct netId.
+    bool addRoute(unsigned netId, const char* interface, const char* destination,
+                  const char* nexthop);
+    bool removeRoute(unsigned netId, const char* interface, const char* destination,
+                     const char* nexthop);
+
 private:
+    typedef std::multimap<unsigned, std::string>::const_iterator InterfaceIterator;
+    typedef std::pair<InterfaceIterator, InterfaceIterator> InterfaceRange;
+
+    // Returns the netId that |interface| belongs to, or NETID_UNSET if it doesn't belong to any.
+    unsigned netIdForInterface(const char* interface);
+
+    // Returns the interfaces assigned to |netId|. Sets |*status| to false if there are none.
+    InterfaceRange interfacesForNetId(unsigned netId, bool* status);
+
+    bool modifyRoute(unsigned netId, const char* interface, const char* destination,
+                     const char* nexthop, bool add);
+
     struct UidEntry {
         int uid_start;
         int uid_end;

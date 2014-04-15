@@ -72,10 +72,8 @@ bool NetworkController::setDefaultNetwork(unsigned newNetId) {
     // Add default network rules for the new netId.
     if (isNetIdValid(newNetId)) {
         Permission permission = mPermissionsController->getPermissionForNetwork(newNetId);
-
-        typedef std::multimap<unsigned, std::string>::const_iterator Iterator;
-        std::pair<Iterator, Iterator> range = mNetIdToInterfaces.equal_range(newNetId);
-        for (Iterator iter = range.first; iter != range.second; ++iter) {
+        InterfaceRange range = interfacesForNetId(newNetId, &status);
+        for (InterfaceIterator iter = range.first; iter != range.second; ++iter) {
             if (!mRouteController->addDefaultNetwork(iter->second.c_str(), permission)) {
                 status = false;
             }
@@ -85,10 +83,8 @@ bool NetworkController::setDefaultNetwork(unsigned newNetId) {
     // Remove the old default network rules.
     if (isNetIdValid(oldNetId)) {
         Permission permission = mPermissionsController->getPermissionForNetwork(oldNetId);
-
-        typedef std::multimap<unsigned, std::string>::const_iterator Iterator;
-        std::pair<Iterator, Iterator> range = mNetIdToInterfaces.equal_range(oldNetId);
-        for (Iterator iter = range.first; iter != range.second; ++iter) {
+        InterfaceRange range = interfacesForNetId(oldNetId, &status);
+        for (InterfaceIterator iter = range.first; iter != range.second; ++iter) {
             if (!mRouteController->removeDefaultNetwork(iter->second.c_str(), permission)) {
                 status = false;
             }
@@ -175,12 +171,10 @@ bool NetworkController::createNetwork(unsigned netId, const char* interface,
         return false;
     }
 
-    typedef std::multimap<unsigned, std::string>::const_iterator Iterator;
-    for (Iterator iter = mNetIdToInterfaces.begin(); iter != mNetIdToInterfaces.end(); ++iter) {
-        if (iter->second == interface) {
-            ALOGE("interface %s already assigned to netId %u", interface, iter->first);
-            return false;
-        }
+    unsigned existingNetId = netIdForInterface(interface);
+    if (existingNetId != NETID_UNSET) {
+        ALOGE("interface %s already assigned to netId %u", interface, existingNetId);
+        return false;
     }
 
     if (!mRouteController->createNetwork(netId, interface, permission)) {
@@ -203,23 +197,20 @@ bool NetworkController::destroyNetwork(unsigned netId) {
     bool status = true;
 
     Permission permission = mPermissionsController->getPermissionForNetwork(netId);
-
-    typedef std::multimap<unsigned, std::string>::const_iterator Iterator;
-    std::pair<Iterator, Iterator> range = mNetIdToInterfaces.equal_range(netId);
-    for (Iterator iter = range.first; iter != range.second; ++iter) {
+    InterfaceRange range = interfacesForNetId(netId, &status);
+    for (InterfaceIterator iter = range.first; iter != range.second; ++iter) {
         if (!mRouteController->destroyNetwork(netId, iter->second.c_str(), permission)) {
             status = false;
         }
     }
-
     mPermissionsController->setPermissionForNetwork(PERMISSION_NONE, netId);
     mNetIdToInterfaces.erase(netId);
 
     if (netId == getDefaultNetwork()) {
-        // Could the default network have changed from below us, after we evaluated the 'if', thus
-        // making it wrong to call setDefaultNetwork() now? No, because the default can only change
-        // due to another command from CommandListener, and those are serialized (i.e., they can't
-        // happen in parallel with the destroyNetwork() that we are currently processing).
+        // Could the default network have changed from below us, after we evaluated the 'if', making
+        // it wrong to call setDefaultNetwork() now? No, because the default can only change due to
+        // a command from CommandListener; but commands are serialized, I.e., we are processing the
+        // destroyNetwork() command here, so a setDefaultNetwork() command can't happen in parallel.
         setDefaultNetwork(NETID_UNSET);
     }
 
@@ -245,13 +236,7 @@ bool NetworkController::setPermissionForNetwork(Permission newPermission,
             continue;
         }
 
-        typedef std::multimap<unsigned, std::string>::const_iterator Iterator;
-        std::pair<Iterator, Iterator> range = mNetIdToInterfaces.equal_range(netId[i]);
-        if (range.first == range.second) {
-            ALOGE("unknown netId %u", netId[i]);
-            status = false;
-            continue;
-        }
+        InterfaceRange range = interfacesForNetId(netId[i], &status);
 
         Permission oldPermission = mPermissionsController->getPermissionForNetwork(netId[i]);
         if (oldPermission == newPermission) {
@@ -261,7 +246,7 @@ bool NetworkController::setPermissionForNetwork(Permission newPermission,
         // TODO: ioctl(SIOCKILLADDR, ...) to kill sockets on the network that don't have
         // newPermission.
 
-        for (Iterator iter = range.first; iter != range.second; ++iter) {
+        for (InterfaceIterator iter = range.first; iter != range.second; ++iter) {
             if (!mRouteController->modifyNetworkPermission(netId[i], iter->second.c_str(),
                                                            oldPermission, newPermission)) {
                 status = false;
@@ -272,6 +257,52 @@ bool NetworkController::setPermissionForNetwork(Permission newPermission,
     }
 
     return status;
+}
+
+bool NetworkController::addRoute(unsigned netId, const char* interface, const char* destination,
+                                 const char* nexthop) {
+    return modifyRoute(netId, interface, destination, nexthop, true);
+}
+
+bool NetworkController::removeRoute(unsigned netId, const char* interface, const char* destination,
+                                    const char* nexthop) {
+    return modifyRoute(netId, interface, destination, nexthop, false);
+}
+
+unsigned NetworkController::netIdForInterface(const char* interface) {
+    for (InterfaceIterator iter = mNetIdToInterfaces.begin(); iter != mNetIdToInterfaces.end();
+         ++iter) {
+        if (iter->second == interface) {
+            return iter->first;
+        }
+    }
+    return NETID_UNSET;
+}
+
+NetworkController::InterfaceRange NetworkController::interfacesForNetId(unsigned netId,
+                                                                        bool* status) {
+    InterfaceRange range = mNetIdToInterfaces.equal_range(netId);
+    if (range.first == range.second) {
+        ALOGE("unknown netId %u", netId);
+        *status = false;
+    }
+    return range;
+}
+
+bool NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,
+                                    const char* nexthop, bool add) {
+    if (!isNetIdValid(netId)) {
+        ALOGE("invalid netId %u", netId);
+        return false;
+    }
+
+    if (netIdForInterface(interface) != netId) {
+        ALOGE("netId %u has no such interface %s", netId, interface);
+        return false;
+    }
+
+    return add ? mRouteController->addRoute(interface, destination, nexthop) :
+                 mRouteController->removeRoute(interface, destination, nexthop);
 }
 
 NetworkController::UidEntry::UidEntry(

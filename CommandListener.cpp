@@ -1754,8 +1754,35 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return success(client);
     }
 
-    // network dns <add|remove> <netId> <num-resolvers> <resolver1> .. <resolverN> [searchDomain1] .. [searchDomainM]
-    // network route <add|remove> <other-route-params>
+    //    0      1     2       3         4            5           6
+    // network route  add   <netId> <interface> <destination> [nexthop]
+    // network route remove <netId> <interface> <destination> [nexthop]
+    if (!strcmp(argv[1], "route")) {
+        if (argc < 6 || argc > 7) {
+            return syntaxError(client, "Incorrect number of arguments");
+        }
+        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
+        unsigned netId = strtoul(argv[3], NULL, 0);
+        if (!sNetCtrl->isNetIdValid(netId)) {
+            return paramError(client, "Invalid netId");
+        }
+        const char* interface = argv[4];
+        const char* destination = argv[5];
+        const char* nexthop = argc == 7 ? argv[6] : NULL;
+        if (!strcmp(argv[2], "add")) {
+            if (!sNetCtrl->addRoute(netId, interface, destination, nexthop)) {
+                return operationError(client, "addRoute() failed");
+            }
+        } else if (!strcmp(argv[2], "remove")) {
+            if (!sNetCtrl->removeRoute(netId, interface, destination, nexthop)) {
+                return operationError(client, "removeRoute() failed");
+            }
+        } else {
+            return syntaxError(client, "Unknown argument");
+        }
+        return success(client);
+    }
+
     // network legacy <uid> route <add|remove> <other-route-params>
     // network vpn create <netId> [owner_uid]
     // network vpn destroy <netId>
