@@ -246,6 +246,8 @@ CommandListener::CommandListener() :
     sBandwidthCtrl->enableBandwidthControl(false);
 
     sSecondaryTableCtrl->setupIptablesHooks();
+
+    sRouteController->Init();
 }
 
 CommandListener::InterfaceCmd::InterfaceCmd() :

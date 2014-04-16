@@ -19,15 +19,18 @@
 #include "Fwmark.h"
 #include "NetdConstants.h"
 
+#include <linux/rtnetlink.h>
 #include <logwrap/logwrap.h>
 #include <net/if.h>
 
 namespace {
 
-const uint32_t RULE_PRIORITY_PER_NETWORK_EXPLICIT  =  300;
-const uint32_t RULE_PRIORITY_PER_NETWORK_INTERFACE =  400;
-const uint32_t RULE_PRIORITY_PER_NETWORK_NORMAL    =  700;
-const uint32_t RULE_PRIORITY_DEFAULT_NETWORK       =  900;
+const uint32_t RULE_PRIORITY_PER_NETWORK_EXPLICIT  = 13000;
+const uint32_t RULE_PRIORITY_PER_NETWORK_INTERFACE = 14000;
+const uint32_t RULE_PRIORITY_PER_NETWORK_NORMAL    = 17000;
+const uint32_t RULE_PRIORITY_DEFAULT_NETWORK       = 19000;
+const uint32_t RULE_PRIORITY_MAIN                  = 20000;
+const uint32_t RULE_PRIORITY_UNREACHABLE           = 21000;
 
 const bool FWMARK_USE_NET_ID   = true;
 const bool FWMARK_USE_EXPLICIT = true;
@@ -38,8 +41,15 @@ uint32_t getRouteTableForInterface(const char* interface) {
     return index ? index + RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX : 0;
 }
 
-bool runIpRuleCommand(const char* action, uint32_t priority, uint32_t table,
-                      uint32_t fwmark, uint32_t mask, const char* interface) {
+// Adds or removes a routing rule for IPv4 and IPv6.
+//
+// + If |table| is non-zero, the rule points at the specified routing table. Otherwise, the rule
+//   returns ENETUNREACH.
+// + If |mask| is non-zero, the rule matches the specified fwmark and mask. Otherwise, |fwmark| is
+//   ignored.
+// + If |interface| is non-NULL, the rule matches the specified outgoing interface.
+bool runIpRuleCommand(const char* action, uint32_t priority, uint32_t table, uint32_t fwmark,
+                      uint32_t mask, const char* interface) {
     char priorityString[UINT32_STRLEN];
     snprintf(priorityString, sizeof(priorityString), "%u", priority);
 
@@ -60,8 +70,12 @@ bool runIpRuleCommand(const char* action, uint32_t priority, uint32_t table,
         argv[argc++] = action;
         argv[argc++] = "priority";
         argv[argc++] = priorityString;
-        argv[argc++] = "table";
-        argv[argc++] = tableString;
+        if (table) {
+            argv[argc++] = "table";
+            argv[argc++] = tableString;
+        } else {
+            argv[argc++] = "unreachable";
+        }
         if (mask) {
             argv[argc++] = "fwmark";
             argv[argc++] = fwmarkString;
@@ -200,6 +214,25 @@ bool flushRoutes(const char* interface) {
 }
 
 }  // namespace
+
+void RouteController::Init() {
+    // Add a new rule to look up the 'main' table, with the same selectors as the "default network"
+    // rule, but with a lower priority. Since the default network rule points to a table with a
+    // default route, the rule we're adding will never be used for normal routing lookups. However,
+    // the kernel may fall-through to it to find directly-connected routes when it validates that a
+    // nexthop (in a route being added) is reachable.
+    uint32_t fwmark = getFwmark(0, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, PERMISSION_NONE);
+    uint32_t mask = getFwmarkMask(FWMARK_USE_NET_ID, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT,
+                                  PERMISSION_NONE);
+    runIpRuleCommand(ADD, RULE_PRIORITY_MAIN, RT_TABLE_MAIN, fwmark, mask, NULL);
+
+// TODO: Uncomment once we are sure everything works.
+#if 0
+    // Add a rule to preempt the pre-defined "from all lookup main" rule. This ensures that packets
+    // that are already marked with a specific NetId don't fall-through to the main table.
+    runIpRuleCommand(ADD, RULE_PRIORITY_UNREACHABLE, 0, 0, 0, NULL);
+#endif
+}
 
 bool RouteController::createNetwork(unsigned netId, const char* interface, Permission permission) {
     return modifyPerNetworkRules(netId, interface, permission, true, true);
