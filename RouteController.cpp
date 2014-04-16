@@ -195,13 +195,27 @@ bool modifyDefaultNetworkRules(const char* interface, Permission permission, con
     return runIpRuleCommand(action, RULE_PRIORITY_DEFAULT_NETWORK, table, fwmark, mask, NULL);
 }
 
-bool modifyRoute(const char* interface, const char* destination, const char* nexthop, bool add) {
+bool modifyRoute(const char* interface, const char* destination, const char* nexthop,
+                 const char* action) {
     uint32_t table = getRouteTableForInterface(interface);
     if (!table) {
         return false;
     }
 
-    return runIpRouteCommand(add ? ADD : DEL, table, interface, destination, nexthop);
+    if (!runIpRouteCommand(action, table, interface, destination, nexthop)) {
+        return false;
+    }
+
+    // If there's no nexthop, this is a directly connected route. Add it to the main table also, to
+    // let the kernel find it when validating nexthops when global routes are added. Don't do this
+    // for IPv6, since all directly-connected routes in v6 are link-local and should already be in
+    // the main table.
+    if (!nexthop && !strchr(destination, ':') &&
+        !runIpRouteCommand(action, RT_TABLE_MAIN, interface, destination, NULL)) {
+        return false;
+    }
+
+    return true;
 }
 
 bool flushRoutes(const char* interface) {
@@ -260,10 +274,10 @@ bool RouteController::removeDefaultNetwork(const char* interface, Permission per
 
 bool RouteController::addRoute(const char* interface, const char* destination,
                                const char* nexthop) {
-    return modifyRoute(interface, destination, nexthop, true);
+    return modifyRoute(interface, destination, nexthop, ADD);
 }
 
 bool RouteController::removeRoute(const char* interface, const char* destination,
                                   const char* nexthop) {
-    return modifyRoute(interface, destination, nexthop, false);
+    return modifyRoute(interface, destination, nexthop, DEL);
 }

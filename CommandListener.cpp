@@ -1712,7 +1712,14 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         }
         const char* interface = argv[4];
         const char* destination = argv[5];
-        const char* nexthop = argc == 7 ? argv[6] : NULL;
+        const char* nexthop = NULL;
+        // If the nexthop (gateway) is equal to INADDR_ANY or in6addr_any, the route is a directly
+        // connected route, and we should not set nexthop.
+        // TODO: This doesn't catch all the ways of representing the "any" address (e.g.: "0/0",
+        // "::0", etc). Fix the callers to not pass us a nexthop in the first place in such cases.
+        if (argc == 7 && strcmp(argv[6], "0.0.0.0") && strcmp(argv[6], "::")) {
+            nexthop = argv[6];
+        }
         if (!strcmp(argv[2], "add")) {
             if (!sNetCtrl->addRoute(netId, interface, destination, nexthop)) {
                 return operationError(client, "addRoute() failed");
