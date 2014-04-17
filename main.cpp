@@ -67,7 +67,7 @@ int main() {
     // Set local DNS mode, to prevent bionic from proxying
     // back to this service, recursively.
     setenv("ANDROID_DNS_MODE", "local", 1);
-    dpl = new DnsProxyListener(CommandListener::sNetCtrl);
+    dpl = new DnsProxyListener(CommandListener::sNetCtrl, CommandListener::sPermissionsController);
     if (dpl->startListener()) {
         ALOGE("Unable to start DnsProxyListener (%s)", strerror(errno));
         exit(1);

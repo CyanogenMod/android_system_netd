@@ -20,22 +20,25 @@
 #include <sysutils/FrameworkListener.h>
 
 #include "NetdCommand.h"
-#include "NetworkController.h"
+
+class NetworkController;
+class PermissionsController;
 
 class DnsProxyListener : public FrameworkListener {
 public:
-    DnsProxyListener(const NetworkController* controller);
+    DnsProxyListener(const NetworkController* netCtrl, const PermissionsController* permCtrl);
     virtual ~DnsProxyListener() {}
 
 private:
     const NetworkController *mNetCtrl;
+    const PermissionsController *mPermCtrl;
     class GetAddrInfoCmd : public NetdCommand {
     public:
-        GetAddrInfoCmd(const NetworkController* controller);
+        GetAddrInfoCmd(const DnsProxyListener* dnsProxyListener);
         virtual ~GetAddrInfoCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
     private:
-        const NetworkController* mNetCtrl;
+        const DnsProxyListener* mDnsProxyListener;
     };
 
     class GetAddrInfoHandler {
@@ -45,7 +48,8 @@ private:
                            char* host,
                            char* service,
                            struct addrinfo* hints,
-                           unsigned netId);
+                           unsigned netId,
+                           uint32_t mark);
         ~GetAddrInfoHandler();
 
         static void* threadStart(void* handler);
@@ -58,16 +62,17 @@ private:
         char* mService; // owned
         struct addrinfo* mHints;  // owned
         unsigned mNetId;
+        uint32_t mMark;
     };
 
     /* ------ gethostbyname ------*/
     class GetHostByNameCmd : public NetdCommand {
     public:
-        GetHostByNameCmd(const NetworkController* controller);
+        GetHostByNameCmd(const DnsProxyListener* dnsProxyListener);
         virtual ~GetHostByNameCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
     private:
-        const NetworkController* mNetCtrl;
+        const DnsProxyListener* mDnsProxyListener;
     };
 
     class GetHostByNameHandler {
@@ -75,7 +80,8 @@ private:
         GetHostByNameHandler(SocketClient *c,
                             char *name,
                             int af,
-                            unsigned netId);
+                            unsigned netId,
+                            uint32_t mark);
         ~GetHostByNameHandler();
         static void* threadStart(void* handler);
         void start();
@@ -85,16 +91,17 @@ private:
         char* mName; // owned
         int mAf;
         unsigned mNetId;
+        uint32_t mMark;
     };
 
     /* ------ gethostbyaddr ------*/
     class GetHostByAddrCmd : public NetdCommand {
     public:
-        GetHostByAddrCmd(const NetworkController* controller);
+        GetHostByAddrCmd(const DnsProxyListener* dnsProxyListener);
         virtual ~GetHostByAddrCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
     private:
-        const NetworkController* mNetCtrl;
+        const DnsProxyListener* mDnsProxyListener;
     };
 
     class GetHostByAddrHandler {
@@ -103,7 +110,8 @@ private:
                             void* address,
                             int addressLen,
                             int addressFamily,
-                            unsigned netId);
+                            unsigned netId,
+                            uint32_t mark);
         ~GetHostByAddrHandler();
 
         static void* threadStart(void* handler);
@@ -116,7 +124,11 @@ private:
         int mAddressLen; // length of address to look up
         int mAddressFamily;  // address family
         unsigned mNetId;
+        uint32_t mMark;
     };
+
+    // Calculate the socket mark to use for a DNS resolution.
+    uint32_t calcMark(SocketClient *c, unsigned netId) const;
 };
 
 #endif

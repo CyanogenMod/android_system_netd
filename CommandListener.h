@@ -48,11 +48,11 @@ class CommandListener : public FrameworkListener {
     static SecondaryTableController *sSecondaryTableCtrl;
     static FirewallController *sFirewallCtrl;
     static ClatdController *sClatdCtrl;
-    static PermissionsController* sPermissionsController;
     static RouteController* sRouteController;
 
 public:
     static NetworkController *sNetCtrl;
+    static PermissionsController* sPermissionsController;
 
     CommandListener();
     virtual ~CommandListener() {}
