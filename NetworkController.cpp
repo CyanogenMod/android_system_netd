@@ -214,6 +214,10 @@ bool NetworkController::destroyNetwork(unsigned netId) {
         setDefaultNetwork(NETID_UNSET);
     }
 
+// TODO: Uncomment once this API has been added to bionic.
+#if 0
+    _resolv_delete_cache_for_net(netId);
+#endif
     return status;
 }
 
