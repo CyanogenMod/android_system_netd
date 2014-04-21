@@ -39,7 +39,7 @@
 
 #include "InterfaceController.h"
 
-char if_cmd_lib_file_name[] = "/system/lib/libnetcmdiface.so";
+char if_cmd_lib_file_name[] = "libnetcmdiface.so";
 char set_cmd_func_name[] = "net_iface_send_command";
 char set_cmd_init_func_name[] = "net_iface_send_command_init";
 char set_cmd_fini_func_name[] = "net_iface_send_command_fini";
