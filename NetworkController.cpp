@@ -22,7 +22,9 @@
 #include "NetworkController.h"
 
 // Mark 1 is reserved for SecondaryTableController::PROTECT_MARK.
-NetworkController::NetworkController() : mNextFreeNetId(10) {}
+NetworkController::NetworkController()
+        : mDefaultNetId(NETID_UNSET),
+          mNextFreeNetId(10) {}
 
 void NetworkController::clearNetworkPreference() {
     android::RWLock::AutoWLock lock(mRWLock);

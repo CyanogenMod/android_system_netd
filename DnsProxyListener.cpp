@@ -192,6 +192,8 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     pid_t pid = cli->getPid();
     uid_t uid = cli->getUid();
 
+    netId = mNetCtrl->getNetwork(uid, netId, pid, true);
+
     if (ai_flags != -1 || ai_family != -1 ||
         ai_socktype != -1 || ai_protocol != -1) {
         hints = (struct addrinfo*) calloc(1, sizeof(struct addrinfo));
@@ -213,8 +215,6 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
              service ? service : "[nullservice]",
              netId, pid, uid);
     }
-
-    netId = mNetCtrl->getNetwork(uid, netId, pid, true);
 
     cli->incRef();
     DnsProxyListener::GetAddrInfoHandler* handler =
