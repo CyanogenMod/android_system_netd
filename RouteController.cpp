@@ -210,9 +210,12 @@ bool modifyRoute(const char* interface, const char* destination, const char* nex
     // let the kernel find it when validating nexthops when global routes are added. Don't do this
     // for IPv6, since all directly-connected routes in v6 are link-local and should already be in
     // the main table.
-    if (!nexthop && !strchr(destination, ':') &&
-        !runIpRouteCommand(action, RT_TABLE_MAIN, interface, destination, NULL)) {
-        return false;
+    // TODO: A failure here typically means that the route already exists in the main table, so we
+    // ignore it. It's wrong to ignore other kinds of failures, but we have no way to distinguish
+    // them based on the return status of the 'ip' command. Fix this situation by ignoring errors
+    // only when action == ADD && error == EEXIST.
+    if (!nexthop && !strchr(destination, ':')) {
+        runIpRouteCommand(action, RT_TABLE_MAIN, interface, destination, NULL);
     }
 
     return true;
