@@ -115,7 +115,7 @@ bool runIpRouteCommand(const char* action, uint32_t table, const char* interface
         }
     }
 
-    return android_fork_execvp(argc, const_cast<char**>(argv), NULL, false, false);
+    return !android_fork_execvp(argc, const_cast<char**>(argv), NULL, false, false);
 }
 
 bool modifyPerNetworkRules(unsigned netId, const char* interface, Permission permission, bool add,

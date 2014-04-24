@@ -183,8 +183,6 @@ bool NetworkController::destroyNetwork(unsigned netId) {
             status = false;
         }
     }
-    mPermissionsController->setPermissionForNetwork(PERMISSION_NONE, netId);
-    mNetIdToInterfaces.erase(netId);
 
     if (netId == getDefaultNetwork()) {
         // Could the default network have changed from below us, after we evaluated the 'if', making
@@ -193,6 +191,9 @@ bool NetworkController::destroyNetwork(unsigned netId) {
         // destroyNetwork() command here, so a setDefaultNetwork() command can't happen in parallel.
         setDefaultNetwork(NETID_UNSET);
     }
+
+    mPermissionsController->setPermissionForNetwork(PERMISSION_NONE, netId);
+    mNetIdToInterfaces.erase(netId);
 
 // TODO: Uncomment once this API has been added to bionic.
 #if 0
