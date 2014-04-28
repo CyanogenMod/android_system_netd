@@ -58,8 +58,10 @@ public:
 
     unsigned getNetworkId(const char* interface);
 
-    bool createNetwork(unsigned netId, const char* interface, Permission permission);
+    bool createNetwork(unsigned netId, Permission permission);
     bool destroyNetwork(unsigned netId);
+    bool addInterfaceToNetwork(unsigned netId, const char* interface);
+    bool removeInterfaceFromNetwork(unsigned netId, const char* interface);
 
     bool setPermissionForUser(Permission permission, const std::vector<unsigned>& uid);
     bool setPermissionForNetwork(Permission permission, const std::vector<unsigned>& netId);
@@ -72,7 +74,7 @@ public:
                      const char* nexthop);
 
 private:
-    typedef std::multimap<unsigned, std::string>::const_iterator InterfaceIterator;
+    typedef std::multimap<unsigned, std::string>::iterator InterfaceIterator;
     typedef std::pair<InterfaceIterator, InterfaceIterator> InterfaceRange;
 
     // Returns the netId that |interface| belongs to, or NETID_UNSET if it doesn't belong to any.

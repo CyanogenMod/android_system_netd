@@ -251,11 +251,13 @@ void RouteController::Init() {
 #endif
 }
 
-bool RouteController::createNetwork(unsigned netId, const char* interface, Permission permission) {
+bool RouteController::addInterfaceToNetwork(unsigned netId, const char* interface,
+                                            Permission permission) {
     return modifyPerNetworkRules(netId, interface, permission, true, true);
 }
 
-bool RouteController::destroyNetwork(unsigned netId, const char* interface, Permission permission) {
+bool RouteController::removeInterfaceFromNetwork(unsigned netId, const char* interface,
+                                                 Permission permission) {
     return modifyPerNetworkRules(netId, interface, permission, false, true) &&
            flushRoutes(interface);
 }

@@ -1586,10 +1586,10 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return syntaxError(client, "Missing argument");
     }
 
-    //    0      1       2         3            4
-    // network create <netId> <interface> [<permission> ...]
+    //    0      1       2          3
+    // network create <netId> [<permission> ...]
     if (!strcmp(argv[1], "create")) {
-        if (argc < 4) {
+        if (argc < 3) {
             return syntaxError(client, "Missing argument");
         }
         // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
@@ -1597,13 +1597,12 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         if (!sNetCtrl->isNetIdValid(netId)) {
             return paramError(client, "Invalid netId");
         }
-        const char* interface = argv[3];
-        int nextArg = 4;
+        int nextArg = 3;
         Permission permission = parseMultiplePermissions(argc, argv, &nextArg);
         if (nextArg != argc) {
             return syntaxError(client, "Unknown trailing argument(s)");
         }
-        if (!sNetCtrl->createNetwork(netId, interface, permission)) {
+        if (!sNetCtrl->createNetwork(netId, permission)) {
             return operationError(client, "createNetwork() failed");
         }
         return success(client);
@@ -1627,6 +1626,30 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
 #if 0
         _resolv_delete_cache_for_net(netId);
 #endif
+        return success(client);
+    }
+
+    //    0      1         2         3
+    // network addiface <netId> <interface>
+    // network removeiface <netId> <interface>
+    if (!strcmp(argv[1], "addiface") || !strcmp(argv[1], "removeiface")) {
+        if (argc != 4) {
+            return syntaxError(client, "Missing argument");
+        }
+        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
+        unsigned netId = strtoul(argv[2], NULL, 0);
+        if (!sNetCtrl->isNetIdValid(netId)) {
+            return paramError(client, "Invalid netId");
+        }
+        if (!strcmp(argv[1], "addiface")) {
+            if (!sNetCtrl->addInterfaceToNetwork(netId, argv[3])) {
+                return operationError(client, "addInterfaceToNetwork() failed");
+            }
+        } else {
+            if (!sNetCtrl->removeInterfaceFromNetwork(netId, argv[3])) {
+                return operationError(client, "removeInterfaceFromNetwork() failed");
+            }
+        }
         return success(client);
     }
 

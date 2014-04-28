@@ -143,8 +143,17 @@ unsigned NetworkController::getNetworkId(const char* interface) {
     return NETID_UNSET;
 }
 
-bool NetworkController::createNetwork(unsigned netId, const char* interface,
-                                      Permission permission) {
+bool NetworkController::createNetwork(unsigned netId, Permission permission) {
+    if (!isNetIdValid(netId)) {
+        ALOGE("invalid netId %u", netId);
+        return false;
+    }
+
+    mPermissionsController->setPermissionForNetwork(permission, netId);
+    return true;
+}
+
+bool NetworkController::addInterfaceToNetwork(unsigned netId, const char* interface) {
     if (!isNetIdValid(netId) || !interface) {
         ALOGE("invalid netId %u or interface null", netId);
         return false;
@@ -156,14 +165,60 @@ bool NetworkController::createNetwork(unsigned netId, const char* interface,
         return false;
     }
 
-    if (!mRouteController->createNetwork(netId, interface, permission)) {
+    Permission permission = mPermissionsController->getPermissionForNetwork(netId);
+    if (!mRouteController->addInterfaceToNetwork(netId, interface, permission)) {
+        ALOGE("failed to add rules for interface %s to netId %u", interface, netId);
         return false;
     }
 
-    mPermissionsController->setPermissionForNetwork(permission, netId);
     mNetIdToInterfaces.insert(std::pair<unsigned, std::string>(netId, interface));
     mIfaceNetidMap[interface] = netId;
+
+    if (netId == getDefaultNetwork() &&
+            !mRouteController->addDefaultNetwork(interface, permission)) {
+        ALOGE("failed to add interface %s to default network %u", interface, netId);
+        return false;
+    }
+
     return true;
+}
+
+bool NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* interface) {
+    if (!isNetIdValid(netId) || !interface) {
+        ALOGE("invalid netId %u or interface null", netId);
+        return false;
+    }
+
+    bool status = true;
+    bool found = false;
+    InterfaceRange range = interfacesForNetId(netId, &status);
+    for (InterfaceIterator iter = range.first; iter != range.second; ++iter) {
+        if (iter->second == interface) {
+            mNetIdToInterfaces.erase(iter);
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        ALOGE("interface %s not a member of netId %u", interface, netId);
+        status = false;
+    }
+
+    Permission permission = mPermissionsController->getPermissionForNetwork(netId);
+    if (!mRouteController->removeInterfaceFromNetwork(netId, interface, permission)) {
+        ALOGE("failed to remove rules for interface %s from netId %u", interface, netId);
+        status = false;
+    }
+
+    if (netId == getDefaultNetwork() &&
+            !mRouteController->removeDefaultNetwork(interface, permission)) {
+        ALOGE("failed to remove interface %s from default network %u", interface, netId);
+        status = false;
+    }
+
+    mIfaceNetidMap.erase(interface);
+
+    return status;
 }
 
 bool NetworkController::destroyNetwork(unsigned netId) {
@@ -176,10 +231,11 @@ bool NetworkController::destroyNetwork(unsigned netId) {
 
     bool status = true;
 
-    Permission permission = mPermissionsController->getPermissionForNetwork(netId);
     InterfaceRange range = interfacesForNetId(netId, &status);
-    for (InterfaceIterator iter = range.first; iter != range.second; ++iter) {
-        if (!mRouteController->destroyNetwork(netId, iter->second.c_str(), permission)) {
+    for (InterfaceIterator iter = range.first; iter != range.second; ) {
+        InterfaceIterator toErase = iter;
+        ++iter;
+        if (!removeInterfaceFromNetwork(netId, toErase->second.c_str())) {
             status = false;
         }
     }
@@ -193,7 +249,6 @@ bool NetworkController::destroyNetwork(unsigned netId) {
     }
 
     mPermissionsController->setPermissionForNetwork(PERMISSION_NONE, netId);
-    mNetIdToInterfaces.erase(netId);
 
 // TODO: Uncomment once this API has been added to bionic.
 #if 0
