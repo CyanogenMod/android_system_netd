@@ -82,7 +82,6 @@ static const char* FILTER_OUTPUT[] = {
         OEM_IPTABLES_FILTER_OUTPUT,
         FirewallController::LOCAL_OUTPUT,
         BandwidthController::LOCAL_OUTPUT,
-        SecondaryTableController::LOCAL_FILTER_OUTPUT,
         NULL,
 };
 
@@ -95,11 +94,11 @@ static const char* RAW_PREROUTING[] = {
 static const char* MANGLE_POSTROUTING[] = {
         BandwidthController::LOCAL_MANGLE_POSTROUTING,
         IdletimerController::LOCAL_MANGLE_POSTROUTING,
+        SecondaryTableController::LOCAL_MANGLE_POSTROUTING,
         NULL,
 };
 
 static const char* MANGLE_OUTPUT[] = {
-        SecondaryTableController::LOCAL_MANGLE_EXEMPT,
         SecondaryTableController::LOCAL_MANGLE_OUTPUT,
         NULL,
 };
@@ -1018,9 +1017,11 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
                     "Wrong number of arguments to resolver setifaceforuid", false);
             return 0;
         }
-    } else if (!strcmp(argv[1], "clearifaceforuidrange")) { // resolver clearifaceforuid <l> <h>
-        if (argc == 4) {
-            rc = !sNetCtrl->setNetworkForUidRange(atoi(argv[2]), atoi(argv[3]), NETID_UNSET, false);
+    } else if (!strcmp(argv[1], "clearifaceforuidrange")) {
+        // resolver clearifaceforuid <if> <l> <h>
+        if (argc == 5) {
+            unsigned netId = sNetCtrl->getNetworkId(argv[2]);
+            rc = !sNetCtrl->clearNetworkForUidRange(atoi(argv[3]), atoi(argv[4]), netId);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver clearifaceforuid", false);

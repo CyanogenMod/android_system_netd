@@ -44,9 +44,8 @@ public:
     unsigned getDefaultNetwork() const;
     void setDefaultNetwork(unsigned netId);
     void setNetworkForPid(int pid, unsigned netId);
-    // Returns false if a partially overlapping range exists.
-    // Specify NETID_UNSET for netId to clear a mapping.
     bool setNetworkForUidRange(int uid_start, int uid_end, unsigned netId, bool forward_dns);
+    bool clearNetworkForUidRange(int uid_start, int uid_end, unsigned netId);
 
     // Order of preference: UID-specific, requested_netId, PID-specific, default.
     // Specify NETID_UNSET for requested_netId if the default network is preferred.

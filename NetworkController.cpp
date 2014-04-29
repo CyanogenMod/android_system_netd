@@ -53,29 +53,32 @@ void NetworkController::setNetworkForPid(int pid, unsigned netId) {
 bool NetworkController::setNetworkForUidRange(int uid_start, int uid_end, unsigned netId,
         bool forward_dns) {
     android::RWLock::AutoWLock lock(mRWLock);
-    if (uid_start > uid_end)
+    if (uid_start > uid_end || netId == NETID_UNSET)
         return false;
 
     for (std::list<UidEntry>::iterator it = mUidMap.begin(); it != mUidMap.end(); ++it) {
-        if (it->uid_start > uid_end || uid_start > it->uid_end)
+        if (it->uid_start != uid_start || it->uid_end != uid_end || it->netId != netId)
             continue;
-        /* Overlapping or identical range. */
-        if (it->uid_start != uid_start || it->uid_end != uid_end) {
-            ALOGE("Overlapping but not identical uid range detected.");
-            return false;
-        }
-
-        if (netId == NETID_UNSET) {
-            mUidMap.erase(it);
-        } else {
-            it->netId = netId;
-            it->forward_dns = forward_dns;
-        }
+        it->forward_dns = forward_dns;
         return true;
     }
 
-    mUidMap.push_back(UidEntry(uid_start, uid_end, netId, forward_dns));
+    mUidMap.push_front(UidEntry(uid_start, uid_end, netId, forward_dns));
     return true;
+}
+
+bool NetworkController::clearNetworkForUidRange(int uid_start, int uid_end, unsigned netId) {
+    android::RWLock::AutoWLock lock(mRWLock);
+    if (uid_start > uid_end || netId == NETID_UNSET)
+        return false;
+
+    for (std::list<UidEntry>::iterator it = mUidMap.begin(); it != mUidMap.end(); ++it) {
+        if (it->uid_start != uid_start || it->uid_end != uid_end || it->netId != netId)
+            continue;
+        mUidMap.erase(it);
+        return true;
+    }
+    return false;
 }
 
 unsigned NetworkController::getNetwork(int uid, unsigned requested_netId, int pid,

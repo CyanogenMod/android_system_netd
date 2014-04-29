@@ -30,7 +30,6 @@
 #endif
 
 static const int BASE_TABLE_NUMBER = 60;
-static const int PROTECT_MARK = 0x1;
 static const char *EXEMPT_PRIO = "99";
 static const char *RULE_PRIO = "100";
 
@@ -79,10 +78,8 @@ public:
     int setupIptablesHooks();
 
     static const char* LOCAL_MANGLE_OUTPUT;
-    static const char* LOCAL_MANGLE_EXEMPT;
-    static const char* LOCAL_MANGLE_IFACE_FORMAT;
+    static const char* LOCAL_MANGLE_POSTROUTING;
     static const char* LOCAL_NAT_POSTROUTING;
-    static const char* LOCAL_FILTER_OUTPUT;
 
 
 private:
