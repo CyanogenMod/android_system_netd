@@ -202,6 +202,7 @@ protected:
     std::list<int /*appUid*/> niceAppUids;
 
 private:
+    bool isNameLegal(const char* name);
     static const char *IPT_FLUSH_COMMANDS[];
     static const char *IPT_CLEANUP_COMMANDS[];
     static const char *IPT_SETUP_COMMANDS[];
