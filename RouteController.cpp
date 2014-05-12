@@ -32,10 +32,6 @@ const uint32_t RULE_PRIORITY_DEFAULT_NETWORK       = 19000;
 const uint32_t RULE_PRIORITY_MAIN                  = 20000;
 const uint32_t RULE_PRIORITY_UNREACHABLE           = 21000;
 
-const bool FWMARK_USE_NET_ID   = true;
-const bool FWMARK_USE_EXPLICIT = true;
-const bool FWMARK_USE_PROTECT  = true;
-
 uint32_t getRouteTableForInterface(const char* interface) {
     uint32_t index = if_nametoindex(interface);
     return index ? index + RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX : 0;
@@ -127,27 +123,18 @@ bool modifyPerNetworkRules(unsigned netId, const char* interface, Permission per
 
     const char* action = add ? ADD : DEL;
 
-    // A rule to route traffic based on an explicitly chosen network.
-    //
-    // Supports apps that use the multinetwork APIs to restrict their traffic to a network.
-    //
-    // We don't really need to check the permission bits of the fwmark here, as they would've been
-    // checked at the time the netId was set into the fwmark, but we do so to be consistent.
-    uint32_t fwmark = getFwmark(netId, FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
-    uint32_t mask = getFwmarkMask(FWMARK_USE_NET_ID, FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT,
-                                  permission);
-    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_EXPLICIT, table, fwmark, mask, NULL)) {
-        return false;
-    }
+    Fwmark fwmark;
+    fwmark.permission = permission;
+
+    Fwmark mask;
+    mask.permission = permission;
 
     // A rule to route traffic based on a chosen outgoing interface.
     //
     // Supports apps that use SO_BINDTODEVICE or IP_PKTINFO options and the kernel that already
     // knows the outgoing interface (typically for link-local communications).
-    fwmark = getFwmark(0, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
-    mask = getFwmark(!FWMARK_USE_NET_ID, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
-    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_INTERFACE, table, fwmark, mask,
-                          interface)) {
+    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_INTERFACE, table, fwmark.intValue,
+                          mask.intValue, interface)) {
         return false;
     }
 
@@ -156,9 +143,23 @@ bool modifyPerNetworkRules(unsigned netId, const char* interface, Permission per
     // This is for sockets that have not explicitly requested a particular network, but have been
     // bound to one when they called connect(). This ensures that sockets connected on a particular
     // network stay on that network even if the default network changes.
-    fwmark = getFwmark(netId, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
-    mask = getFwmarkMask(FWMARK_USE_NET_ID, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
-    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_NORMAL, table, fwmark, mask, NULL)) {
+    fwmark.netId = netId;
+    mask.netId = FWMARK_NET_ID_MASK;
+    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_NORMAL, table, fwmark.intValue,
+                          mask.intValue, NULL)) {
+        return false;
+    }
+
+    // A rule to route traffic based on an explicitly chosen network.
+    //
+    // Supports apps that use the multinetwork APIs to restrict their traffic to a network.
+    //
+    // We don't really need to check the permission bits of the fwmark here, as they would've been
+    // checked at the time the netId was set into the fwmark, but we do so to be consistent.
+    fwmark.explicitlySelected = true;
+    mask.explicitlySelected = true;
+    if (!runIpRuleCommand(action, RULE_PRIORITY_PER_NETWORK_EXPLICIT, table, fwmark.intValue,
+                          mask.intValue, NULL)) {
         return false;
     }
 
@@ -188,11 +189,16 @@ bool modifyDefaultNetworkRules(const char* interface, Permission permission, con
         return false;
     }
 
-    uint32_t fwmark = getFwmark(0, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, permission);
-    uint32_t mask = getFwmarkMask(FWMARK_USE_NET_ID, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT,
-                                  permission);
+    Fwmark fwmark;
+    fwmark.netId = 0;
+    fwmark.permission = permission;
 
-    return runIpRuleCommand(action, RULE_PRIORITY_DEFAULT_NETWORK, table, fwmark, mask, NULL);
+    Fwmark mask;
+    mask.netId = FWMARK_NET_ID_MASK;
+    mask.permission = permission;
+
+    return runIpRuleCommand(action, RULE_PRIORITY_DEFAULT_NETWORK, table, fwmark.intValue,
+                            mask.intValue, NULL);
 }
 
 bool modifyRoute(const char* interface, const char* destination, const char* nexthop,
@@ -238,10 +244,13 @@ void RouteController::Init() {
     // default route, the rule we're adding will never be used for normal routing lookups. However,
     // the kernel may fall-through to it to find directly-connected routes when it validates that a
     // nexthop (in a route being added) is reachable.
-    uint32_t fwmark = getFwmark(0, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT, PERMISSION_NONE);
-    uint32_t mask = getFwmarkMask(FWMARK_USE_NET_ID, !FWMARK_USE_EXPLICIT, !FWMARK_USE_PROTECT,
-                                  PERMISSION_NONE);
-    runIpRuleCommand(ADD, RULE_PRIORITY_MAIN, RT_TABLE_MAIN, fwmark, mask, NULL);
+    Fwmark fwmark;
+    fwmark.netId = 0;
+
+    Fwmark mask;
+    mask.netId = FWMARK_NET_ID_MASK;
+
+    runIpRuleCommand(ADD, RULE_PRIORITY_MAIN, RT_TABLE_MAIN, fwmark.intValue, mask.intValue, NULL);
 
 // TODO: Uncomment once we are sure everything works.
 #if 0

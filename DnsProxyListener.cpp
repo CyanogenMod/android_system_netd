@@ -53,10 +53,13 @@ DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl,
 }
 
 uint32_t DnsProxyListener::calcMark(SocketClient *c, unsigned netId) const {
+    Fwmark fwmark;
+    fwmark.netId = netId;
     // If netd's UID is forced into a VPN that isn't the intended network,
     // use VPN protect bit to force it into the desired network.
-    bool vpnProtect = mNetCtrl->getNetwork(getuid(), netId, true) != netId;
-    return getFwmark(netId, false, vpnProtect, mPermCtrl->getPermissionForUser(c->getUid()));
+    fwmark.protectedFromVpn = mNetCtrl->getNetwork(getuid(), netId, true) != netId;
+    fwmark.permission = mPermCtrl->getPermissionForUser(c->getUid());
+    return fwmark.intValue;
 }
 
 DnsProxyListener::GetAddrInfoHandler::GetAddrInfoHandler(SocketClient *c,

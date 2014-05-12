@@ -19,15 +19,27 @@
 
 #include "Permission.h"
 
+#include <utils/Debug.h>
 #include <stdint.h>
 
-// Composes a fwmark comprising of |netId|, along with bits representing:
-//     |exp|: true if the |netId| is being explicitly requested
-//     |protect|: true if VPNs should be bypassed
-//     |permission|: != PERMISSION_NONE to assert that |permission| is held
-uint32_t getFwmark(unsigned netId, bool exp, bool protect, Permission permission);
+union Fwmark {
+    Fwmark() : intValue(0) {}
+    uint32_t intValue;
+    struct {
+        unsigned netId          : 16;
+        bool explicitlySelected :  1;
+        bool protectedFromVpn   :  1;
+        Permission permission   :  2;
+    };
+};
 
-// Composes a mask to test parts of the fwmark (see getFwmark() for details).
-uint32_t getFwmarkMask(bool netId, bool exp, bool protect, Permission permission);
+static const unsigned FWMARK_NET_ID_MASK = 0xffff;
+
+namespace android {
+
+// Ensure that all the fwmark fields fit into 32 bits.
+COMPILE_TIME_ASSERT(sizeof(Fwmark) == sizeof(uint32_t));
+
+}  // namespace android
 
 #endif  // SYSTEM_NETD_FWMARK_H
