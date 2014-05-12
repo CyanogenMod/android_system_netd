@@ -34,6 +34,7 @@
 #include "NetlinkManager.h"
 #include "DnsProxyListener.h"
 #include "MDnsSdListener.h"
+#include "FwmarkServer.h"
 
 static void coldboot(const char *path);
 static void sigchld_handler(int sig);
@@ -45,6 +46,7 @@ int main() {
     NetlinkManager *nm;
     DnsProxyListener *dpl;
     MDnsSdListener *mdnsl;
+    FwmarkServer* fwmarkServer;
 
     ALOGI("Netd 1.0 starting");
 
@@ -78,6 +80,14 @@ int main() {
         ALOGE("Unable to start MDnsSdListener (%s)", strerror(errno));
         exit(1);
     }
+
+    fwmarkServer = new FwmarkServer(CommandListener::sNetCtrl,
+                                    CommandListener::sPermissionsController);
+    if (fwmarkServer->startListener()) {
+        ALOGE("Unable to start FwmarkServer (%s)", strerror(errno));
+        exit(1);
+    }
+
     /*
      * Now that we're up, we can respond to commands
      */
