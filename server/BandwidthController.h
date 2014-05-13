@@ -152,7 +152,8 @@ protected:
 
     int setCostlyAlert(const char *costName, int64_t bytes, int64_t *alertBytes);
     int removeCostlyAlert(const char *costName, int64_t *alertBytes);
-
+    int parseForwardChainStatsv6(SocketClient *cli, const TetherStats filter,
+                                 FILE *fp, std::string &extraProcessingInfo);
     /*
      * stats should never have only intIface initialized. Other 3 combos are ok.
      * fp should be a file to the apropriate FORWARD chain of iptables rules.
