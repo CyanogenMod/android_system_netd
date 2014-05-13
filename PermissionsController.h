@@ -29,6 +29,8 @@ public:
     Permission getPermissionForNetwork(unsigned netId) const;
     void setPermissionForNetwork(Permission permission, unsigned netId);
 
+    bool isUserPermittedOnNetwork(unsigned uid, unsigned netId) const;
+
 private:
     std::map<unsigned, Permission> mUsers;
     std::map<unsigned, Permission> mNetworks;

@@ -48,3 +48,9 @@ Permission PermissionsController::getPermissionForNetwork(unsigned netId) const 
 void PermissionsController::setPermissionForNetwork(Permission permission, unsigned netId) {
     set(&mNetworks, permission, netId);
 }
+
+bool PermissionsController::isUserPermittedOnNetwork(unsigned uid, unsigned netId) const {
+    Permission userPermission = getPermissionForUser(uid);
+    Permission networkPermission = getPermissionForNetwork(netId);
+    return (userPermission & networkPermission) == networkPermission;
+}

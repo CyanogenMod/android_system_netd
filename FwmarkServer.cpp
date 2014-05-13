@@ -115,8 +115,12 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
         }
 
         case FWMARK_COMMAND_ON_ACCEPT: {
-            // on socket accept
-            // TODO
+            // Called after a socket accept(). The kernel would've marked the netId into the socket
+            // already, so we just need to check permissions here.
+            if (!mPermissionsController->isUserPermittedOnNetwork(client->getUid(), fwmark.netId)) {
+                errno = EPERM;
+                return;
+            }
             break;
         }
 
