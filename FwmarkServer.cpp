@@ -93,7 +93,7 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
     }
 
     Fwmark fwmark;
-    int fwmarkLen = sizeof(fwmark.intValue);
+    socklen_t fwmarkLen = sizeof(fwmark.intValue);
     if (getsockopt(*fd, SOL_SOCKET, SO_MARK, &fwmark.intValue, &fwmarkLen) == -1) {
         return;
     }
