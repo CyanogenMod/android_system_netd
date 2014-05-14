@@ -1622,7 +1622,6 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         if (!sNetCtrl->destroyNetwork(netId)) {
             return operationError(client, "destroyNetwork() failed");
         }
-        _resolv_delete_cache_for_net(netId);
         return success(client);
     }
 
