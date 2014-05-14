@@ -38,7 +38,8 @@ bool NetworkController::isNetIdValid(unsigned netId) {
 
 NetworkController::NetworkController(PermissionsController* permissionsController,
                                      RouteController* routeController)
-        : mPermissionsController(permissionsController),
+        : mDefaultNetId(NETID_UNSET),
+          mPermissionsController(permissionsController),
           mRouteController(routeController) {
 }
 
