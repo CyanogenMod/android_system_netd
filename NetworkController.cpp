@@ -250,10 +250,7 @@ bool NetworkController::destroyNetwork(unsigned netId) {
 
     mPermissionsController->setPermissionForNetwork(PERMISSION_NONE, netId);
 
-// TODO: Uncomment once this API has been added to bionic.
-#if 0
     _resolv_delete_cache_for_net(netId);
-#endif
     return status;
 }
 

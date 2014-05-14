@@ -1622,10 +1622,7 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         if (!sNetCtrl->destroyNetwork(netId)) {
             return operationError(client, "destroyNetwork() failed");
         }
-// TODO: Uncomment once this API has been added to bionic.
-#if 0
         _resolv_delete_cache_for_net(netId);
-#endif
         return success(client);
     }
 
