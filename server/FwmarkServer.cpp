@@ -20,6 +20,7 @@
 #include "FwmarkCommand.h"
 #include "NetworkController.h"
 #include "PermissionsController.h"
+#include "resolv_netid.h"
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -87,7 +88,7 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
     }
 
     if (*fd < 0) {
-        errno = ENOENT;
+        errno = EBADF;
         return;
     }
 
@@ -96,6 +97,8 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
     if (getsockopt(*fd, SOL_SOCKET, SO_MARK, &fwmark.intValue, &fwmarkLen) == -1) {
         return;
     }
+
+    fwmark.permission = mPermissionsController->getPermissionForUser(client->getUid());
 
     switch (command.cmdId) {
         case FwmarkCommand::ON_ACCEPT: {
@@ -118,8 +121,26 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
         }
 
         case FwmarkCommand::SELECT_NETWORK: {
-            // set socket mark
-            // TODO
+            fwmark.netId = command.netId;
+            if (command.netId == NETID_UNSET) {
+                fwmark.explicitlySelected = false;
+            } else {
+                fwmark.explicitlySelected = true;
+                // If the socket already has the protectedFromVpn bit set, don't reset it, because
+                // non-CONNECTIVITY_INTERNAL apps (e.g.: VpnService) may also protect sockets.
+                if (fwmark.permission & PERMISSION_CONNECTIVITY_INTERNAL) {
+                    fwmark.protectedFromVpn = true;
+                }
+                if (!mNetworkController->isValidNetwork(command.netId)) {
+                    errno = ENONET;
+                    return;
+                }
+                if (!mPermissionsController->isUserPermittedOnNetwork(client->getUid(),
+                                                                      command.netId)) {
+                    errno = EPERM;
+                    return;
+                }
+            }
             break;
         }
 
@@ -135,8 +156,6 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
             return;
         }
     }
-
-    fwmark.permission = mPermissionsController->getPermissionForUser(client->getUid());
 
     if (setsockopt(*fd, SOL_SOCKET, SO_MARK, &fwmark.intValue, sizeof(fwmark.intValue)) == -1) {
         return;
