@@ -14,19 +14,20 @@
  * limitations under the License.
  */
 
-#ifndef _NETD_NETWORKCONTROLLER_H
-#define _NETD_NETWORKCONTROLLER_H
+#ifndef NETD_SERVER_NETWORK_CONTROLLER_H
+#define NETD_SERVER_NETWORK_CONTROLLER_H
 
 #include "Permission.h"
+#include "utils/RWLock.h"
 
 #include <list>
 #include <map>
-#include <string>
-#include <vector>
-
+#include <set>
 #include <stddef.h>
 #include <stdint.h>
-#include <utils/RWLock.h>
+#include <string>
+#include <utility>
+#include <vector>
 
 class PermissionsController;
 class RouteController;
@@ -39,8 +40,6 @@ class RouteController;
  */
 class NetworkController {
 public:
-    static bool isNetIdValid(unsigned netId);
-
     NetworkController(PermissionsController* permissionsController,
                       RouteController* routeController);
 
@@ -56,7 +55,7 @@ public:
     // requests to VPNs without DNS servers.
     unsigned getNetwork(int uid, unsigned requested_netId, bool for_dns) const;
 
-    unsigned getNetworkId(const char* interface);
+    unsigned getNetworkId(const char* interface) const;
 
     bool createNetwork(unsigned netId, Permission permission);
     bool destroyNetwork(unsigned netId);
@@ -73,15 +72,12 @@ public:
     bool removeRoute(unsigned netId, const char* interface, const char* destination,
                      const char* nexthop);
 
+    bool isValidNetwork(unsigned netId) const;
+
 private:
+    typedef std::multimap<unsigned, std::string>::const_iterator InterfaceIteratorConst;
     typedef std::multimap<unsigned, std::string>::iterator InterfaceIterator;
     typedef std::pair<InterfaceIterator, InterfaceIterator> InterfaceRange;
-
-    // Returns the netId that |interface| belongs to, or NETID_UNSET if it doesn't belong to any.
-    unsigned netIdForInterface(const char* interface);
-
-    // Returns the interfaces assigned to |netId|. Sets |*status| to false if there are none.
-    InterfaceRange interfacesForNetId(unsigned netId, bool* status);
 
     bool modifyRoute(unsigned netId, const char* interface, const char* destination,
                      const char* nexthop, bool add);
@@ -94,11 +90,11 @@ private:
         UidEntry(int uid_start, int uid_end, unsigned netId, bool forward_dns);
     };
 
+    // mRWLock guards all accesses to mUidMap, mDefaultNetId and mValidNetworks.
     mutable android::RWLock mRWLock;
     std::list<UidEntry> mUidMap;
     unsigned mDefaultNetId;
-
-    std::map<std::string, unsigned> mIfaceNetidMap;
+    std::set<unsigned> mValidNetworks;
 
     PermissionsController* const mPermissionsController;
     RouteController* const mRouteController;
@@ -112,4 +108,4 @@ private:
     std::multimap<unsigned, std::string> mNetIdToInterfaces;
 };
 
-#endif
+#endif  // NETD_SERVER_NETWORK_CONTROLLER_H

@@ -1594,9 +1594,6 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         }
         // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
         unsigned netId = strtoul(argv[2], NULL, 0);
-        if (!sNetCtrl->isNetIdValid(netId)) {
-            return paramError(client, "Invalid netId");
-        }
         int nextArg = 3;
         Permission permission = parseMultiplePermissions(argc, argv, &nextArg);
         if (nextArg != argc) {
@@ -1616,9 +1613,6 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         }
         // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
         unsigned netId = strtoul(argv[2], NULL, 0);
-        if (!sNetCtrl->isNetIdValid(netId)) {
-            return paramError(client, "Invalid netId");
-        }
         if (!sNetCtrl->destroyNetwork(netId)) {
             return operationError(client, "destroyNetwork() failed");
         }
@@ -1634,9 +1628,6 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         }
         // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
         unsigned netId = strtoul(argv[2], NULL, 0);
-        if (!sNetCtrl->isNetIdValid(netId)) {
-            return paramError(client, "Invalid netId");
-        }
         if (!strcmp(argv[1], "addiface")) {
             if (!sNetCtrl->addInterfaceToNetwork(netId, argv[3])) {
                 return operationError(client, "addInterfaceToNetwork() failed");
@@ -1705,9 +1696,6 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
             }
             // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
             netId = strtoul(argv[3], NULL, 0);
-            if (!sNetCtrl->isNetIdValid(netId)) {
-                return paramError(client, "Invalid netId");
-            }
         } else if (strcmp(argv[2], "clear")) {
             return syntaxError(client, "Unknown argument");
         }
@@ -1726,9 +1714,6 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         }
         // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
         unsigned netId = strtoul(argv[3], NULL, 0);
-        if (!sNetCtrl->isNetIdValid(netId)) {
-            return paramError(client, "Invalid netId");
-        }
         const char* interface = argv[4];
         const char* destination = argv[5];
         const char* nexthop = NULL;

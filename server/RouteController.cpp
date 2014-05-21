@@ -278,11 +278,11 @@ bool RouteController::modifyNetworkPermission(unsigned netId, const char* interf
            modifyPerNetworkRules(netId, interface, oldPermission, false, false);
 }
 
-bool RouteController::addDefaultNetwork(const char* interface, Permission permission) {
+bool RouteController::addToDefaultNetwork(const char* interface, Permission permission) {
     return modifyDefaultNetworkRules(interface, permission, ADD);
 }
 
-bool RouteController::removeDefaultNetwork(const char* interface, Permission permission) {
+bool RouteController::removeFromDefaultNetwork(const char* interface, Permission permission) {
     return modifyDefaultNetworkRules(interface, permission, DEL);
 }
 

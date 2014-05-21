@@ -18,6 +18,7 @@
 #define NETD_SERVER_PERMISSIONS_CONTROLLER_H
 
 #include "Permission.h"
+#include "utils/RWLock.h"
 
 #include <map>
 
@@ -32,6 +33,7 @@ public:
     bool isUserPermittedOnNetwork(unsigned uid, unsigned netId) const;
 
 private:
+    mutable android::RWLock mRWLock;
     std::map<unsigned, Permission> mUsers;
     std::map<unsigned, Permission> mNetworks;
 };

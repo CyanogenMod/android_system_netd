@@ -31,8 +31,8 @@ public:
     static bool modifyNetworkPermission(unsigned netId, const char* interface,
                                         Permission oldPermission, Permission newPermission);
 
-    static bool addDefaultNetwork(const char* interface, Permission permission);
-    static bool removeDefaultNetwork(const char* interface, Permission permission);
+    static bool addToDefaultNetwork(const char* interface, Permission permission);
+    static bool removeFromDefaultNetwork(const char* interface, Permission permission);
 
     static bool addRoute(const char* interface, const char* destination, const char* nexthop);
     static bool removeRoute(const char* interface, const char* destination, const char* nexthop);

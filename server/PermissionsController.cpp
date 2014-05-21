@@ -34,23 +34,28 @@ void set(std::map<unsigned, Permission>* map, Permission permission, unsigned id
 }  // namespace
 
 Permission PermissionsController::getPermissionForUser(unsigned uid) const {
+    android::RWLock::AutoRLock lock(mRWLock);
     return get(mUsers, uid);
 }
 
 void PermissionsController::setPermissionForUser(Permission permission, unsigned uid) {
+    android::RWLock::AutoWLock lock(mRWLock);
     set(&mUsers, permission, uid);
 }
 
 Permission PermissionsController::getPermissionForNetwork(unsigned netId) const {
+    android::RWLock::AutoRLock lock(mRWLock);
     return get(mNetworks, netId);
 }
 
 void PermissionsController::setPermissionForNetwork(Permission permission, unsigned netId) {
+    android::RWLock::AutoWLock lock(mRWLock);
     set(&mNetworks, permission, netId);
 }
 
 bool PermissionsController::isUserPermittedOnNetwork(unsigned uid, unsigned netId) const {
-    Permission userPermission = getPermissionForUser(uid);
-    Permission networkPermission = getPermissionForNetwork(netId);
+    android::RWLock::AutoRLock lock(mRWLock);
+    Permission userPermission = get(mUsers, uid);
+    Permission networkPermission = get(mNetworks, netId);
     return (userPermission & networkPermission) == networkPermission;
 }
