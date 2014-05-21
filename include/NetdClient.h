@@ -14,18 +14,21 @@
  * limitations under the License.
  */
 
-#ifndef NETD_INCLUDE_FWMARK_COMMAND_H
-#define NETD_INCLUDE_FWMARK_COMMAND_H
+#ifndef NETD_INCLUDE_NETD_CLIENT_H
+#define NETD_INCLUDE_NETD_CLIENT_H
 
-// Commands sent from clients to the fwmark server to mark sockets (i.e., set their SO_MARK).
-struct FwmarkCommand {
-    enum {
-        ON_ACCEPT,
-        ON_CONNECT,
-        SELECT_NETWORK,
-        PROTECT_FROM_VPN,
-    } cmdId;
-    unsigned netId;  // used only in the SELECT_NETWORK command; ignored otherwise.
-};
+#include <stdbool.h>
+#include <sys/cdefs.h>
 
-#endif  // NETD_INCLUDE_FWMARK_COMMAND_H
+__BEGIN_DECLS
+
+bool setNetworkForSocket(unsigned netId, int socketFd);
+
+unsigned getNetworkForProcess(void);
+bool setNetworkForProcess(unsigned netId);
+
+bool setNetworkForResolv(unsigned netId);
+
+__END_DECLS
+
+#endif  // NETD_INCLUDE_NETD_CLIENT_H

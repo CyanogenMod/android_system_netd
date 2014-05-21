@@ -21,15 +21,8 @@
 #include "NetworkController.h"
 #include "PermissionsController.h"
 
-
 #include <sys/socket.h>
 #include <unistd.h>
-
-namespace {
-
-const int MAX_COMMAND_LENGTH = 16;
-
-}  // namespace
 
 FwmarkServer::FwmarkServer(NetworkController* networkController,
                            PermissionsController* permissionsController)
@@ -57,9 +50,10 @@ bool FwmarkServer::onDataAvailable(SocketClient* client) {
 }
 
 void FwmarkServer::processClient(SocketClient* client, int* fd) {
-    char command[MAX_COMMAND_LENGTH] = {};
+    FwmarkCommand command;
+
     iovec iov;
-    iov.iov_base = command;
+    iov.iov_base = &command;
     iov.iov_len = sizeof(command);
 
     msghdr message;
@@ -81,6 +75,11 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
         return;
     }
 
+    if (messageLength != sizeof(command)) {
+        errno = EINVAL;
+        return;
+    }
+
     cmsghdr* const cmsgh = CMSG_FIRSTHDR(&message);
     if (cmsgh && cmsgh->cmsg_level == SOL_SOCKET && cmsgh->cmsg_type == SCM_RIGHTS &&
         cmsgh->cmsg_len == CMSG_LEN(sizeof(*fd))) {
@@ -98,23 +97,8 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
         return;
     }
 
-    switch (command[0]) {
-        case FWMARK_COMMAND_ON_CREATE: {
-            // on socket creation
-            // TODO
-            break;
-        }
-
-        case FWMARK_COMMAND_ON_CONNECT: {
-            // Set the netId (of the default network) into the fwmark, if it has not already been
-            // set explicitly. Called before a socket connect() happens.
-            if (!fwmark.explicitlySelected) {
-                fwmark.netId = mNetworkController->getDefaultNetwork();
-            }
-            break;
-        }
-
-        case FWMARK_COMMAND_ON_ACCEPT: {
+    switch (command.cmdId) {
+        case FwmarkCommand::ON_ACCEPT: {
             // Called after a socket accept(). The kernel would've marked the netId into the socket
             // already, so we just need to check permissions here.
             if (!mPermissionsController->isUserPermittedOnNetwork(client->getUid(), fwmark.netId)) {
@@ -124,13 +108,22 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
             break;
         }
 
-        case FWMARK_COMMAND_SELECT_NETWORK: {
+        case FwmarkCommand::ON_CONNECT: {
+            // Set the netId (of the default network) into the fwmark, if it has not already been
+            // set explicitly. Called before a socket connect() happens.
+            if (!fwmark.explicitlySelected) {
+                fwmark.netId = mNetworkController->getDefaultNetwork();
+            }
+            break;
+        }
+
+        case FwmarkCommand::SELECT_NETWORK: {
             // set socket mark
             // TODO
             break;
         }
 
-        case FWMARK_COMMAND_PROTECT_FROM_VPN: {
+        case FwmarkCommand::PROTECT_FROM_VPN: {
             // set vpn protect
             // TODO
             break;
