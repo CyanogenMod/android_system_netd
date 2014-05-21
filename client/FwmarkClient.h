@@ -21,8 +21,9 @@
 
 class FwmarkClient {
 public:
-    // Returns true if |sockfd| should be sent to the fwmark server to have its SO_MARK set.
-    static bool shouldSetFwmark(int sockfd, const sockaddr* addr);
+    // Returns true if a socket of the given |family| should be sent to the fwmark server to have
+    // its SO_MARK set.
+    static bool shouldSetFwmark(int family);
 
     FwmarkClient();
     ~FwmarkClient();
