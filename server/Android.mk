@@ -38,6 +38,7 @@ LOCAL_C_INCLUDES := \
                     external/stlport/stlport \
                     bionic \
                     bionic/libc/dns/include \
+                    system/netd/include \
                     $(call include-path-for, libhardware_legacy)/hardware_legacy
 
 LOCAL_CFLAGS := -Werror=format

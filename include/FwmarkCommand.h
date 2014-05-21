@@ -14,32 +14,16 @@
  * limitations under the License.
  */
 
-#ifndef SYSTEM_NETD_FWMARK_H
-#define SYSTEM_NETD_FWMARK_H
+#ifndef NETD_INCLUDE_FWMARK_COMMAND_H
+#define NETD_INCLUDE_FWMARK_COMMAND_H
 
-#include "Permission.h"
-
-#include <utils/Debug.h>
 #include <stdint.h>
 
-union Fwmark {
-    Fwmark() : intValue(0) {}
-    uint32_t intValue;
-    struct {
-        unsigned netId          : 16;
-        bool explicitlySelected :  1;
-        bool protectedFromVpn   :  1;
-        Permission permission   :  2;
-    };
-};
+// Commands sent from clients to the fwmark server to mark sockets (i.e., set their SO_MARK).
+const uint8_t FWMARK_COMMAND_ON_CREATE        = 0;
+const uint8_t FWMARK_COMMAND_ON_CONNECT       = 1;
+const uint8_t FWMARK_COMMAND_ON_ACCEPT        = 2;
+const uint8_t FWMARK_COMMAND_SELECT_NETWORK   = 3;
+const uint8_t FWMARK_COMMAND_PROTECT_FROM_VPN = 4;
 
-static const unsigned FWMARK_NET_ID_MASK = 0xffff;
-
-namespace android {
-
-// Ensure that all the fwmark fields fit into 32 bits.
-COMPILE_TIME_ASSERT(sizeof(Fwmark) == sizeof(uint32_t));
-
-}  // namespace android
-
-#endif  // SYSTEM_NETD_FWMARK_H
+#endif  // NETD_INCLUDE_FWMARK_COMMAND_H

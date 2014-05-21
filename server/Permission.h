@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef SYSTEM_NETD_PERMISSION_H
-#define SYSTEM_NETD_PERMISSION_H
+#ifndef NETD_SERVER_PERMISSION_H
+#define NETD_SERVER_PERMISSION_H
 
 // This enum represents the permissions we care about for networking. When applied to an app, it's
 // the permission the app (UID) has been granted. When applied to a network, it's the permission an
@@ -37,4 +37,4 @@ enum Permission {
 
 Permission permissionFromString(const char* permission);
 
-#endif  // SYSTEM_NETD_PERMISSION_H
+#endif  // NETD_SERVER_PERMISSION_H

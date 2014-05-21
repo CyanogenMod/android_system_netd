@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef SYSTEM_NETD_FWMARK_SERVER_H
-#define SYSTEM_NETD_FWMARK_SERVER_H
+#ifndef NETD_SERVER_FWMARK_SERVER_H
+#define NETD_SERVER_FWMARK_SERVER_H
 
 #include <sysutils/SocketListener.h>
 
@@ -38,4 +38,4 @@ private:
     PermissionsController* const mPermissionsController;
 };
 
-#endif  // SYSTEM_NETD_FWMARK_SERVER_H
+#endif  // NETD_SERVER_FWMARK_SERVER_H

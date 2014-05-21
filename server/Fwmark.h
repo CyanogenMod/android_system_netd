@@ -14,26 +14,32 @@
  * limitations under the License.
  */
 
-#ifndef SYSTEM_NETD_PERMISSIONS_CONTROLLER_H
-#define SYSTEM_NETD_PERMISSIONS_CONTROLLER_H
+#ifndef NETD_SERVER_FWMARK_H
+#define NETD_SERVER_FWMARK_H
 
 #include "Permission.h"
 
-#include <map>
+#include <utils/Debug.h>
+#include <stdint.h>
 
-class PermissionsController {
-public:
-    Permission getPermissionForUser(unsigned uid) const;
-    void setPermissionForUser(Permission permission, unsigned uid);
-
-    Permission getPermissionForNetwork(unsigned netId) const;
-    void setPermissionForNetwork(Permission permission, unsigned netId);
-
-    bool isUserPermittedOnNetwork(unsigned uid, unsigned netId) const;
-
-private:
-    std::map<unsigned, Permission> mUsers;
-    std::map<unsigned, Permission> mNetworks;
+union Fwmark {
+    Fwmark() : intValue(0) {}
+    uint32_t intValue;
+    struct {
+        unsigned netId          : 16;
+        bool explicitlySelected :  1;
+        bool protectedFromVpn   :  1;
+        Permission permission   :  2;
+    };
 };
 
-#endif  // SYSTEM_NETD_PERMISSIONS_CONTROLLER_H
+static const unsigned FWMARK_NET_ID_MASK = 0xffff;
+
+namespace android {
+
+// Ensure that all the fwmark fields fit into 32 bits.
+COMPILE_TIME_ASSERT(sizeof(Fwmark) == sizeof(uint32_t));
+
+}  // namespace android
+
+#endif  // NETD_SERVER_FWMARK_H

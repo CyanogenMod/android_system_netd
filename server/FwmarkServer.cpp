@@ -17,10 +17,10 @@
 #include "FwmarkServer.h"
 
 #include "Fwmark.h"
+#include "FwmarkCommand.h"
 #include "NetworkController.h"
 #include "PermissionsController.h"
 
-#include "netd_client/FwmarkCommands.h"
 
 #include <sys/socket.h>
 #include <unistd.h>

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef SYSTEM_NETD_ROUTE_CONTROLLER_H
-#define SYSTEM_NETD_ROUTE_CONTROLLER_H
+#ifndef NETD_SERVER_ROUTE_CONTROLLER_H
+#define NETD_SERVER_ROUTE_CONTROLLER_H
 
 #include "Permission.h"
 
@@ -38,4 +38,4 @@ public:
     static bool removeRoute(const char* interface, const char* destination, const char* nexthop);
 };
 
-#endif  // SYSTEM_NETD_ROUTE_CONTROLLER_H
+#endif  // NETD_SERVER_ROUTE_CONTROLLER_H
