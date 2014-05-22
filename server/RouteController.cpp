@@ -25,12 +25,18 @@
 
 namespace {
 
+const uint32_t RULE_PRIORITY_PRIVILEGED_LEGACY     = 11000;
 const uint32_t RULE_PRIORITY_PER_NETWORK_EXPLICIT  = 13000;
 const uint32_t RULE_PRIORITY_PER_NETWORK_INTERFACE = 14000;
+const uint32_t RULE_PRIORITY_LEGACY                = 16000;
 const uint32_t RULE_PRIORITY_PER_NETWORK_NORMAL    = 17000;
 const uint32_t RULE_PRIORITY_DEFAULT_NETWORK       = 19000;
 const uint32_t RULE_PRIORITY_MAIN                  = 20000;
 const uint32_t RULE_PRIORITY_UNREACHABLE           = 21000;
+
+// TODO: These should be turned into per-UID tables once the kernel supports UID-based routing.
+const int ROUTE_TABLE_PRIVILEGED_LEGACY = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 901;
+const int ROUTE_TABLE_LEGACY            = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 902;
 
 uint32_t getRouteTableForInterface(const char* interface) {
     uint32_t index = if_nametoindex(interface);
@@ -202,8 +208,24 @@ bool modifyDefaultNetworkRules(const char* interface, Permission permission, con
 }
 
 bool modifyRoute(const char* interface, const char* destination, const char* nexthop,
-                 const char* action) {
-    uint32_t table = getRouteTableForInterface(interface);
+                 const char* action, RouteController::TableType tableType, unsigned /* uid */) {
+    uint32_t table = 0;
+    switch (tableType) {
+        case RouteController::INTERFACE: {
+            table = getRouteTableForInterface(interface);
+            break;
+        }
+        case RouteController::LEGACY: {
+            // TODO: Use the UID to assign a unique table per UID instead of this fixed table.
+            table = ROUTE_TABLE_LEGACY;
+            break;
+        }
+        case RouteController::PRIVILEGED_LEGACY: {
+            // TODO: Use the UID to assign a unique table per UID instead of this fixed table.
+            table = ROUTE_TABLE_PRIVILEGED_LEGACY;
+            break;
+        }
+    }
     if (!table) {
         return false;
     }
@@ -252,6 +274,25 @@ void RouteController::Init() {
 
     runIpRuleCommand(ADD, RULE_PRIORITY_MAIN, RT_TABLE_MAIN, fwmark.intValue, mask.intValue, NULL);
 
+    // Add rules to allow lookup of legacy routes.
+    //
+    // TODO: Remove these once the kernel supports UID-based routing. Instead, add them on demand
+    // when routes are added.
+    fwmark.netId = 0;
+    mask.netId = 0;
+
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
+
+    runIpRuleCommand(ADD, RULE_PRIORITY_LEGACY, ROUTE_TABLE_LEGACY, fwmark.intValue, mask.intValue,
+                     NULL);
+
+    fwmark.permission = PERMISSION_CONNECTIVITY_INTERNAL;
+    mask.permission = PERMISSION_CONNECTIVITY_INTERNAL;
+
+    runIpRuleCommand(ADD, RULE_PRIORITY_PRIVILEGED_LEGACY, ROUTE_TABLE_PRIVILEGED_LEGACY,
+                     fwmark.intValue, mask.intValue, NULL);
+
 // TODO: Uncomment once we are sure everything works.
 #if 0
     // Add a rule to preempt the pre-defined "from all lookup main" rule. This ensures that packets
@@ -287,11 +328,11 @@ bool RouteController::removeFromDefaultNetwork(const char* interface, Permission
 }
 
 bool RouteController::addRoute(const char* interface, const char* destination,
-                               const char* nexthop) {
-    return modifyRoute(interface, destination, nexthop, ADD);
+                               const char* nexthop, TableType tableType, unsigned uid) {
+    return modifyRoute(interface, destination, nexthop, ADD, tableType, uid);
 }
 
 bool RouteController::removeRoute(const char* interface, const char* destination,
-                                  const char* nexthop) {
-    return modifyRoute(interface, destination, nexthop, DEL);
+                                  const char* nexthop, TableType tableType, unsigned uid) {
+    return modifyRoute(interface, destination, nexthop, DEL, tableType, uid);
 }

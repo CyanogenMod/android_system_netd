@@ -68,9 +68,9 @@ public:
     // Routes are added to tables determined by the interface, so only |interface| is actually used.
     // |netId| is given only to sanity check that the interface has the correct netId.
     bool addRoute(unsigned netId, const char* interface, const char* destination,
-                  const char* nexthop);
+                  const char* nexthop, bool legacy, unsigned uid);
     bool removeRoute(unsigned netId, const char* interface, const char* destination,
-                     const char* nexthop);
+                     const char* nexthop, bool legacy, unsigned uid);
 
     bool isValidNetwork(unsigned netId) const;
 
@@ -80,7 +80,7 @@ private:
     typedef std::pair<InterfaceIterator, InterfaceIterator> InterfaceRange;
 
     bool modifyRoute(unsigned netId, const char* interface, const char* destination,
-                     const char* nexthop, bool add);
+                     const char* nexthop, bool add, bool legacy, unsigned uid);
 
     struct UidEntry {
         int uid_start;

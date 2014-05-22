@@ -340,13 +340,13 @@ bool NetworkController::setPermissionForNetwork(Permission newPermission,
 }
 
 bool NetworkController::addRoute(unsigned netId, const char* interface, const char* destination,
-                                 const char* nexthop) {
-    return modifyRoute(netId, interface, destination, nexthop, true);
+                                 const char* nexthop, bool legacy, unsigned uid) {
+    return modifyRoute(netId, interface, destination, nexthop, true, legacy, uid);
 }
 
 bool NetworkController::removeRoute(unsigned netId, const char* interface, const char* destination,
-                                    const char* nexthop) {
-    return modifyRoute(netId, interface, destination, nexthop, false);
+                                    const char* nexthop, bool legacy, unsigned uid) {
+    return modifyRoute(netId, interface, destination, nexthop, false, legacy, uid);
 }
 
 bool NetworkController::isValidNetwork(unsigned netId) const {
@@ -359,7 +359,7 @@ bool NetworkController::isValidNetwork(unsigned netId) const {
 }
 
 bool NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,
-                                    const char* nexthop, bool add) {
+                                    const char* nexthop, bool add, bool legacy, unsigned uid) {
     if (!isValidNetwork(netId)) {
         ALOGE("invalid netId %u", netId);
         errno = EINVAL;
@@ -372,8 +372,19 @@ bool NetworkController::modifyRoute(unsigned netId, const char* interface, const
         return false;
     }
 
-    return add ? mRouteController->addRoute(interface, destination, nexthop) :
-                 mRouteController->removeRoute(interface, destination, nexthop);
+    RouteController::TableType tableType;
+    if (legacy) {
+        if (mPermissionsController->getPermissionForUser(uid) & PERMISSION_CONNECTIVITY_INTERNAL) {
+            tableType = RouteController::PRIVILEGED_LEGACY;
+        } else {
+            tableType = RouteController::LEGACY;
+        }
+    } else {
+        tableType = RouteController::INTERFACE;
+    }
+
+    return add ? mRouteController->addRoute(interface, destination, nexthop, tableType, uid) :
+                 mRouteController->removeRoute(interface, destination, nexthop, tableType, uid);
 }
 
 NetworkController::UidEntry::UidEntry(int start, int end, unsigned netId, bool forward_dns)

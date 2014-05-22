@@ -1619,8 +1619,8 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return success(client);
     }
 
-    //    0      1         2         3
-    // network addiface <netId> <interface>
+    //    0         1         2         3
+    // network   addiface  <netId> <interface>
     // network removeiface <netId> <interface>
     if (!strcmp(argv[1], "addiface") || !strcmp(argv[1], "removeiface")) {
         if (argc != 4) {
@@ -1705,40 +1705,48 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return success(client);
     }
 
-    //    0      1     2       3         4            5           6
-    // network route  add   <netId> <interface> <destination> [nexthop]
-    // network route remove <netId> <interface> <destination> [nexthop]
+    //    0      1      2      3      4       5         6            7           8
+    // network route [legacy <uid>]  add   <netId> <interface> <destination> [nexthop]
+    // network route [legacy <uid>] remove <netId> <interface> <destination> [nexthop]
     if (!strcmp(argv[1], "route")) {
-        if (argc < 6 || argc > 7) {
+        if (argc < 6 || argc > 9) {
             return syntaxError(client, "Incorrect number of arguments");
         }
-        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
-        unsigned netId = strtoul(argv[3], NULL, 0);
-        const char* interface = argv[4];
-        const char* destination = argv[5];
-        const char* nexthop = NULL;
-        // If the nexthop (gateway) is equal to INADDR_ANY or in6addr_any, the route is a directly
-        // connected route, and we should not set nexthop.
-        // TODO: This doesn't catch all the ways of representing the "any" address (e.g.: "0/0",
-        // "::0", etc). Fix the callers to not pass us a nexthop in the first place in such cases.
-        if (argc == 7 && strcmp(argv[6], "0.0.0.0") && strcmp(argv[6], "::")) {
-            nexthop = argv[6];
+
+        int nextArg = 2;
+        bool legacy = false;
+        unsigned uid = 0;
+        if (!strcmp(argv[nextArg], "legacy")) {
+            ++nextArg;
+            legacy = true;
+            uid = strtoul(argv[nextArg++], NULL, 0);
         }
-        if (!strcmp(argv[2], "add")) {
-            if (!sNetCtrl->addRoute(netId, interface, destination, nexthop)) {
-                return operationError(client, "addRoute() failed");
-            }
-        } else if (!strcmp(argv[2], "remove")) {
-            if (!sNetCtrl->removeRoute(netId, interface, destination, nexthop)) {
-                return operationError(client, "removeRoute() failed");
-            }
-        } else {
+
+        bool add = false;
+        if (!strcmp(argv[nextArg], "add")) {
+            add = true;
+        } else if (strcmp(argv[nextArg], "remove")) {
             return syntaxError(client, "Unknown argument");
         }
+        ++nextArg;
+
+        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
+        unsigned netId = strtoul(argv[nextArg++], NULL, 0);
+        const char* interface = argv[nextArg++];
+        const char* destination = argv[nextArg++];
+        const char* nexthop = argc > nextArg ? argv[nextArg] : NULL;
+
+        if (add) {
+            if (!sNetCtrl->addRoute(netId, interface, destination, nexthop, legacy, uid)) {
+                return operationError(client, "addRoute() failed");
+            }
+        } else if (!sNetCtrl->removeRoute(netId, interface, destination, nexthop, legacy, uid)) {
+            return operationError(client, "removeRoute() failed");
+        }
+
         return success(client);
     }
 
-    // network legacy <uid> route <add|remove> <other-route-params>
     // network vpn create <netId> [owner_uid]
     // network vpn destroy <netId>
     // network <bind|unbind> <netId> <uid1> .. <uidN>
