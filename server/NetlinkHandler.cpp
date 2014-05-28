@@ -90,7 +90,6 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
         notifyQuotaLimitReached(alertName, iface);
 
     } else if (!strcmp(subsys, "xt_idletimer")) {
-        int action = evt->getAction();
         const char *label = evt->findParam("INTERFACE");
         const char *state = evt->findParam("STATE");
         const char *timestamp = evt->findParam("TIME_NS");

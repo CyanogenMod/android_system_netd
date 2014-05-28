@@ -18,7 +18,6 @@
 #define NETD_SERVER_FWMARK_H
 
 #include "Permission.h"
-#include "utils/Debug.h"
 
 #include <stdint.h>
 
@@ -35,11 +34,6 @@ union Fwmark {
 
 static const unsigned FWMARK_NET_ID_MASK = 0xffff;
 
-namespace android {
-
-// Ensure that all the fwmark fields fit into 32 bits.
-COMPILE_TIME_ASSERT(sizeof(Fwmark) == sizeof(uint32_t));
-
-}  // namespace android
+static_assert(sizeof(Fwmark) == sizeof(uint32_t), "The entire fwmark must fit into 32 bits");
 
 #endif  // NETD_SERVER_FWMARK_H

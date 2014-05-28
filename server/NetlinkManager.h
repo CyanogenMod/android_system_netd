@@ -32,7 +32,6 @@ private:
     NetlinkHandler       *mUeventHandler;
     NetlinkHandler       *mRouteHandler;
     NetlinkHandler       *mQuotaHandler;
-    NetlinkHandler       *mIfaceIdleTimerHandler;
     int                  mUeventSock;
     int                  mRouteSock;
     int                  mQuotaSock;

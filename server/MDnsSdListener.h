@@ -135,6 +135,4 @@ public:
     };
 };
 
-static int wait_for_property(const char *name, const char *desired_value, int maxwait);
-
 #endif

@@ -405,7 +405,6 @@ int BandwidthController::manipulateSpecialApps(int numUids, char *appStrUids[],
                                                std::list<int /*appUid*/> &specialAppUids,
                                                IptJumpOp jumpHandling, SpecialAppOp appOp) {
 
-    char cmd[MAX_CMD_LEN];
     int uidNum;
     const char *failLogTemplate;
     IptOp op;
@@ -595,7 +594,6 @@ int BandwidthController::cleanupCostlyIface(const char *ifn, QuotaType quotaType
 }
 
 int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxBytes) {
-    char cmd[MAX_CMD_LEN];
     char ifn[MAX_IFACENAME_LEN];
     int res = 0;
     std::string quotaCmd;
@@ -1266,7 +1264,6 @@ int BandwidthController::getTetherStats(SocketClient *cli, TetherStats &stats, s
     int res;
     std::string fullCmd;
     FILE *iptOutput;
-    const char *cmd;
 
     /*
      * Why not use some kind of lib to talk to iptables?
@@ -1292,10 +1289,8 @@ int BandwidthController::getTetherStats(SocketClient *cli, TetherStats &stats, s
 }
 
 void BandwidthController::flushExistingCostlyTables(bool doClean) {
-    int res;
     std::string fullCmd;
     FILE *iptOutput;
-    const char *cmd;
 
     /* Only lookup ip4 table names as ip6 will have the same tables ... */
     fullCmd = IPTABLES_PATH;

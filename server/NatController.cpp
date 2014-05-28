@@ -165,11 +165,9 @@ int NatController::routesOp(bool add, const char *intIface, const char *extIface
 //  0    1       2       3       4            5
 // nat enable intface extface addrcnt nated-ipaddr/prelength
 int NatController::enableNat(const int argc, char **argv) {
-    int i;
     int addrCount = atoi(argv[4]);
     const char *intIface = argv[2];
     const char *extIface = argv[3];
-    int tableNumber;
 
     ALOGV("enableNat(intIface=<%s>, extIface=<%s>)",intIface, extIface);
 
@@ -271,8 +269,7 @@ int NatController::setTetherCountingRules(bool add, const char *intIface, const 
     if (!add) {
         return 0;
     }
-    char *pair_name, *proc_path;
-    int quota_fd;
+    char *pair_name;
     asprintf(&pair_name, "%s_%s", intIface, extIface);
 
     if (checkTetherCountingRuleExist(pair_name)) {
@@ -408,11 +405,9 @@ err_invalid_drop:
 //  0    1       2       3       4            5
 // nat enable intface extface addrcnt nated-ipaddr/prelength
 int NatController::disableNat(const int argc, char **argv) {
-    int i;
     int addrCount = atoi(argv[4]);
     const char *intIface = argv[2];
     const char *extIface = argv[3];
-    int tableNumber;
 
     if (!checkInterface(intIface) || !checkInterface(extIface)) {
         ALOGE("Invalid interface specified");

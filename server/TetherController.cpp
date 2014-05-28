@@ -242,7 +242,6 @@ NetAddressCollection *TetherController::getDnsForwarders() {
 }
 
 int TetherController::applyDnsInterfaces() {
-    int i;
     char daemonCmd[MAX_CMD_SIZE];
 
     strcpy(daemonCmd, "update_ifaces");

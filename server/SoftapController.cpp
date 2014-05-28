@@ -114,7 +114,6 @@ bool SoftapController::isSoftapStarted() {
 int SoftapController::setSoftap(int argc, char *argv[]) {
     char psk_str[2*SHA256_DIGEST_LENGTH+1];
     int ret = ResponseCode::SoftapStatusResult;
-    int i = 0;
     int fd;
     int hidden = 0;
     int channel = AP_CHANNEL_DEFAULT;
@@ -201,7 +200,6 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
  */
 int SoftapController::fwReloadSoftap(int argc, char *argv[])
 {
-    int i = 0;
     char *fwpath = NULL;
 
     if (argc < 4) {

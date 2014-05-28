@@ -546,7 +546,6 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             ALOGD("Setting iface cfg");
 
             struct in_addr addr;
-            unsigned flags = 0;
             int index = 5;
 
             ifc_init();
@@ -686,7 +685,7 @@ CommandListener::ListTtysCmd::ListTtysCmd() :
 }
 
 int CommandListener::ListTtysCmd::runCommand(SocketClient *cli,
-                                             int argc, char **argv) {
+                                             int /* argc */, char ** /* argv */) {
     TtyCollection *tlist = sPppCtrl->getTtyList();
     TtyCollection::iterator it;
 
@@ -933,7 +932,6 @@ CommandListener::SoftapCmd::SoftapCmd() :
 int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
                                         int argc, char **argv) {
     int rc = ResponseCode::SoftapStatusResult;
-    int flag = 0;
     char *retbuf = NULL;
 
     if (sSoftapCtrl == NULL) {
@@ -979,7 +977,6 @@ CommandListener::ResolverCmd::ResolverCmd() :
 
 int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char **margv) {
     int rc = 0;
-    struct in_addr addr;
     const char **argv = const_cast<const char **>(margv);
 
     if (argc < 2) {

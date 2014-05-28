@@ -93,8 +93,8 @@ void MDnsSdListener::Handler::discover(SocketClient *cli,
     return;
 }
 
-void MDnsSdListenerDiscoverCallback(DNSServiceRef sdRef, DNSServiceFlags flags,
-        uint32_t interfaceIndex, DNSServiceErrorType errorCode, const char *serviceName,
+void MDnsSdListenerDiscoverCallback(DNSServiceRef /* sdRef */, DNSServiceFlags flags,
+        uint32_t /* interfaceIndex */, DNSServiceErrorType errorCode, const char *serviceName,
         const char *regType, const char *replyDomain, void *inContext) {
     MDnsSdListener::Context *context = reinterpret_cast<MDnsSdListener::Context *>(inContext);
     char *msg;
@@ -186,9 +186,9 @@ void MDnsSdListener::Handler::serviceRegister(SocketClient *cli, int requestId,
     return;
 }
 
-void MDnsSdListenerRegisterCallback(DNSServiceRef sdRef, DNSServiceFlags flags,
-        DNSServiceErrorType errorCode, const char *serviceName, const char *regType,
-        const char *domain, void *inContext) {
+void MDnsSdListenerRegisterCallback(DNSServiceRef /* sdRef */, DNSServiceFlags /* flags */,
+        DNSServiceErrorType errorCode, const char *serviceName, const char * /* regType */,
+        const char * /* domain */, void *inContext) {
     MDnsSdListener::Context *context = reinterpret_cast<MDnsSdListener::Context *>(inContext);
     char *msg;
     int refNumber = context->mRefNumber;
@@ -240,9 +240,10 @@ void MDnsSdListener::Handler::resolveService(SocketClient *cli, int requestId,
     return;
 }
 
-void MDnsSdListenerResolveCallback(DNSServiceRef sdRef, DNSServiceFlags flags, uint32_t interface,
-        DNSServiceErrorType errorCode, const char *fullname, const char *hosttarget, uint16_t port,
-        uint16_t txtLen, const unsigned char *txtRecord, void *inContext) {
+void MDnsSdListenerResolveCallback(DNSServiceRef /* sdRef */, DNSServiceFlags /* flags */,
+        uint32_t /* interface */, DNSServiceErrorType errorCode, const char *fullname,
+        const char *hosttarget, uint16_t port, uint16_t txtLen,
+        const unsigned char * /* txtRecord */, void *inContext) {
     MDnsSdListener::Context *context = reinterpret_cast<MDnsSdListener::Context *>(inContext);
     char *msg;
     int refNumber = context->mRefNumber;
@@ -295,8 +296,8 @@ void MDnsSdListener::Handler::getAddrInfo(SocketClient *cli, int requestId,
     return;
 }
 
-void MDnsSdListenerGetAddrInfoCallback(DNSServiceRef sdRef, DNSServiceFlags flags,
-        uint32_t interface, DNSServiceErrorType errorCode, const char *hostname,
+void MDnsSdListenerGetAddrInfoCallback(DNSServiceRef /* sdRef */, DNSServiceFlags /* flags */,
+        uint32_t /* interface */, DNSServiceErrorType errorCode, const char *hostname,
         const struct sockaddr *const sa, uint32_t ttl, void *inContext) {
     MDnsSdListener::Context *context = reinterpret_cast<MDnsSdListener::Context *>(inContext);
     int refNumber = context->mRefNumber;
@@ -353,7 +354,7 @@ void MDnsSdListener::Handler::setHostname(SocketClient *cli, int requestId,
     return;
 }
 
-void MDnsSdListenerSetHostnameCallback(DNSServiceRef sdRef, DNSServiceFlags flags,
+void MDnsSdListenerSetHostnameCallback(DNSServiceRef /* sdRef */, DNSServiceFlags /* flags */,
         DNSServiceErrorType errorCode, const char *hostname, void *inContext) {
     MDnsSdListener::Context *context = reinterpret_cast<MDnsSdListener::Context *>(inContext);
     char *msg;
@@ -373,19 +374,19 @@ void MDnsSdListenerSetHostnameCallback(DNSServiceRef sdRef, DNSServiceFlags flag
 }
 
 
-int MDnsSdListener::Handler::ifaceNameToI(const char *iface) {
+int MDnsSdListener::Handler::ifaceNameToI(const char * /* iface */) {
     return 0;
 }
 
-const char *MDnsSdListener::Handler::iToIfaceName(int i) {
+const char *MDnsSdListener::Handler::iToIfaceName(int /* i */) {
     return NULL;
 }
 
-DNSServiceFlags MDnsSdListener::Handler::iToFlags(int i) {
+DNSServiceFlags MDnsSdListener::Handler::iToFlags(int /* i */) {
     return 0;
 }
 
-int MDnsSdListener::Handler::flagsToI(DNSServiceFlags flags) {
+int MDnsSdListener::Handler::flagsToI(DNSServiceFlags /* flags */) {
     return 0;
 }
 
@@ -527,6 +528,27 @@ void *MDnsSdListener::Monitor::threadStart(void *obj) {
     return NULL;
 }
 
+#define NAP_TIME 200  // 200 ms between polls
+static int wait_for_property(const char *name, const char *desired_value, int maxwait)
+{
+    char value[PROPERTY_VALUE_MAX] = {'\0'};
+    int maxnaps = (maxwait * 1000) / NAP_TIME;
+
+    if (maxnaps < 1) {
+        maxnaps = 1;
+    }
+
+    while (maxnaps-- > 0) {
+        usleep(NAP_TIME * 1000);
+        if (property_get(name, value, NULL)) {
+            if (desired_value == NULL || strcmp(value, desired_value) == 0) {
+                return 0;
+            }
+        }
+    }
+    return -1; /* failure */
+}
+
 int MDnsSdListener::Monitor::startService() {
     int result = 0;
     char property_value[PROPERTY_VALUE_MAX];
@@ -614,7 +636,6 @@ int MDnsSdListener::Monitor::rescan() {
     if (VDBG) {
         ALOGD("MDnsSdListener::Monitor poll rescanning - size=%d, live=%d", mPollSize, mLiveCount);
     }
-    int count = 0;
     pthread_mutex_lock(&mHeadMutex);
     Element **prevPtr = &mHead;
     int i = 1;
@@ -705,27 +726,6 @@ void MDnsSdListener::Monitor::startMonitoring(int id) {
         cur = cur->mNext;
     }
     pthread_mutex_unlock(&mHeadMutex);
-}
-
-#define NAP_TIME 200  // 200 ms between polls
-static int wait_for_property(const char *name, const char *desired_value, int maxwait)
-{
-    char value[PROPERTY_VALUE_MAX] = {'\0'};
-    int maxnaps = (maxwait * 1000) / NAP_TIME;
-
-    if (maxnaps < 1) {
-        maxnaps = 1;
-    }
-
-    while (maxnaps-- > 0) {
-        usleep(NAP_TIME * 1000);
-        if (property_get(name, value, NULL)) {
-            if (desired_value == NULL || strcmp(value, desired_value) == 0) {
-                return 0;
-            }
-        }
-    }
-    return -1; /* failure */
 }
 
 void MDnsSdListener::Monitor::freeServiceRef(int id) {

@@ -32,7 +32,10 @@ const uint32_t RULE_PRIORITY_LEGACY                = 16000;
 const uint32_t RULE_PRIORITY_PER_NETWORK_NORMAL    = 17000;
 const uint32_t RULE_PRIORITY_DEFAULT_NETWORK       = 19000;
 const uint32_t RULE_PRIORITY_MAIN                  = 20000;
+// TODO: Uncomment once we are sure everything works.
+#if 0
 const uint32_t RULE_PRIORITY_UNREACHABLE           = 21000;
+#endif
 
 // TODO: These should be turned into per-UID tables once the kernel supports UID-based routing.
 const int ROUTE_TABLE_PRIVILEGED_LEGACY = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 901;
