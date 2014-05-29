@@ -69,6 +69,7 @@ bool NetworkController::setDefaultNetwork(unsigned newNetId) {
     // asking for there to be no default network, which is a request we support.
     if (newNetId != NETID_UNSET && !isValidNetwork(newNetId)) {
         ALOGE("invalid netId %u", newNetId);
+        errno = EINVAL;
         return false;
     }
 
@@ -113,8 +114,10 @@ bool NetworkController::setDefaultNetwork(unsigned newNetId) {
 
 bool NetworkController::setNetworkForUidRange(int uid_start, int uid_end, unsigned netId,
                                               bool forward_dns) {
-    if (uid_start > uid_end || !isValidNetwork(netId))
+    if (uid_start > uid_end || !isValidNetwork(netId)) {
+        errno = EINVAL;
         return false;
+    }
 
     android::RWLock::AutoWLock lock(mRWLock);
     for (std::list<UidEntry>::iterator it = mUidMap.begin(); it != mUidMap.end(); ++it) {
@@ -129,8 +132,10 @@ bool NetworkController::setNetworkForUidRange(int uid_start, int uid_end, unsign
 }
 
 bool NetworkController::clearNetworkForUidRange(int uid_start, int uid_end, unsigned netId) {
-    if (uid_start > uid_end || !isValidNetwork(netId))
+    if (uid_start > uid_end || !isValidNetwork(netId)) {
+        errno = EINVAL;
         return false;
+    }
 
     android::RWLock::AutoWLock lock(mRWLock);
     for (std::list<UidEntry>::iterator it = mUidMap.begin(); it != mUidMap.end(); ++it) {
@@ -139,6 +144,8 @@ bool NetworkController::clearNetworkForUidRange(int uid_start, int uid_end, unsi
         mUidMap.erase(it);
         return true;
     }
+
+    errno = ENOENT;
     return false;
 }
 
@@ -169,6 +176,7 @@ unsigned NetworkController::getNetworkId(const char* interface) const {
 bool NetworkController::createNetwork(unsigned netId, Permission permission) {
     if (netId < MIN_NET_ID || netId > MAX_NET_ID) {
         ALOGE("invalid netId %u", netId);
+        errno = EINVAL;
         return false;
     }
 
@@ -176,6 +184,7 @@ bool NetworkController::createNetwork(unsigned netId, Permission permission) {
         android::RWLock::AutoWLock lock(mRWLock);
         if (!mValidNetworks.insert(netId).second) {
             ALOGE("duplicate netId %u", netId);
+            errno = EEXIST;
             return false;
         }
     }
@@ -187,12 +196,14 @@ bool NetworkController::createNetwork(unsigned netId, Permission permission) {
 bool NetworkController::addInterfaceToNetwork(unsigned netId, const char* interface) {
     if (!isValidNetwork(netId) || !interface) {
         ALOGE("invalid netId %u or interface null", netId);
+        errno = EINVAL;
         return false;
     }
 
     unsigned existingNetId = getNetworkId(interface);
     if (existingNetId != NETID_UNSET) {
         ALOGE("interface %s already assigned to netId %u", interface, existingNetId);
+        errno = EBUSY;
         return false;
     }
 
@@ -216,6 +227,7 @@ bool NetworkController::addInterfaceToNetwork(unsigned netId, const char* interf
 bool NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* interface) {
     if (!isValidNetwork(netId) || !interface) {
         ALOGE("invalid netId %u or interface null", netId);
+        errno = EINVAL;
         return false;
     }
 
@@ -230,6 +242,7 @@ bool NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* i
     }
     if (!status) {
         ALOGE("interface %s not assigned to netId %u", interface, netId);
+        errno = ENOENT;
     }
 
     Permission permission = mPermissionsController->getPermissionForNetwork(netId);
@@ -250,6 +263,7 @@ bool NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* i
 bool NetworkController::destroyNetwork(unsigned netId) {
     if (!isValidNetwork(netId)) {
         ALOGE("invalid netId %u", netId);
+        errno = EINVAL;
         return false;
     }
 
@@ -296,6 +310,7 @@ bool NetworkController::setPermissionForNetwork(Permission newPermission,
     for (size_t i = 0; i < netId.size(); ++i) {
         if (!isValidNetwork(netId[i])) {
             ALOGE("invalid netId %u", netId[i]);
+            errno = EINVAL;
             status = false;
             continue;
         }
@@ -347,11 +362,13 @@ bool NetworkController::modifyRoute(unsigned netId, const char* interface, const
                                     const char* nexthop, bool add) {
     if (!isValidNetwork(netId)) {
         ALOGE("invalid netId %u", netId);
+        errno = EINVAL;
         return false;
     }
 
     if (getNetworkId(interface) != netId) {
         ALOGE("netId %u has no such interface %s", netId, interface);
+        errno = ENOENT;
         return false;
     }
 

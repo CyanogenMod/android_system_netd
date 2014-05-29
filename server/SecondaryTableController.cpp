@@ -423,12 +423,12 @@ int SecondaryTableController::setUidRule(const char *iface, int uid_start, int u
     unsigned netId = mNetCtrl->getNetworkId(iface);
     if (add) {
         if (!mNetCtrl->setNetworkForUidRange(uid_start, uid_end, netId, forward_dns)) {
-            errno = EINVAL;
+            // errno is set by setNetworkForUidRange.
             return -1;
         }
     } else {
         if (!mNetCtrl->clearNetworkForUidRange(uid_start, uid_end, netId)) {
-            errno = EINVAL;
+            // errno is set by clearNetworkForUidRange.
             return -1;
         }
     }
