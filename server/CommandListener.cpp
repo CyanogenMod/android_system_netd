@@ -202,7 +202,7 @@ CommandListener::CommandListener() :
     if (!sInterfaceCtrl)
         sInterfaceCtrl = new InterfaceController();
     if (!sClatdCtrl)
-        sClatdCtrl = new ClatdController();
+        sClatdCtrl = new ClatdController(sNetCtrl);
 
     /*
      * This is the only time we touch top-level chains in iptables; controllers

@@ -17,16 +17,20 @@
 #ifndef _CLATD_CONTROLLER_H
 #define _CLATD_CONTROLLER_H
 
-class ClatdController {
-    pid_t mClatdPid;
+class NetworkController;
 
+class ClatdController {
 public:
-    ClatdController();
+    explicit ClatdController(NetworkController* controller);
     virtual ~ClatdController();
 
     int startClatd(char *interface);
     int stopClatd();
     bool isClatdStarted();
+
+private:
+    NetworkController* const mNetCtrl;
+    pid_t mClatdPid;
 };
 
 #endif
