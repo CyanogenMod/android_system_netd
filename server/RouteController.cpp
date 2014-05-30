@@ -41,10 +41,6 @@ const uint32_t RULE_PRIORITY_UNREACHABLE           = 21000;
 const int ROUTE_TABLE_PRIVILEGED_LEGACY = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 901;
 const int ROUTE_TABLE_LEGACY            = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 902;
 
-// TODO: These should be turned into per-UID tables once the kernel supports UID-based routing.
-const int ROUTE_TABLE_PRIVILEGED_LEGACY = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 901;
-const int ROUTE_TABLE_LEGACY            = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 902;
-
 uint32_t getRouteTableForInterface(const char* interface) {
     uint32_t index = if_nametoindex(interface);
     return index ? index + RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX : 0;
