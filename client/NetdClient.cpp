@@ -111,9 +111,14 @@ bool setNetworkForTarget(unsigned netId, volatile sig_atomic_t* target) {
         return true;
     }
     // Verify that we are allowed to use |netId|, by creating a socket and trying to have it marked
-    // with the netId. Don't create an AF_INET socket, because then the creation itself might cause
-    // another check with the fwmark server (see netdClientSocket()), which would be wasteful.
-    int socketFd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    // with the netId. Call libcSocket() directly; else the socket creation (via netdClientSocket())
+    // might itself cause another check with the fwmark server, which would be wasteful.
+    int socketFd;
+    if (libcSocket) {
+        socketFd = libcSocket(AF_INET6, SOCK_DGRAM, 0);
+    } else {
+        socketFd = socket(AF_INET6, SOCK_DGRAM, 0);
+    }
     if (socketFd < 0) {
         return false;
     }
