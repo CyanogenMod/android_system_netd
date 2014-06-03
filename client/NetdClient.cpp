@@ -20,14 +20,14 @@
 #include "FwmarkCommand.h"
 #include "resolv_netid.h"
 
+#include <atomic>
 #include <sys/socket.h>
 #include <unistd.h>
 
 namespace {
 
-// TODO: Convert to C++11 std::atomic<unsigned>.
-volatile sig_atomic_t netIdForProcess = NETID_UNSET;
-volatile sig_atomic_t netIdForResolv = NETID_UNSET;
+std::atomic_uint netIdForProcess(NETID_UNSET);
+std::atomic_uint netIdForResolv(NETID_UNSET);
 
 typedef int (*Accept4FunctionType)(int, sockaddr*, socklen_t*, int);
 typedef int (*ConnectFunctionType)(int, const sockaddr*, socklen_t);
@@ -105,7 +105,7 @@ unsigned getNetworkForResolv(unsigned netId) {
     return netIdForResolv;
 }
 
-bool setNetworkForTarget(unsigned netId, volatile sig_atomic_t* target) {
+bool setNetworkForTarget(unsigned netId, std::atomic_uint* target) {
     if (netId == NETID_UNSET) {
         *target = netId;
         return true;
