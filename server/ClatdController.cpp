@@ -22,9 +22,11 @@
 #include <cutils/log.h>
 
 #include "ClatdController.h"
+#include "NetdConstants.h"
+#include "NetworkController.h"
 
-ClatdController::ClatdController() {
-    mClatdPid = 0;
+ClatdController::ClatdController(NetworkController* controller)
+        : mNetCtrl(controller), mClatdPid(0) {
 }
 
 ClatdController::~ClatdController() {
@@ -47,17 +49,21 @@ int ClatdController::startClatd(char *interface) {
     }
 
     if (!pid) {
-        char **args = (char **)malloc(sizeof(char *) * 4);
-        args[0] = (char *)"/system/bin/clatd";
-        args[1] = (char *)"-i";
-        args[2] = interface;
-        args[3] = NULL;
+        char netId[UINT32_STRLEN];
+        snprintf(netId, sizeof(netId), "%u", mNetCtrl->getNetworkId(interface));
+        char *args[] = {
+            (char*)"/system/bin/clatd",
+            (char*)"-i",
+            interface,
+            (char*)"-n",
+            netId,
+            NULL
+        };
 
         if (execv(args[0], args)) {
             ALOGE("execv failed (%s)", strerror(errno));
         }
         ALOGE("Should never get here!");
-        free(args);
         _exit(0);
     } else {
         mClatdPid = pid;
