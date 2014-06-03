@@ -15,6 +15,7 @@
  */
 
 #include "UidMarkMap.h"
+#include "NetdConstants.h"
 
 UidMarkMap::UidMarkEntry::UidMarkEntry(int start, int end, int new_mark) :
                                             uid_start(start),
@@ -27,16 +28,9 @@ bool UidMarkMap::add(int uid_start, int uid_end, int mark) {
     if (uid_start > uid_end) {
         return false;
     }
-    android::netd::List<UidMarkEntry*>::iterator it;
-    for (it = mMap.begin(); it != mMap.end(); it++) {
-        UidMarkEntry *entry = *it;
-        if (entry->uid_start <= uid_end && uid_start <= entry->uid_end) {
-            return false;
-        }
-    }
 
     UidMarkEntry *e = new UidMarkEntry(uid_start, uid_end, mark);
-    mMap.push_back(e);
+    mMap.push_front(e);
     return true;
 };
 
@@ -63,7 +57,9 @@ int UidMarkMap::getMark(int uid) {
             return entry->mark;
         }
     }
-    return -1;
+    // If the uid has no mark specified then it should be protected from any VPN rules that might
+    // be affecting the service acting on its behalf.
+    return PROTECT_MARK;
 };
 
 bool UidMarkMap::anyRulesForMark(int mark) {

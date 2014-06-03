@@ -21,6 +21,8 @@
 #include <list>
 #include <stdarg.h>
 
+const int PROTECT_MARK = 0x1;
+
 extern const char * const IPTABLES_PATH;
 extern const char * const IP6TABLES_PATH;
 extern const char * const IP_PATH;
