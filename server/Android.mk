@@ -18,7 +18,6 @@ include $(CLEAR_VARS)
 
 LOCAL_C_INCLUDES := \
         $(call include-path-for, libhardware_legacy)/hardware_legacy \
-        bionic \
         bionic/libc/dns/include \
         external/libcxx/include \
         external/mdnsresponder/mDNSShared \
@@ -38,7 +37,6 @@ LOCAL_SHARED_LIBRARIES := \
         liblogwrap \
         libmdnssd \
         libnetutils \
-        libstlport \
         libsysutils \
 
 LOCAL_SRC_FILES := \
