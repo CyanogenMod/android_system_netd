@@ -83,12 +83,12 @@ static int do_cmd(int sock, int argc, char **argv) {
     }
 
     for (i = 1; i < argc; i++) {
-        if (index(argv[i], '"')) {
+        if (strchr(argv[i], '"')) {
             perror("argument with embedded quotes not allowed");
             free(final_cmd);
             return 1;
         }
-        bool needs_quoting = index(argv[i], ' ');
+        bool needs_quoting = strchr(argv[i], ' ');
         const char *format = needs_quoting ? "%s\"%s\"%s" : "%s%s%s";
         char *tmp_final_cmd;
 
