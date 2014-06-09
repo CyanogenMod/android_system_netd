@@ -22,7 +22,6 @@
 #include <stdint.h>
 
 union Fwmark {
-    Fwmark() : intValue(0) {}
     uint32_t intValue;
     struct {
         unsigned netId          : 16;
@@ -30,6 +29,10 @@ union Fwmark {
         bool protectedFromVpn   :  1;
         Permission permission   :  2;
     };
+    Fwmark() : intValue(0) {}
+    Fwmark(unsigned netId, bool explicitlySelected, bool protectedFromVpn, Permission permission)
+        : netId(netId), explicitlySelected(explicitlySelected),
+          protectedFromVpn(protectedFromVpn), permission(permission) {}
 };
 
 static const unsigned FWMARK_NET_ID_MASK = 0xffff;

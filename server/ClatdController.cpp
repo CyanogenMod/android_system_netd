@@ -22,6 +22,7 @@
 #include <cutils/log.h>
 
 #include "ClatdController.h"
+#include "Fwmark.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
 
@@ -49,14 +50,23 @@ int ClatdController::startClatd(char *interface) {
     }
 
     if (!pid) {
-        char netId[UINT32_STRLEN];
-        snprintf(netId, sizeof(netId), "%u", mNetCtrl->getNetworkId(interface));
+        // Pass in the interface, a netid to use for DNS lookups, and a fwmark for outgoing packets.
+        unsigned netId = mNetCtrl->getNetworkId(interface);
+        char netIdString[UINT32_STRLEN];
+        snprintf(netIdString, sizeof(netIdString), "%u", netId);
+
+        Fwmark fwmark = { netId, true, true, PERMISSION_CONNECTIVITY_INTERNAL };
+        char fwmarkString[UINT32_HEX_STRLEN];
+        snprintf(fwmarkString, sizeof(fwmarkString), "0x%x", fwmark.intValue);
+
         char *args[] = {
-            (char*)"/system/bin/clatd",
-            (char*)"-i",
+            (char *) "/system/bin/clatd",
+            (char *) "-i",
             interface,
-            (char*)"-n",
-            netId,
+            (char *) "-n",
+            netIdString,
+            (char *) "-m",
+            fwmarkString,
             NULL
         };
 
