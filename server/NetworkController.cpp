@@ -36,6 +36,10 @@
 #include "RouteController.h"
 
 #define LOG_TAG "NetworkController"
+
+#include <sys/socket.h>
+#include <linux/if.h>
+
 #include "cutils/log.h"
 #include "resolv_netid.h"
 
@@ -273,9 +277,11 @@ bool NetworkController::destroyNetwork(unsigned netId) {
 
     InterfaceRange range = mNetIdToInterfaces.equal_range(netId);
     for (InterfaceIteratorConst iter = range.first; iter != range.second; ) {
-        InterfaceIteratorConst toErase = iter;
+        char interface[IFNAMSIZ];
+        strncpy(interface, iter->second.c_str(), sizeof(interface));
+        interface[sizeof(interface) - 1] = 0;
         ++iter;
-        if (!removeInterfaceFromNetwork(netId, toErase->second.c_str())) {
+        if (!removeInterfaceFromNetwork(netId, interface)) {
             status = false;
         }
     }
