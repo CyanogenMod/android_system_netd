@@ -21,6 +21,7 @@
 
 #include <linux/rtnetlink.h>
 #include <logwrap/logwrap.h>
+#include <map>
 #include <net/if.h>
 
 namespace {
@@ -41,8 +42,19 @@ const uint32_t RULE_PRIORITY_UNREACHABLE           = 21000;
 const int ROUTE_TABLE_PRIVILEGED_LEGACY = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 901;
 const int ROUTE_TABLE_LEGACY            = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 902;
 
+std::map<std::string, uint32_t> interfaceToIndex;
+
 uint32_t getRouteTableForInterface(const char* interface) {
     uint32_t index = if_nametoindex(interface);
+    if (index) {
+        interfaceToIndex[interface] = index;
+    } else {
+        // If the interface goes away if_nametoindex() will return 0 but we still need to know
+        // the index so we can remove the rules and routes.
+        std::map<std::string, uint32_t>::iterator it = interfaceToIndex.find(interface);
+        if (it != interfaceToIndex.end())
+            index = it->second;
+    }
     return index ? index + RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX : 0;
 }
 
@@ -257,6 +269,7 @@ bool flushRoutes(const char* interface) {
     if (!table) {
         return false;
     }
+    interfaceToIndex.erase(interface);
 
     return runIpRouteCommand("flush", table, NULL, NULL, NULL);
 }

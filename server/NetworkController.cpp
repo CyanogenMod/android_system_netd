@@ -250,14 +250,14 @@ bool NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* i
     }
 
     Permission permission = mPermissionsController->getPermissionForNetwork(netId);
-    if (!mRouteController->removeInterfaceFromNetwork(netId, interface, permission)) {
-        ALOGE("failed to remove interface %s from netId %u", interface, netId);
-        status = false;
-    }
-
     if (netId == getDefaultNetwork() &&
             !mRouteController->removeFromDefaultNetwork(interface, permission)) {
         ALOGE("failed to remove interface %s from default netId %u", interface, netId);
+        status = false;
+    }
+
+    if (!mRouteController->removeInterfaceFromNetwork(netId, interface, permission)) {
+        ALOGE("failed to remove interface %s from netId %u", interface, netId);
         status = false;
     }
 
