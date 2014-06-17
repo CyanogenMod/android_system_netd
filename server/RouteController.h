@@ -41,10 +41,10 @@ public:
     static bool addToDefaultNetwork(const char* interface, Permission permission);
     static bool removeFromDefaultNetwork(const char* interface, Permission permission);
 
-    static bool addRoute(const char* interface, const char* destination, const char* nexthop,
-                         TableType tableType, unsigned uid);
-    static bool removeRoute(const char* interface, const char* destination, const char* nexthop,
-                            TableType tableType, unsigned uid);
+    static int addRoute(const char* interface, const char* destination, const char* nexthop,
+                        TableType tableType, unsigned uid);
+    static int removeRoute(const char* interface, const char* destination, const char* nexthop,
+                           TableType tableType, unsigned uid);
 };
 
 #endif  // NETD_SERVER_ROUTE_CONTROLLER_H
