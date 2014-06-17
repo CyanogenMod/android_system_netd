@@ -38,6 +38,7 @@ int execIptablesSilently(IptablesTarget target, ...);
 int writeFile(const char *path, const char *value, int size);
 int readFile(const char *path, char *buf, int *sizep);
 bool isIfaceName(const char *name);
+int parsePrefix(const char *prefix, uint8_t *family, void *address, int size, uint8_t *prefixlen);
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 

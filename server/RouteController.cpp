@@ -19,10 +19,21 @@
 #include "Fwmark.h"
 #include "NetdConstants.h"
 
+#include <arpa/inet.h>
+#include <errno.h>
+#include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <logwrap/logwrap.h>
 #include <map>
+#include <netinet/in.h>
 #include <net/if.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
+#include <unistd.h>
+
+// Avoids "non-constant-expression cannot be narrowed from type 'unsigned int' to 'unsigned short'"
+// warnings when using RTA_LENGTH(x) inside static initializers (even when x is already uint16_t).
+#define U16_RTA_LENGTH(x) static_cast<uint16_t>(RTA_LENGTH((x)))
 
 namespace {
 
@@ -109,30 +120,106 @@ bool runIpRuleCommand(const char* action, uint32_t priority, uint32_t table, uin
     return true;
 }
 
-bool runIpRouteCommand(const char* action, uint32_t table, const char* interface,
-                       const char* destination, const char* nexthop) {
-    char tableString[UINT32_STRLEN];
-    snprintf(tableString, sizeof(tableString), "%u", table);
+// Adds or deletes an IPv4 or IPv6 route.
+// Returns 0 on success or negative errno on failure.
+int modifyIpRoute(uint16_t action, uint32_t table, const char* interface, const char* destination,
+                  const char* nexthop) {
+    // At least the destination must be non-null.
+    if (!destination) {
+        return -EFAULT;
+    }
 
-    int argc = 0;
-    const char* argv[16];
+    // Parse the prefix.
+    uint8_t rawAddress[sizeof(in6_addr)];
+    uint8_t family, prefixLength;
+    int rawLength = parsePrefix(destination, &family, rawAddress, sizeof(rawAddress),
+                                &prefixLength);
+    if (rawLength < 0) {
+        return rawLength;
+    }
 
-    argv[argc++] = IP_PATH;
-    argv[argc++] = "route";
-    argv[argc++] = action;
-    argv[argc++] = "table";
-    argv[argc++] = tableString;
-    if (destination) {
-        argv[argc++] = destination;
-        argv[argc++] = "dev";
-        argv[argc++] = interface;
-        if (nexthop) {
-            argv[argc++] = "via";
-            argv[argc++] = nexthop;
+    if (static_cast<size_t>(rawLength) > sizeof(rawAddress)) {
+        return -ENOBUFS;  // Cannot happen; parsePrefix only supports IPv4 and IPv6.
+    }
+
+    // If an interface was specified, find the ifindex.
+    uint32_t ifindex;
+    if (interface) {
+        ifindex = if_nametoindex(interface);
+        if (!ifindex) {
+            return -ENODEV;
         }
     }
 
-    return !android_fork_execvp(argc, const_cast<char**>(argv), NULL, false, false);
+    // If a nexthop was specified, parse it as the same family as the prefix.
+    uint8_t rawNexthop[sizeof(in6_addr)];
+    if (nexthop && !inet_pton(family, nexthop, rawNexthop)) {
+        return -EINVAL;
+    }
+
+    // Assemble a netlink request and put it in an array of iovec structures.
+    nlmsghdr nlmsg = {
+        .nlmsg_type = action,
+        .nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK,
+    };
+    rtmsg rtmsg = {
+        .rtm_protocol = RTPROT_STATIC,
+        .rtm_type = RTN_UNICAST,
+        .rtm_family = family,
+        .rtm_dst_len = prefixLength,
+    };
+    rtattr rta_table = { U16_RTA_LENGTH(sizeof(table)), RTA_TABLE };
+    rtattr rta_oif = { U16_RTA_LENGTH(sizeof(ifindex)), RTA_OIF };
+    rtattr rta_dst = { U16_RTA_LENGTH(rawLength), RTA_DST };
+    rtattr rta_gateway = { U16_RTA_LENGTH(rawLength), RTA_GATEWAY };
+    if (action == RTM_NEWROUTE) {
+        nlmsg.nlmsg_flags |= (NLM_F_CREATE | NLM_F_EXCL);
+    }
+
+    iovec iov[] = {
+        { &nlmsg,        sizeof(nlmsg) },
+        { &rtmsg,        sizeof(rtmsg) },
+        { &rta_table,    sizeof(rta_table) },
+        { &table,        sizeof(table) },
+        { &rta_dst,      sizeof(rta_dst) },
+        { rawAddress,    static_cast<size_t>(rawLength) },
+        { &rta_oif,      interface ? sizeof(rta_oif) : 0 },
+        { &ifindex,      interface ? sizeof(interface) : 0 },
+        { &rta_gateway,  nexthop ? sizeof(rta_gateway) : 0 },
+        { rawNexthop,    nexthop ? static_cast<size_t>(rawLength) : 0 },
+    };
+    int iovlen = ARRAY_SIZE(iov);
+
+    for (int i = 0; i < iovlen; ++i) {
+        nlmsg.nlmsg_len += iov[i].iov_len;
+    }
+
+    int ret;
+    struct {
+        nlmsghdr msg;
+        nlmsgerr err;
+    } response;
+
+    sockaddr_nl kernel = {AF_NETLINK, 0, 0, 0};
+    int sock = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
+    if (sock != -1 &&
+            connect(sock, reinterpret_cast<sockaddr *>(&kernel), sizeof(kernel)) != -1 &&
+            writev(sock, iov, iovlen) != -1 &&
+            (ret = recv(sock, &response, sizeof(response), 0)) != -1) {
+        if (ret == sizeof(response)) {
+            ret = response.err.error;  // Netlink errors are negative errno.
+        } else {
+            ret = -EBADMSG;
+        }
+    } else {
+        ret = -errno;
+    }
+
+    if (sock != -1) {
+        close(sock);
+    }
+
+    return ret;
 }
 
 bool modifyPerNetworkRules(unsigned netId, const char* interface, Permission permission, bool add,
@@ -223,7 +310,7 @@ bool modifyDefaultNetworkRules(const char* interface, Permission permission, con
 }
 
 bool modifyRoute(const char* interface, const char* destination, const char* nexthop,
-                 const char* action, RouteController::TableType tableType, unsigned /* uid */) {
+                 int action, RouteController::TableType tableType, unsigned /* uid */) {
     uint32_t table = 0;
     switch (tableType) {
         case RouteController::INTERFACE: {
@@ -245,7 +332,7 @@ bool modifyRoute(const char* interface, const char* destination, const char* nex
         return false;
     }
 
-    if (!runIpRouteCommand(action, table, interface, destination, nexthop)) {
+    if (modifyIpRoute(action, table, interface, destination, nexthop)) {
         return false;
     }
 
@@ -258,7 +345,7 @@ bool modifyRoute(const char* interface, const char* destination, const char* nex
     // them based on the return status of the 'ip' command. Fix this situation by ignoring errors
     // only when action == ADD && error == EEXIST.
     if (!nexthop && !strchr(destination, ':')) {
-        runIpRouteCommand(action, RT_TABLE_MAIN, interface, destination, NULL);
+        modifyIpRoute(action, RT_TABLE_MAIN, interface, destination, NULL);
     }
 
     return true;
@@ -365,10 +452,10 @@ bool RouteController::removeFromDefaultNetwork(const char* interface, Permission
 
 bool RouteController::addRoute(const char* interface, const char* destination,
                                const char* nexthop, TableType tableType, unsigned uid) {
-    return modifyRoute(interface, destination, nexthop, ADD, tableType, uid);
+    return modifyRoute(interface, destination, nexthop, RTM_NEWROUTE, tableType, uid);
 }
 
 bool RouteController::removeRoute(const char* interface, const char* destination,
                                   const char* nexthop, TableType tableType, unsigned uid) {
-    return modifyRoute(interface, destination, nexthop, DEL, tableType, uid);
+    return modifyRoute(interface, destination, nexthop, RTM_DELROUTE, tableType, uid);
 }
