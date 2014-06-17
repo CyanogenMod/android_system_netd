@@ -271,7 +271,27 @@ bool flushRoutes(const char* interface) {
     }
     interfaceToIndex.erase(interface);
 
-    return runIpRouteCommand("flush", table, NULL, NULL, NULL);
+    char tableString[UINT32_STRLEN];
+    snprintf(tableString, sizeof(tableString), "%u", table);
+
+    const char* version[] = {"-4", "-6"};
+    for (size_t i = 0; i < ARRAY_SIZE(version); ++i) {
+        const char* argv[] = {
+            IP_PATH,
+            version[i],
+            "route"
+            "flush",
+            "table",
+            tableString,
+        };
+        int argc = ARRAY_SIZE(argv);
+
+        if (!android_fork_execvp(argc, const_cast<char**>(argv), NULL, false, false)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 }  // namespace
