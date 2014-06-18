@@ -67,6 +67,8 @@ LOCAL_SRC_FILES := \
         VirtualNetwork.cpp \
         main.cpp \
         oem_iptables_hook.cpp \
+        QcRouteController.cpp \
+
 
 include $(BUILD_EXECUTABLE)
 

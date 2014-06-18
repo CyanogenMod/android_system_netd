@@ -1,5 +1,8 @@
 /*
  * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+ *
+ * Not a Contribution.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,6 +48,7 @@
 #include "FirewallController.h"
 #include "RouteController.h"
 #include "UidRanges.h"
+#include "QcRouteController.h"
 
 #include <string>
 #include <vector>
@@ -92,6 +96,7 @@ InterfaceController *CommandListener::sInterfaceCtrl = NULL;
 ResolverController *CommandListener::sResolverCtrl = NULL;
 FirewallController *CommandListener::sFirewallCtrl = NULL;
 ClatdController *CommandListener::sClatdCtrl = NULL;
+QcRouteController *CommandListener::sQcRouteCtrl = NULL;
 
 /**
  * List of module chains to be created, along with explicit ordering. ORDERING
@@ -167,6 +172,48 @@ static void createChildChains(IptablesTarget target, const char* table, const ch
     } while (*(++childChain) != NULL);
 }
 
+/**
+ * Check if string is a valid interface name.
+ * Utilize if_nametoindex, on success it returns ifindex, and on error 0.
+ */
+static bool isValidIface(const char* iface) {
+    return (0 != if_nametoindex(iface));
+}
+
+/**
+ * Check if string is a valid IPv4 or IPv6 address
+ * Utilize inet_pton, on success it returns 1, and on error it returns 0 or -1.
+ * Error -1 means af is not a valid address family, but since v4/v6 is used, this is not applicable.
+ * Error 0 means string is not a valid address, and only this is applicable.
+ */
+static bool isValidIp(const char* str, const char* af) {
+    int ret = -1;
+    unsigned char c;
+    if (!strcmp(af, "v4")) {
+        struct in_addr addr;
+        ret = inet_pton(AF_INET, str, &addr);
+    }
+    else if (!strcmp(af, "v6")) {
+        struct in6_addr addr6;
+        ret = inet_pton(AF_INET6, str, &addr6);
+    }
+    if ( ret == 1 )
+    {
+        /* There is limitation on inet_pton which on success case it allows trailing
+           character of '\0' or space. The '\0' is ensured not to be accepted by the caller,
+           but the spacing should be caught here.
+         */
+         c = *str;
+         while (c)
+         {
+             if ( isspace(c) ) return false;
+             c = *++str;
+         }
+         return true;
+    }
+    return false;
+}
+
 CommandListener::CommandListener() :
                  FrameworkListener("netd", true) {
     registerCmd(new InterfaceCmd());
@@ -182,6 +229,7 @@ CommandListener::CommandListener() :
     registerCmd(new FirewallCmd());
     registerCmd(new ClatdCmd());
     registerCmd(new NetworkCommand());
+    registerCmd(new QcRouteCmd());
 
     if (!sNetCtrl)
         sNetCtrl = new NetworkController();
@@ -205,6 +253,8 @@ CommandListener::CommandListener() :
         sInterfaceCtrl = new InterfaceController();
     if (!sClatdCtrl)
         sClatdCtrl = new ClatdController(sNetCtrl);
+    if (!sQcRouteCtrl)
+        sQcRouteCtrl = new QcRouteController();
 
     /*
      * This is the only time we touch top-level chains in iptables; controllers
@@ -1609,4 +1659,313 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     }
 
     return syntaxError(client, "Unknown argument");
+
+}
+
+CommandListener::QcRouteCmd::QcRouteCmd() :
+                 NetdCommand("route") {
+}
+
+int CommandListener::QcRouteCmd::runCommand(SocketClient *cli, int argc, char **argv) {
+    if (argc < 5) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Missing argument", false);
+        return 0;
+    }
+
+    const char *ipVer = NULL;
+    int domain;
+
+    if (!strcmp(argv[3], "v4")) {
+        ipVer = "-4";
+        domain = AF_INET;
+    } else if (!strcmp(argv[3], "v6")) {
+        ipVer = "-6";
+        domain = AF_INET6;
+    } else {
+        cli->sendMsg(ResponseCode::CommandSyntaxError,
+                     "Supported family v4|v6",false);
+        return 0;
+    }
+
+    if (!strcmp(argv[2], "src")) {
+        /* source based routing */
+        if (!strcmp(argv[1], "replace")) {
+            if (argc != 7 && argc != 8) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError,
+                   "Usage: route replace src inet_family <interface>"
+                   " <ipaddr> <routeId> [<gateway>]", false);
+                return 0;
+            }
+
+            char* end;
+            long int rid =  strtol(argv[6], &end, 10);
+            if (*end != '\0')
+            {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "RouteID: invalid numerical value", false);
+                return 0;
+            }
+            if ((rid < 1) || (rid > 252)) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "0 < RouteID < 253", false);
+                return 0;
+            }
+
+            struct in_addr addr;
+            int prefix_length;
+            unsigned flags = 0;
+
+            ifc_init();
+            ifc_get_info(argv[4], &addr.s_addr, &prefix_length, &flags);
+            ifc_close();
+
+            char *iface = argv[4],
+                 *srcPrefix = argv[5],
+                 *routeId = argv[6],
+                 *network = NULL,
+                 *gateway = NULL;
+
+            if (false == isValidIface(iface)) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid interface", false);
+                return 0;
+            }
+
+            if (false == isValidIp(srcPrefix, argv[3]) ) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid IP address", false);
+                return 0;
+            }
+
+            if (argc > 7) {
+                gateway = argv[7];
+                if (false == isValidIp(gateway, argv[3]) ) {
+                    cli->sendMsg(ResponseCode::CommandParameterError,
+                            "invalid gateway", false);
+                    return 0;
+                }
+            }
+
+            // compute the network block in CIDR notation (for IPv4 only)
+            if (domain == AF_INET) {
+                struct in_addr net;
+                in_addr_t mask = prefixLengthToIpv4Netmask(prefix_length);
+                net.s_addr = (addr.s_addr & mask);
+
+
+                char net_s[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &(net.s_addr), net_s, INET_ADDRSTRLEN);
+                asprintf(&network, "%s/%d", net_s, prefix_length);
+            }
+
+            std::string res = sQcRouteCtrl->repSrcRoute( iface,
+                                                       srcPrefix,
+                                                       gateway,
+                                                       routeId,
+                                                       ipVer);
+            if (!res.empty()) {
+                cli->sendMsg(ResponseCode::OperationFailed, res.c_str(), false);
+            } else {
+                if (network != NULL) {
+                     //gateway is null for link local route, metric is 0
+                    res = sQcRouteCtrl->addDstRoute(iface,
+                                network, NULL, 0, routeId);
+                    if (res.empty()) {
+                        res = "source route replace & local subnet "
+                              "route add succeeded for rid: ";
+                        res += routeId;
+                    }
+                    cli->sendMsg(ResponseCode::CommandOkay, res.c_str(), false);
+                } else {
+                    res = "source route replace succeeded for rid:";
+                    res += routeId;
+                    cli->sendMsg(ResponseCode::CommandOkay, res.c_str(), false);
+                }
+            }
+            free(network);
+        } else if (!strcmp(argv[1], "del")) {
+            if (argc != 5) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError,
+                            "Usage: route del src v[4|6] <routeId>", false);
+                return 0;
+            }
+
+            char* end;
+            long int rid =  strtol(argv[4], &end, 10);
+            if (*end != '\0')
+            {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                        "RouteID: invalid numerical value", false);
+                return 0;
+            }
+            if ((rid < 1) || (rid > 252)) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                            "RouteID: between 0 and 253", false);
+                return 0;
+            }
+
+            std::string res = sQcRouteCtrl->delSrcRoute(argv[4], ipVer);
+            if (!res.empty()) {
+                cli->sendMsg(ResponseCode::OperationFailed, res.c_str(), false);
+            } else {
+                res = "source route delete succeeded for rid:";
+                res += argv[4];
+                cli->sendMsg(ResponseCode::CommandOkay, res.c_str(), false);
+            }
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                        "permitted operation for src routes: <replace|del>",
+                        false);
+        }
+    } else if (!strcmp(argv[2], "def")) {
+        /* default route configuration */
+        if (!strcmp(argv[1], "replace")) {
+            if ((argc != 5) && (argc != 6)) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError,
+                        "Usage: route replace def v[4|6]"
+                        " <interface> [<gateway>]", false);
+                return 0;
+            }
+
+            char *iface = argv[4],
+                 *gateway = NULL;
+
+            if (false == isValidIface(iface)) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid interface", false);
+                return 0;
+            }
+
+            if (argc > 5) {
+                gateway = argv[5];
+                if (false == isValidIp(gateway, argv[3]) ) {
+                    cli->sendMsg(ResponseCode::CommandParameterError,
+                            "invalid gateway", false);
+                    return 0;
+                }
+            }
+
+            std::string res =
+                sQcRouteCtrl->replaceDefRoute(iface, gateway, ipVer);
+            if (!res.empty()) {
+                cli->sendMsg(ResponseCode::OperationFailed, res.c_str(), false);
+            } else {
+                cli->sendMsg(ResponseCode::CommandOkay,
+                            "default route replace succeeded", false);
+            }
+        } else if (!strcmp(argv[1], "add")) {
+            if ((argc !=6) && (argc != 7)) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError,
+                        "Usage: route add def v[4|6]"
+                        " <interface> <metric> [<gateway>]", false);
+                return 0;
+            }
+
+            char *iface = argv[4],
+                 *gateway = NULL;
+            int metric = atoi(argv[5]);
+
+            if (false == isValidIface(iface)) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid interface", false);
+                return 0;
+            }
+
+            if (argc > 6) {
+                gateway = argv[6];
+                if (false == isValidIp(gateway, argv[3]) ) {
+                    cli->sendMsg(ResponseCode::CommandParameterError,
+                            "invalid gateway", false);
+                    return 0;
+                }
+            }
+
+            std::string res =
+                sQcRouteCtrl->addDefRoute(iface, gateway, ipVer, metric);
+            if (!res.empty()) {
+                cli->sendMsg(ResponseCode::OperationFailed, res.c_str(), false);
+            } else {
+                cli->sendMsg(ResponseCode::CommandOkay,
+                            "default route add with metric succeeded", false);
+            }
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Permitted action for def routes <replace|add>",
+                         false);
+        }
+    } else if (!strcmp(argv[2], "dst")) {
+        /* destination based route configuration */
+        if (!strcmp(argv[1], "add")) {
+            if (argc != 7 && argc != 8) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError,
+                   "Usage: route add dst v[4|6]"
+                   " <interface> <metric> <dstIpAddr> [<gateway>]", false);
+                return 0;
+            }
+
+            char *iface = argv[4],
+                 *dstPrefix = argv[6],
+                 *gateway = NULL;
+            int metric = atoi(argv[5]);
+
+            if (false == isValidIface(iface)) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid interface", false);
+                return 0;
+            }
+
+            if (false == isValidIp(dstPrefix, argv[3]) ) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid IP address", false);
+                return 0;
+            }
+
+            if (argc > 7) {
+                gateway = argv[7];
+                if (false == isValidIp(gateway, argv[3]) ) {
+                    cli->sendMsg(ResponseCode::CommandParameterError,
+                            "invalid gateway", false);
+                    return 0;
+                }
+            }
+
+            std::string res =
+                sQcRouteCtrl->addDstRoute(iface, dstPrefix, gateway, metric);
+            if (!res.empty()) {
+                cli->sendMsg(ResponseCode::OperationFailed, res.c_str(), false);
+            } else {
+                cli->sendMsg(ResponseCode::CommandOkay,
+                            "destination route add succeeded", false);
+            }
+        } else if (!strcmp(argv[1], "del")) {
+            if (argc != 5) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError,
+                             "Usage: route del dst v[4|6] <ipaddr>", false);
+                return 0;
+            }
+
+            if (false == isValidIp(argv[4], argv[3]) ) {
+                cli->sendMsg(ResponseCode::CommandParameterError,
+                                "invalid IP address", false);
+                return 0;
+            }
+
+            std::string res = sQcRouteCtrl->delDstRoute(argv[4]);
+            if (!res.empty()){
+                cli->sendMsg(ResponseCode::OperationFailed, res.c_str(), false);
+            } else {
+                cli->sendMsg(ResponseCode::CommandOkay,
+                            "destination route delete succeeded", false);
+            }
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "permitted operation for dst routes: <add|del>",
+                         false);
+        }
+    } else {
+        cli->sendMsg(ResponseCode::CommandParameterError,
+                     "allowed route types: <src|dst|def>", false);
+    }
+    return 0;
 }

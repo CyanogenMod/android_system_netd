@@ -1,5 +1,8 @@
 /*
  * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+ *
+ * Not a Contribution.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +34,7 @@
 #include "ResolverController.h"
 #include "FirewallController.h"
 #include "ClatdController.h"
+#include "QcRouteController.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
@@ -43,6 +47,7 @@ class CommandListener : public FrameworkListener {
     static ResolverController *sResolverCtrl;
     static FirewallController *sFirewallCtrl;
     static ClatdController *sClatdCtrl;
+    static QcRouteController *sQcRouteCtrl;
 
 public:
     static NetworkController *sNetCtrl;
@@ -152,6 +157,13 @@ private:
         int syntaxError(SocketClient* cli, const char* message);
         int operationError(SocketClient* cli, const char* message, int ret);
         int success(SocketClient* cli);
+    };
+
+    class QcRouteCmd : public NetdCommand {
+    public:
+        QcRouteCmd();
+        virtual ~QcRouteCmd() {}
+        int runCommand(SocketClient *c, int argc, char ** argv);
     };
 };
 
