@@ -29,6 +29,8 @@ bool setNetworkForProcess(unsigned netId);
 
 bool setNetworkForResolv(unsigned netId);
 
+bool protectFromVpn(int socketFd);
+
 __END_DECLS
 
 #endif  // NETD_INCLUDE_NETD_CLIENT_H

@@ -180,3 +180,12 @@ extern "C" bool setNetworkForProcess(unsigned netId) {
 extern "C" bool setNetworkForResolv(unsigned netId) {
     return setNetworkForTarget(netId, &netIdForResolv);
 }
+
+extern "C" bool protectFromVpn(int socketFd) {
+    if (socketFd < 0) {
+        errno = EBADF;
+        return false;
+    }
+    FwmarkCommand command = {FwmarkCommand::PROTECT_FROM_VPN, 0};
+    return FwmarkClient().send(&command, sizeof(command), socketFd);
+}
