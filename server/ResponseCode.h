@@ -77,6 +77,5 @@ public:
     static const int InterfaceClassActivity         = 613;
     static const int InterfaceAddressChange         = 614;
     static const int InterfaceDnsInfo               = 615;
-    static const int RouteChange                    = 616;
 };
 #endif

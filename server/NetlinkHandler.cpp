@@ -29,9 +29,6 @@
 #include "NetlinkManager.h"
 #include "ResponseCode.h"
 
-static const char *kUpdated = "updated";
-static const char *kRemoved = "removed";
-
 NetlinkHandler::NetlinkHandler(NetlinkManager *nm, int listenerSocket,
                                int format) :
                         NetlinkListener(listenerSocket, format) {
@@ -84,14 +81,6 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
             const char *servers = evt->findParam("SERVERS");
             if (lifetime && servers) {
                 notifyInterfaceDnsServers(iface, lifetime, servers);
-            }
-        } else if (action == evt->NlActionRouteUpdated ||
-                   action == evt->NlActionRouteRemoved) {
-            const char *route = evt->findParam("ROUTE");
-            const char *gateway = evt->findParam("GATEWAY");
-            const char *iface = evt->findParam("INTERFACE");
-            if (route && (gateway || iface)) {
-                notifyRouteChange(action, route, gateway, iface);
             }
         }
 
@@ -165,8 +154,8 @@ void NetlinkHandler::notifyAddressChanged(int action, const char *addr,
                                           const char *scope) {
     notify(ResponseCode::InterfaceAddressChange,
            "Address %s %s %s %s %s",
-           (action == NetlinkEvent::NlActionAddressUpdated) ? kUpdated : kRemoved,
-           addr, iface, flags, scope);
+           (action == NetlinkEvent::NlActionAddressUpdated) ?
+           "updated" : "removed", addr, iface, flags, scope);
 }
 
 void NetlinkHandler::notifyInterfaceDnsServers(const char *iface,
@@ -174,16 +163,4 @@ void NetlinkHandler::notifyInterfaceDnsServers(const char *iface,
                                                const char *servers) {
     notify(ResponseCode::InterfaceDnsInfo, "DnsInfo servers %s %s %s",
            iface, lifetime, servers);
-}
-
-void NetlinkHandler::notifyRouteChange(int action, const char *route,
-                                       const char *gateway, const char *iface) {
-    notify(ResponseCode::RouteChange,
-           "Route %s %s%s%s%s%s",
-           (action == NetlinkEvent::NlActionRouteUpdated) ? kUpdated : kRemoved,
-           route,
-           *gateway ? " via " : "",
-           gateway,
-           *iface ? " dev " : "",
-           iface);
 }
