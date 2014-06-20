@@ -111,6 +111,7 @@ InterfaceController::~InterfaceController() {
  */
 int InterfaceController::interfaceCommand(int argc, char *argv[], char **rbuf) {
 	int ret = -ENOSYS;
+	if (!isIfaceName(argv[2])) return -ENOENT;
 	if (sendCommand_)
 		ret = sendCommand_(argc, argv, rbuf);
 
@@ -119,6 +120,10 @@ int InterfaceController::interfaceCommand(int argc, char *argv[], char **rbuf) {
 
 int InterfaceController::writeIPv6ProcPath(const char *interface, const char *setting, const char *value) {
 	char *path;
+	if (!isIfaceName(interface)) {
+		errno = ENOENT;
+		return -1;
+	}
 	asprintf(&path, "%s/%s/%s", ipv6_proc_path, interface, setting);
 	int success = writeFile(path, value, strlen(value));
 	free(path);
@@ -187,18 +192,25 @@ int InterfaceController::getMtu(const char *interface, int *mtu)
 	char buf[16];
 	int size = sizeof(buf);
 	char *path;
+	if (!isIfaceName(interface)) {
+		errno = ENOENT;
+		return -1;
+	}
 	asprintf(&path, "%s/%s/mtu", sys_net_path, interface);
 	int success = readFile(path, buf, &size);
 	if (!success && mtu)
 		*mtu = atoi(buf);
 	free(path);
 	return success;
-
 }
 
 int InterfaceController::setMtu(const char *interface, const char *mtu)
 {
 	char *path;
+	if (!isIfaceName(interface)) {
+		errno = ENOENT;
+		return -1;
+	}
 	asprintf(&path, "%s/%s/mtu", sys_net_path, interface);
 	int success = writeFile(path, mtu, strlen(mtu));
 	free(path);

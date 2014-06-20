@@ -607,6 +607,8 @@ int BandwidthController::setInterfaceSharedQuota(const char *iface, int64_t maxB
         ALOGE("Invalid bytes value. 1..max_int64.");
         return -1;
     }
+    if (!isIfaceName(iface))
+        return -1;
     if (StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
         ALOGE("Interface name longer than %d", MAX_IFACENAME_LEN);
         return -1;
@@ -667,6 +669,8 @@ int BandwidthController::removeInterfaceSharedQuota(const char *iface) {
     std::list<std::string>::iterator it;
     const char *costName = "shared";
 
+    if (!isIfaceName(iface))
+        return -1;
     if (StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
         ALOGE("Interface name longer than %d", MAX_IFACENAME_LEN);
         return -1;
@@ -706,10 +710,8 @@ int BandwidthController::setInterfaceQuota(const char *iface, int64_t maxBytes) 
     std::list<QuotaInfo>::iterator it;
     std::string quotaCmd;
 
-    if (!isNameLegal(iface)) {
-        ALOGE("setInterfaceQuota: Invalid iface \"%s\"", iface);
+    if (!isIfaceName(iface))
         return -1;
-    }
 
     if (!maxBytes) {
         /* Don't talk about -1, deprecate it. */
@@ -775,36 +777,13 @@ int BandwidthController::getInterfaceSharedQuota(int64_t *bytes) {
     return getInterfaceQuota("shared", bytes);
 }
 
-bool BandwidthController::isNameLegal(const char* name) {
-    size_t i;
-    size_t name_len = strlen(name);
-    if (name_len == 0) {
-        return false;
-    }
-
-    /* First character must be alphanumeric */
-    if (!isalnum(name[0])) {
-        return false;
-    }
-
-    for (i = 1; i < name_len; i++) {
-        if (!isalnum(name[i]) && (name[i] != '_') && (name[i] != '-') && (name[i] != ':')) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 int BandwidthController::getInterfaceQuota(const char *costName, int64_t *bytes) {
     FILE *fp;
     char *fname;
     int scanRes;
 
-    if (!isNameLegal(costName)) {
-        ALOGE("getInterfaceQuota: Invalid costName \"%s\"", costName);
+    if (!isIfaceName(costName))
         return -1;
-    }
 
     asprintf(&fname, "/proc/net/xt_quota/%s", costName);
     fp = fopen(fname, "r");
@@ -827,11 +806,8 @@ int BandwidthController::removeInterfaceQuota(const char *iface) {
     const char *costName;
     std::list<QuotaInfo>::iterator it;
 
-    if (!isNameLegal(iface)) {
-        ALOGE("removeInterfaceQuota: Invalid iface \"%s\"", iface);
+    if (!isIfaceName(iface))
         return -1;
-    }
-
     if (StrncpyAndCheck(ifn, iface, sizeof(ifn))) {
         ALOGE("Interface name longer than %d", MAX_IFACENAME_LEN);
         return -1;
@@ -861,7 +837,7 @@ int BandwidthController::updateQuota(const char *quotaName, int64_t bytes) {
     FILE *fp;
     char *fname;
 
-    if (!isNameLegal(quotaName)) {
+    if (!isIfaceName(quotaName)) {
         ALOGE("updateQuota: Invalid quotaName \"%s\"", quotaName);
         return -1;
     }
@@ -1040,7 +1016,7 @@ int BandwidthController::removeSharedAlert(void) {
 int BandwidthController::setInterfaceAlert(const char *iface, int64_t bytes) {
     std::list<QuotaInfo>::iterator it;
 
-    if (!isNameLegal(iface)) {
+    if (!isIfaceName(iface)) {
         ALOGE("setInterfaceAlert: Invalid iface \"%s\"", iface);
         return -1;
     }
@@ -1065,7 +1041,7 @@ int BandwidthController::setInterfaceAlert(const char *iface, int64_t bytes) {
 int BandwidthController::removeInterfaceAlert(const char *iface) {
     std::list<QuotaInfo>::iterator it;
 
-    if (!isNameLegal(iface)) {
+    if (!isIfaceName(iface)) {
         ALOGE("removeInterfaceAlert: Invalid iface \"%s\"", iface);
         return -1;
     }
@@ -1089,7 +1065,7 @@ int BandwidthController::setCostlyAlert(const char *costName, int64_t bytes, int
     int res = 0;
     char *alertName;
 
-    if (!isNameLegal(costName)) {
+    if (!isIfaceName(costName)) {
         ALOGE("setCostlyAlert: Invalid costName \"%s\"", costName);
         return -1;
     }
@@ -1119,7 +1095,7 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
     char *alertName;
     int res = 0;
 
-    if (!isNameLegal(costName)) {
+    if (!isIfaceName(costName)) {
         ALOGE("removeCostlyAlert: Invalid costName \"%s\"", costName);
         return -1;
     }

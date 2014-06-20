@@ -192,6 +192,11 @@ int IdletimerController::modifyInterfaceIdletimer(IptOp op, const char *iface,
   int res;
   char timeout_str[11]; //enough to store any 32-bit unsigned decimal
 
+  if (!isIfaceName(iface)) {
+    errno = ENOENT;
+    return -1;
+  }
+
   snprintf(timeout_str, sizeof(timeout_str), "%u", timeout);
 
   const char *cmd1[] = {

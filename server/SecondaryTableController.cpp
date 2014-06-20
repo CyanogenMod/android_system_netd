@@ -229,6 +229,11 @@ int SecondaryTableController::removeFwmarkRule(const char *iface) {
 }
 
 int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
+    if (!isIfaceName(iface)) {
+        errno = ENOENT;
+        return -1;
+    }
+
     unsigned netId = mNetCtrl->getNetworkId(iface);
 
     // Fail fast if any rules already exist for this interface
@@ -386,6 +391,11 @@ int SecondaryTableController::removeFwmarkRoute(const char* iface, const char *d
 
 int SecondaryTableController::setFwmarkRoute(const char* iface, const char *dest, int prefix,
                                              bool add) {
+    if (!isIfaceName(iface)) {
+        errno = ENOENT;
+        return -1;
+    }
+
     unsigned netId = mNetCtrl->getNetworkId(iface);
     char mark_str[11] = {0};
     char dest_str[44]; // enough to store an IPv6 address + 3 character bitmask

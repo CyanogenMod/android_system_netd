@@ -134,11 +134,6 @@ int NatController::setDefaults() {
     return 0;
 }
 
-bool NatController::checkInterface(const char *iface) {
-    if (strlen(iface) > IFNAMSIZ) return false;
-    return true;
-}
-
 int NatController::routesOp(bool add, const char *intIface, const char *extIface, char **argv, int addrCount) {
     unsigned netId = mNetCtrl->getNetworkId(extIface);
     int ret = 0;
@@ -171,8 +166,7 @@ int NatController::enableNat(const int argc, char **argv) {
 
     ALOGV("enableNat(intIface=<%s>, extIface=<%s>)",intIface, extIface);
 
-    if (!checkInterface(intIface) || !checkInterface(extIface)) {
-        ALOGE("Invalid interface specified");
+    if (!isIfaceName(intIface) || !isIfaceName(extIface)) {
         errno = ENODEV;
         return -1;
     }
@@ -409,8 +403,7 @@ int NatController::disableNat(const int argc, char **argv) {
     const char *intIface = argv[2];
     const char *extIface = argv[3];
 
-    if (!checkInterface(intIface) || !checkInterface(extIface)) {
-        ALOGE("Invalid interface specified");
+    if (!isIfaceName(intIface) || !isIfaceName(extIface)) {
         errno = ENODEV;
         return -1;
     }

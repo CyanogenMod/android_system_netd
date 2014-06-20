@@ -50,7 +50,6 @@ private:
 
     int setDefaults();
     int runCmd(int argc, const char **argv);
-    bool checkInterface(const char *iface);
     int setForwardRules(bool set, const char *intIface, const char *extIface);
     int setTetherCountingRules(bool add, const char *intIface, const char *extIface);
     int routesOp(bool add, const char *intIface, const char *extIface, char **argv, int addrCount);

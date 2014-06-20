@@ -69,6 +69,11 @@ int FirewallController::isFirewallEnabled(void) {
 }
 
 int FirewallController::setInterfaceRule(const char* iface, FirewallRule rule) {
+    if (!isIfaceName(iface)) {
+        errno = ENOENT;
+        return -1;
+    }
+
     const char* op;
     if (rule == ALLOW) {
         op = "-I";

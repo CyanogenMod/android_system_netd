@@ -21,6 +21,7 @@
 #define LOG_TAG "ClatdController"
 #include <cutils/log.h>
 
+#include "NetdConstants.h"
 #include "ClatdController.h"
 #include "Fwmark.h"
 #include "NetdConstants.h"
@@ -39,6 +40,11 @@ int ClatdController::startClatd(char *interface) {
     if(mClatdPid != 0) {
         ALOGE("clatd already running");
         errno = EBUSY;
+        return -1;
+    }
+
+    if (!isIfaceName(interface)) {
+        errno = ENOENT;
         return -1;
     }
 

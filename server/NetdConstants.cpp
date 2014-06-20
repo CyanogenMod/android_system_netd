@@ -17,6 +17,8 @@
 #include <fcntl.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <ctype.h>
+#include <net/if.h>
 
 #define LOG_TAG "Netd"
 
@@ -142,4 +144,29 @@ int readFile(const char *path, char *buf, int *sizep)
     *sizep = size;
     close(fd);
     return 0;
+}
+
+/*
+ * Check an interface name for plausibility. This should e.g. help against
+ * directory traversal.
+ */
+bool isIfaceName(const char *name) {
+    size_t i;
+    size_t name_len = strlen(name);
+    if ((name_len == 0) || (name_len > IFNAMSIZ)) {
+        return false;
+    }
+
+    /* First character must be alphanumeric */
+    if (!isalnum(name[0])) {
+        return false;
+    }
+
+    for (i = 1; i < name_len; i++) {
+        if (!isalnum(name[i]) && (name[i] != '_') && (name[i] != '-') && (name[i] != ':')) {
+            return false;
+        }
+    }
+
+    return true;
 }
