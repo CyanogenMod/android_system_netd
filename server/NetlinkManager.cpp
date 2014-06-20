@@ -105,7 +105,6 @@ int NetlinkManager::start() {
                                      RTMGRP_LINK |
                                      RTMGRP_IPV4_IFADDR |
                                      RTMGRP_IPV6_IFADDR |
-                                     RTMGRP_IPV6_ROUTE |
                                      (1 << (RTNLGRP_ND_USEROPT - 1)),
          NetlinkListener::NETLINK_FORMAT_BINARY)) == NULL) {
         return -1;
