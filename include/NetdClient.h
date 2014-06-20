@@ -24,6 +24,7 @@ __BEGIN_DECLS
 
 // All functions below that return an int return 0 on success or an errno value on failure.
 
+int getNetworkForSocket(unsigned* netId, int socketFd);
 int setNetworkForSocket(unsigned netId, int socketFd);
 
 unsigned getNetworkForProcess(void);

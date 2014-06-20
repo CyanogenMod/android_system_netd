@@ -16,6 +16,7 @@
 
 #include "NetdClient.h"
 
+#include "Fwmark.h"
 #include "FwmarkClient.h"
 #include "FwmarkCommand.h"
 #include "resolv_netid.h"
@@ -161,6 +162,19 @@ extern "C" void netdClientInitNetIdForResolv(NetIdForResolvFunctionType* functio
     if (function) {
         *function = getNetworkForResolv;
     }
+}
+
+extern "C" int getNetworkForSocket(unsigned* netId, int socketFd) {
+    if (!netId || socketFd < 0) {
+        return EBADF;
+    }
+    Fwmark fwmark;
+    socklen_t fwmarkLen = sizeof(fwmark.intValue);
+    if (getsockopt(socketFd, SOL_SOCKET, SO_MARK, &fwmark.intValue, &fwmarkLen) == -1) {
+        return errno;
+    }
+    *netId = fwmark.netId;
+    return 0;
 }
 
 extern "C" unsigned getNetworkForProcess() {

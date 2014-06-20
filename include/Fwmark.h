@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef NETD_SERVER_FWMARK_H
-#define NETD_SERVER_FWMARK_H
+#ifndef NETD_INCLUDE_FWMARK_H
+#define NETD_INCLUDE_FWMARK_H
 
 #include "Permission.h"
 
@@ -39,4 +39,4 @@ static const unsigned FWMARK_NET_ID_MASK = 0xffff;
 
 static_assert(sizeof(Fwmark) == sizeof(uint32_t), "The entire fwmark must fit into 32 bits");
 
-#endif  // NETD_SERVER_FWMARK_H
+#endif  // NETD_INCLUDE_FWMARK_H
