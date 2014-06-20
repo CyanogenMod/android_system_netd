@@ -40,8 +40,7 @@ Accept4FunctionType libcAccept4 = 0;
 ConnectFunctionType libcConnect = 0;
 SocketFunctionType libcSocket = 0;
 
-int closeFdAndRestoreErrno(int fd) {
-    int error = errno;
+int closeFdAndSetErrno(int fd, int error) {
     close(fd);
     errno = error;
     return -1;
@@ -58,13 +57,14 @@ int netdClientAccept4(int sockfd, sockaddr* addr, socklen_t* addrlen, int flags)
     } else {
         socklen_t familyLen = sizeof(family);
         if (getsockopt(acceptedSocket, SOL_SOCKET, SO_DOMAIN, &family, &familyLen) == -1) {
-            return closeFdAndRestoreErrno(acceptedSocket);
+            return closeFdAndSetErrno(acceptedSocket, errno);
         }
     }
     if (FwmarkClient::shouldSetFwmark(family)) {
         FwmarkCommand command = {FwmarkCommand::ON_ACCEPT, 0};
-        if (!FwmarkClient().send(&command, sizeof(command), acceptedSocket)) {
-            return closeFdAndRestoreErrno(acceptedSocket);
+        int error = FwmarkClient().send(&command, sizeof(command), acceptedSocket);
+        if (error) {
+            return closeFdAndSetErrno(acceptedSocket, error);
         }
     }
     return acceptedSocket;
@@ -73,7 +73,9 @@ int netdClientAccept4(int sockfd, sockaddr* addr, socklen_t* addrlen, int flags)
 int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
     if (sockfd >= 0 && addr && FwmarkClient::shouldSetFwmark(addr->sa_family)) {
         FwmarkCommand command = {FwmarkCommand::ON_CONNECT, 0};
-        if (!FwmarkClient().send(&command, sizeof(command), sockfd)) {
+        int error = FwmarkClient().send(&command, sizeof(command), sockfd);
+        if (error) {
+            errno = error;
             return -1;
         }
     }
@@ -87,8 +89,9 @@ int netdClientSocket(int domain, int type, int protocol) {
     }
     unsigned netId = netIdForProcess;
     if (netId != NETID_UNSET && FwmarkClient::shouldSetFwmark(domain)) {
-        if (!setNetworkForSocket(netId, socketFd)) {
-            return closeFdAndRestoreErrno(socketFd);
+        int error = setNetworkForSocket(netId, socketFd);
+        if (error) {
+            return closeFdAndSetErrno(socketFd, error);
         }
     }
     return socketFd;
@@ -105,10 +108,10 @@ unsigned getNetworkForResolv(unsigned netId) {
     return netIdForResolv;
 }
 
-bool setNetworkForTarget(unsigned netId, std::atomic_uint* target) {
+int setNetworkForTarget(unsigned netId, std::atomic_uint* target) {
     if (netId == NETID_UNSET) {
         *target = netId;
-        return true;
+        return 0;
     }
     // Verify that we are allowed to use |netId|, by creating a socket and trying to have it marked
     // with the netId. Call libcSocket() directly; else the socket creation (via netdClientSocket())
@@ -120,14 +123,14 @@ bool setNetworkForTarget(unsigned netId, std::atomic_uint* target) {
         socketFd = socket(AF_INET6, SOCK_DGRAM, 0);
     }
     if (socketFd < 0) {
-        return false;
+        return errno;
     }
-    bool status = setNetworkForSocket(netId, socketFd);
-    closeFdAndRestoreErrno(socketFd);
-    if (status) {
+    int error = setNetworkForSocket(netId, socketFd);
+    if (!error) {
         *target = netId;
     }
-    return status;
+    close(socketFd);
+    return error;
 }
 
 }  // namespace
@@ -164,27 +167,25 @@ extern "C" unsigned getNetworkForProcess() {
     return netIdForProcess;
 }
 
-extern "C" bool setNetworkForSocket(unsigned netId, int socketFd) {
+extern "C" int setNetworkForSocket(unsigned netId, int socketFd) {
     if (socketFd < 0) {
-        errno = EBADF;
-        return false;
+        return EBADF;
     }
     FwmarkCommand command = {FwmarkCommand::SELECT_NETWORK, netId};
     return FwmarkClient().send(&command, sizeof(command), socketFd);
 }
 
-extern "C" bool setNetworkForProcess(unsigned netId) {
+extern "C" int setNetworkForProcess(unsigned netId) {
     return setNetworkForTarget(netId, &netIdForProcess);
 }
 
-extern "C" bool setNetworkForResolv(unsigned netId) {
+extern "C" int setNetworkForResolv(unsigned netId) {
     return setNetworkForTarget(netId, &netIdForResolv);
 }
 
-extern "C" bool protectFromVpn(int socketFd) {
+extern "C" int protectFromVpn(int socketFd) {
     if (socketFd < 0) {
-        errno = EBADF;
-        return false;
+        return EBADF;
     }
     FwmarkCommand command = {FwmarkCommand::PROTECT_FROM_VPN, 0};
     return FwmarkClient().send(&command, sizeof(command), socketFd);

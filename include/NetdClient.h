@@ -22,14 +22,16 @@
 
 __BEGIN_DECLS
 
-bool setNetworkForSocket(unsigned netId, int socketFd);
+// All functions below that return an int return 0 on success or an errno value on failure.
+
+int setNetworkForSocket(unsigned netId, int socketFd);
 
 unsigned getNetworkForProcess(void);
-bool setNetworkForProcess(unsigned netId);
+int setNetworkForProcess(unsigned netId);
 
-bool setNetworkForResolv(unsigned netId);
+int setNetworkForResolv(unsigned netId);
 
-bool protectFromVpn(int socketFd);
+int protectFromVpn(int socketFd);
 
 __END_DECLS
 
