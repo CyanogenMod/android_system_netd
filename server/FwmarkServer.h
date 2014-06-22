@@ -31,8 +31,8 @@ private:
     // Overridden from SocketListener:
     bool onDataAvailable(SocketClient* client);
 
-    // Returns success / failure implicitly via errno.
-    void processClient(SocketClient* client, int* fd);
+    // Returns 0 on success or a negative errno value on failure.
+    int processClient(SocketClient* client, int* fd);
 
     NetworkController* const mNetworkController;
     PermissionsController* const mPermissionsController;

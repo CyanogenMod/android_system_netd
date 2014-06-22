@@ -29,7 +29,7 @@ public:
     ~FwmarkClient();
 
     // Sends |data| to the fwmark server, along with |fd| as ancillary data using cmsg(3).
-    // Returns 0 on success or an errno value on failure.
+    // Returns 0 on success or a negative errno value on failure.
     int send(void* data, size_t len, int fd);
 
 private:

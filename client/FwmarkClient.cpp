@@ -43,7 +43,7 @@ FwmarkClient::~FwmarkClient() {
 int FwmarkClient::send(void* data, size_t len, int fd) {
     mChannel = socket(AF_UNIX, SOCK_STREAM, 0);
     if (mChannel == -1) {
-        return errno;
+        return -errno;
     }
 
     if (TEMP_FAILURE_RETRY(connect(mChannel, reinterpret_cast<const sockaddr*>(&FWMARK_SERVER_PATH),
@@ -78,13 +78,13 @@ int FwmarkClient::send(void* data, size_t len, int fd) {
     memcpy(CMSG_DATA(cmsgh), &fd, sizeof(fd));
 
     if (TEMP_FAILURE_RETRY(sendmsg(mChannel, &message, 0)) == -1) {
-        return errno;
+        return -errno;
     }
 
     int error = 0;
 
     if (TEMP_FAILURE_RETRY(recv(mChannel, &error, sizeof(error), 0)) == -1) {
-        return errno;
+        return -errno;
     }
 
     return error;

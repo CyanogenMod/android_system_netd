@@ -34,8 +34,7 @@ FwmarkServer::FwmarkServer(NetworkController* networkController,
 
 bool FwmarkServer::onDataAvailable(SocketClient* client) {
     int fd = -1;
-    processClient(client, &fd);
-    int error = errno;
+    int error = processClient(client, &fd);
     if (fd >= 0) {
         close(fd);
     }
@@ -50,7 +49,7 @@ bool FwmarkServer::onDataAvailable(SocketClient* client) {
     return false;
 }
 
-void FwmarkServer::processClient(SocketClient* client, int* fd) {
+int FwmarkServer::processClient(SocketClient* client, int* fd) {
     FwmarkCommand command;
 
     iovec iov;
@@ -73,12 +72,11 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
 
     int messageLength = TEMP_FAILURE_RETRY(recvmsg(client->getSocket(), &message, 0));
     if (messageLength <= 0) {
-        return;
+        return -errno;
     }
 
     if (messageLength != sizeof(command)) {
-        errno = EINVAL;
-        return;
+        return -EBADMSG;
     }
 
     cmsghdr* const cmsgh = CMSG_FIRSTHDR(&message);
@@ -88,14 +86,13 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
     }
 
     if (*fd < 0) {
-        errno = EBADF;
-        return;
+        return -EBADF;
     }
 
     Fwmark fwmark;
     socklen_t fwmarkLen = sizeof(fwmark.intValue);
     if (getsockopt(*fd, SOL_SOCKET, SO_MARK, &fwmark.intValue, &fwmarkLen) == -1) {
-        return;
+        return -errno;
     }
 
     fwmark.permission = mPermissionsController->getPermissionForUser(client->getUid());
@@ -105,8 +102,7 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
             // Called after a socket accept(). The kernel would've marked the netId into the socket
             // already, so we just need to check permissions here.
             if (!mPermissionsController->isUserPermittedOnNetwork(client->getUid(), fwmark.netId)) {
-                errno = EPERM;
-                return;
+                return -EPERM;
             }
             break;
         }
@@ -132,13 +128,11 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
                     fwmark.protectedFromVpn = true;
                 }
                 if (!mNetworkController->isValidNetwork(command.netId)) {
-                    errno = ENONET;
-                    return;
+                    return -ENONET;
                 }
                 if (!mPermissionsController->isUserPermittedOnNetwork(client->getUid(),
                                                                       command.netId)) {
-                    errno = EPERM;
-                    return;
+                    return -EPERM;
                 }
             }
             break;
@@ -152,14 +146,13 @@ void FwmarkServer::processClient(SocketClient* client, int* fd) {
 
         default: {
             // unknown command
-            errno = EINVAL;
-            return;
+            return -EPROTO;
         }
     }
 
     if (setsockopt(*fd, SOL_SOCKET, SO_MARK, &fwmark.intValue, sizeof(fwmark.intValue)) == -1) {
-        return;
+        return -errno;
     }
 
-    errno = 0;
+    return 0;
 }
