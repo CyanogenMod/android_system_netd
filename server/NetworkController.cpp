@@ -345,13 +345,13 @@ bool NetworkController::setPermissionForNetwork(Permission newPermission,
     return status;
 }
 
-bool NetworkController::addRoute(unsigned netId, const char* interface, const char* destination,
-                                 const char* nexthop, bool legacy, unsigned uid) {
+int NetworkController::addRoute(unsigned netId, const char* interface, const char* destination,
+                                const char* nexthop, bool legacy, unsigned uid) {
     return modifyRoute(netId, interface, destination, nexthop, true, legacy, uid);
 }
 
-bool NetworkController::removeRoute(unsigned netId, const char* interface, const char* destination,
-                                    const char* nexthop, bool legacy, unsigned uid) {
+int NetworkController::removeRoute(unsigned netId, const char* interface, const char* destination,
+                                   const char* nexthop, bool legacy, unsigned uid) {
     return modifyRoute(netId, interface, destination, nexthop, false, legacy, uid);
 }
 
@@ -364,18 +364,16 @@ bool NetworkController::isValidNetwork(unsigned netId) const {
     return mValidNetworks.find(netId) != mValidNetworks.end();
 }
 
-bool NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,
-                                    const char* nexthop, bool add, bool legacy, unsigned uid) {
+int NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,
+                                   const char* nexthop, bool add, bool legacy, unsigned uid) {
     if (!isValidNetwork(netId)) {
         ALOGE("invalid netId %u", netId);
-        errno = EINVAL;
-        return false;
+        return -EINVAL;
     }
 
     if (getNetworkId(interface) != netId) {
         ALOGE("netId %u has no such interface %s", netId, interface);
-        errno = ENOENT;
-        return false;
+        return -ENOENT;
     }
 
     RouteController::TableType tableType;

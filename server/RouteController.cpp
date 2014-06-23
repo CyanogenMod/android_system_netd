@@ -309,7 +309,10 @@ bool modifyDefaultNetworkRules(const char* interface, Permission permission, con
                             mask.intValue, NULL);
 }
 
-bool modifyRoute(const char* interface, const char* destination, const char* nexthop,
+// Adds or removes an IPv4 or IPv6 route to the specified table and, if it's directly-connected
+// route, to the main table as well.
+// Returns 0 on success or negative errno on failure.
+int modifyRoute(const char* interface, const char* destination, const char* nexthop,
                  int action, RouteController::TableType tableType, unsigned /* uid */) {
     uint32_t table = 0;
     switch (tableType) {
@@ -329,26 +332,27 @@ bool modifyRoute(const char* interface, const char* destination, const char* nex
         }
     }
     if (!table) {
-        return false;
+        return -ESRCH;
     }
 
-    if (modifyIpRoute(action, table, interface, destination, nexthop)) {
-        return false;
+    int ret = modifyIpRoute(action, table, interface, destination, nexthop);
+    if (ret != 0) {
+        return ret;
     }
 
     // If there's no nexthop, this is a directly connected route. Add it to the main table also, to
-    // let the kernel find it when validating nexthops when global routes are added. Don't do this
-    // for IPv6, since all directly-connected routes in v6 are link-local and should already be in
-    // the main table.
-    // TODO: A failure here typically means that the route already exists in the main table, so we
-    // ignore it. It's wrong to ignore other kinds of failures, but we have no way to distinguish
-    // them based on the return status of the 'ip' command. Fix this situation by ignoring errors
-    // only when action == ADD && error == EEXIST.
-    if (!nexthop && !strchr(destination, ':')) {
-        modifyIpRoute(action, RT_TABLE_MAIN, interface, destination, NULL);
+    // let the kernel find it when validating nexthops when global routes are added.
+    if (!nexthop) {
+        ret = modifyIpRoute(action, RT_TABLE_MAIN, interface, destination, NULL);
+        // A failure with action == ADD && errno == EEXIST means that the route already exists in
+        // the main table, perhaps because the kernel added it automatically as part of adding the
+        // IP address to the interface. Ignore this, but complain about everything else.
+        if (ret != 0 && !(action == RTM_NEWROUTE && ret == -EEXIST)) {
+            return ret;
+        }
     }
 
-    return true;
+    return 0;
 }
 
 bool flushRoutes(const char* interface) {
@@ -450,12 +454,12 @@ bool RouteController::removeFromDefaultNetwork(const char* interface, Permission
     return modifyDefaultNetworkRules(interface, permission, DEL);
 }
 
-bool RouteController::addRoute(const char* interface, const char* destination,
-                               const char* nexthop, TableType tableType, unsigned uid) {
+int RouteController::addRoute(const char* interface, const char* destination,
+                              const char* nexthop, TableType tableType, unsigned uid) {
     return modifyRoute(interface, destination, nexthop, RTM_NEWROUTE, tableType, uid);
 }
 
-bool RouteController::removeRoute(const char* interface, const char* destination,
-                                  const char* nexthop, TableType tableType, unsigned uid) {
+int RouteController::removeRoute(const char* interface, const char* destination,
+                                 const char* nexthop, TableType tableType, unsigned uid) {
     return modifyRoute(interface, destination, nexthop, RTM_DELROUTE, tableType, uid);
 }

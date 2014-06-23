@@ -1733,12 +1733,15 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         const char* destination = argv[nextArg++];
         const char* nexthop = argc > nextArg ? argv[nextArg] : NULL;
 
+        int ret;
         if (add) {
-            if (!sNetCtrl->addRoute(netId, interface, destination, nexthop, legacy, uid)) {
-                return operationError(client, "addRoute() failed");
-            }
-        } else if (!sNetCtrl->removeRoute(netId, interface, destination, nexthop, legacy, uid)) {
-            return operationError(client, "removeRoute() failed");
+            ret = sNetCtrl->addRoute(netId, interface, destination, nexthop, legacy, uid);
+        } else {
+            ret = sNetCtrl->removeRoute(netId, interface, destination, nexthop, legacy, uid);
+        }
+        if (ret != 0) {
+            errno = -ret;
+            return operationError(client, add ? "addRoute() failed" : "removeRoute() failed");
         }
 
         return success(client);
