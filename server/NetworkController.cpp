@@ -34,6 +34,7 @@
 
 #include "PhysicalNetwork.h"
 #include "RouteController.h"
+#include "VirtualNetwork.h"
 
 #define LOG_TAG "Netd"
 #include "log/log.h"
@@ -145,6 +146,11 @@ unsigned NetworkController::getNetworkId(const char* interface) const {
             return entry.first;
         }
     }
+    for (const auto& entry : mVirtualNetworks) {
+        if (entry.second->hasInterface(interface)) {
+            return entry.first;
+        }
+    }
     return NETID_UNSET;
 }
 
@@ -176,6 +182,22 @@ int NetworkController::createNetwork(unsigned netId, Permission permission) {
     return 0;
 }
 
+int NetworkController::createVpn(unsigned netId, uid_t ownerUid) {
+    if (netId < MIN_NET_ID || netId > MAX_NET_ID) {
+        ALOGE("invalid netId %u", netId);
+        return -EINVAL;
+    }
+
+    if (isValidNetwork(netId)) {
+        ALOGE("duplicate netId %u", netId);
+        return -EEXIST;
+    }
+
+    android::RWLock::AutoWLock lock(mRWLock);
+    mVirtualNetworks[netId] = new VirtualNetwork(netId, ownerUid);
+    return 0;
+}
+
 int NetworkController::destroyNetwork(unsigned netId) {
     if (!isValidNetwork(netId)) {
         ALOGE("invalid netId %u", netId);
@@ -198,6 +220,7 @@ int NetworkController::destroyNetwork(unsigned netId) {
         mDefaultNetId = NETID_UNSET;
     }
     mPhysicalNetworks.erase(netId);
+    mVirtualNetworks.erase(netId);
     delete network;
     _resolv_delete_cache_for_net(netId);
     return 0;
@@ -247,6 +270,7 @@ void NetworkController::setPermissionForUsers(Permission permission,
     }
 }
 
+// TODO: Handle VPNs.
 bool NetworkController::isUserPermittedOnNetwork(uid_t uid, unsigned netId) const {
     android::RWLock::AutoRLock lock(mRWLock);
     auto userIter = mUsers.find(uid);
@@ -292,6 +316,12 @@ Network* NetworkController::getNetworkLocked(unsigned netId) const {
     auto physicalNetworkIter = mPhysicalNetworks.find(netId);
     if (physicalNetworkIter != mPhysicalNetworks.end()) {
         return physicalNetworkIter->second;
+    }
+    {
+        auto iter = mVirtualNetworks.find(netId);
+        if (iter != mVirtualNetworks.end()) {
+            return iter->second;
+        }
     }
     return NULL;
 }

@@ -40,6 +40,9 @@ public:
     static int removeInterfaceFromNetwork(unsigned netId, const char* interface,
                                           Permission permission) WARN_UNUSED_RESULT;
 
+    static int addInterfaceToVpn(unsigned netId, const char* interface) WARN_UNUSED_RESULT;
+    static int removeInterfaceFromVpn(unsigned netId, const char* interface) WARN_UNUSED_RESULT;
+
     static int modifyNetworkPermission(unsigned netId, const char* interface,
                                        Permission oldPermission,
                                        Permission newPermission) WARN_UNUSED_RESULT;

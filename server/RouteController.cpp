@@ -32,6 +32,7 @@ namespace {
 // BEGIN CONSTANTS --------------------------------------------------------------------------------
 
 const uint32_t RULE_PRIORITY_PRIVILEGED_LEGACY     = 11000;
+const uint32_t RULE_PRIORITY_SECURE_VPN            = 12000;
 const uint32_t RULE_PRIORITY_PER_NETWORK_EXPLICIT  = 13000;
 const uint32_t RULE_PRIORITY_PER_NETWORK_INTERFACE = 14000;
 const uint32_t RULE_PRIORITY_LEGACY                = 16000;
@@ -374,6 +375,48 @@ WARN_UNUSED_RESULT int modifyPerNetworkRules(unsigned netId, const char* interfa
     return 0;
 }
 
+WARN_UNUSED_RESULT int modifyVpnRules(unsigned netId, const char* interface, uint16_t action) {
+    uint32_t table = getRouteTableForInterface(interface);
+    if (!table) {
+        ALOGE("cannot find interface %s", interface);
+        return -ESRCH;
+    }
+
+    Fwmark fwmark;
+    Fwmark mask;
+
+    // A rule to route all traffic from a given set of UIDs to go over the VPN.
+    //
+    // Notice that this rule doesn't use the netId. I.e., no matter what netId the user's socket may
+    // have, if they are subject to this VPN, their traffic has to go through it. Allows the traffic
+    // to bypass the VPN if the protectedFromVpn bit is set.
+    //
+    // TODO: Actually implement the "from a set of UIDs" part.
+    fwmark.protectedFromVpn = false;
+    mask.protectedFromVpn = true;
+    if (int ret = modifyIpRule(action, RULE_PRIORITY_SECURE_VPN, table, fwmark.intValue,
+                               mask.intValue, NULL, INVALID_UID, INVALID_UID)) {
+        return ret;
+    }
+
+    // A rule to allow privileged apps to send traffic over this VPN even if they are not part of
+    // the target set of UIDs.
+    //
+    // This is needed for DnsProxyListener to correctly resolve a request for a user who is in the
+    // target set, but where the DnsProxyListener itself is not.
+    fwmark.protectedFromVpn = false;
+    mask.protectedFromVpn = false;
+
+    fwmark.netId = netId;
+    mask.netId = FWMARK_NET_ID_MASK;
+
+    fwmark.permission = PERMISSION_CONNECTIVITY_INTERNAL;
+    mask.permission = PERMISSION_CONNECTIVITY_INTERNAL;
+
+    return modifyIpRule(action, RULE_PRIORITY_SECURE_VPN, table, fwmark.intValue, mask.intValue,
+                        NULL, INVALID_UID, INVALID_UID);
+}
+
 WARN_UNUSED_RESULT int modifyDefaultNetworkRules(const char* interface, Permission permission,
                                                  uint16_t action) {
     uint32_t table = getRouteTableForInterface(interface);
@@ -542,6 +585,23 @@ int RouteController::addInterfaceToNetwork(unsigned netId, const char* interface
 int RouteController::removeInterfaceFromNetwork(unsigned netId, const char* interface,
                                                 Permission permission) {
     if (int ret = modifyPerNetworkRules(netId, interface, permission, false, true)) {
+        return ret;
+    }
+    return flushRoutes(interface);
+}
+
+int RouteController::addInterfaceToVpn(unsigned netId, const char* interface) {
+    if (int ret = modifyPerNetworkRules(netId, interface, PERMISSION_NONE, true, true)) {
+        return ret;
+    }
+    return modifyVpnRules(netId, interface, RTM_NEWRULE);
+}
+
+int RouteController::removeInterfaceFromVpn(unsigned netId, const char* interface) {
+    if (int ret = modifyPerNetworkRules(netId, interface, PERMISSION_NONE, false, true)) {
+        return ret;
+    }
+    if (int ret = modifyVpnRules(netId, interface, RTM_DELRULE)) {
         return ret;
     }
     return flushRoutes(interface);

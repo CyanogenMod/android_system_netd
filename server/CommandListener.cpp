@@ -1642,19 +1642,29 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
 
     //    0      1       2          3
     // network create <netId> [<permission> ...]
+    //
+    //    0      1       2     3      4
+    // network create <netId> vpn <ownerUid>
     if (!strcmp(argv[1], "create")) {
         if (argc < 3) {
             return syntaxError(client, "Missing argument");
         }
         // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
         unsigned netId = strtoul(argv[2], NULL, 0);
-        int nextArg = 3;
-        Permission permission = parseMultiplePermissions(argc, argv, &nextArg);
-        if (nextArg != argc) {
-            return syntaxError(client, "Unknown trailing argument(s)");
-        }
-        if (int ret = sNetCtrl->createNetwork(netId, permission)) {
-            return operationError(client, "createNetwork() failed", ret);
+        if (argc == 5 && !strcmp(argv[3], "vpn")) {
+            uid_t ownerUid = strtoul(argv[4], NULL, 0);
+            if (int ret = sNetCtrl->createVpn(netId, ownerUid)) {
+                return operationError(client, "createVpn() failed", ret);
+            }
+        } else {
+            int nextArg = 3;
+            Permission permission = parseMultiplePermissions(argc, argv, &nextArg);
+            if (nextArg != argc) {
+                return syntaxError(client, "Unknown trailing argument(s)");
+            }
+            if (int ret = sNetCtrl->createNetwork(netId, permission)) {
+                return operationError(client, "createNetwork() failed", ret);
+            }
         }
         return success(client);
     }
@@ -1736,8 +1746,6 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return success(client);
     }
 
-    // network vpn create <netId> [owner_uid]
-    // network vpn destroy <netId>
     // network <bind|unbind> <netId> <uid1> .. <uidN>
     //     -- uid range can be specified as "uidX-uidY"
     // TODO:

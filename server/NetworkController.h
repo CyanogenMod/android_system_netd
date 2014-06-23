@@ -29,6 +29,7 @@
 
 class Network;
 class PhysicalNetwork;
+class VirtualNetwork;
 
 /*
  * Keeps track of default, per-pid, and per-uid-range network selection, as
@@ -55,6 +56,7 @@ public:
     bool isValidNetwork(unsigned netId) const;
 
     int createNetwork(unsigned netId, Permission permission) WARN_UNUSED_RESULT;
+    int createVpn(unsigned netId, uid_t ownerUid) WARN_UNUSED_RESULT;
     int destroyNetwork(unsigned netId) WARN_UNUSED_RESULT;
 
     int addInterfaceToNetwork(unsigned netId, const char* interface) WARN_UNUSED_RESULT;
@@ -93,6 +95,7 @@ private:
     std::list<UidEntry> mUidMap;
     unsigned mDefaultNetId;
     std::map<unsigned, PhysicalNetwork*> mPhysicalNetworks;  // Map keys are NetIds.
+    std::map<unsigned, VirtualNetwork*> mVirtualNetworks;  // Map keys are NetIds.
     std::map<uid_t, Permission> mUsers;
 };
 
