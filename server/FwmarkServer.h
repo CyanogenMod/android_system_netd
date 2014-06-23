@@ -20,12 +20,10 @@
 #include <sysutils/SocketListener.h>
 
 class NetworkController;
-class PermissionsController;
 
 class FwmarkServer : public SocketListener {
 public:
-    FwmarkServer(NetworkController* networkController,
-                 PermissionsController* permissionsController);
+    explicit FwmarkServer(NetworkController* networkController);
 
 private:
     // Overridden from SocketListener:
@@ -35,7 +33,6 @@ private:
     int processClient(SocketClient* client, int* fd);
 
     NetworkController* const mNetworkController;
-    PermissionsController* const mPermissionsController;
 };
 
 #endif  // NETD_SERVER_FWMARK_SERVER_H

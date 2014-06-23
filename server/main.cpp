@@ -66,7 +66,7 @@ int main() {
     // Set local DNS mode, to prevent bionic from proxying
     // back to this service, recursively.
     setenv("ANDROID_DNS_MODE", "local", 1);
-    dpl = new DnsProxyListener(CommandListener::sNetCtrl, CommandListener::sPermissionsController);
+    dpl = new DnsProxyListener(CommandListener::sNetCtrl);
     if (dpl->startListener()) {
         ALOGE("Unable to start DnsProxyListener (%s)", strerror(errno));
         exit(1);
@@ -78,8 +78,7 @@ int main() {
         exit(1);
     }
 
-    fwmarkServer = new FwmarkServer(CommandListener::sNetCtrl,
-                                    CommandListener::sPermissionsController);
+    fwmarkServer = new FwmarkServer(CommandListener::sNetCtrl);
     if (fwmarkServer->startListener()) {
         ALOGE("Unable to start FwmarkServer (%s)", strerror(errno));
         exit(1);

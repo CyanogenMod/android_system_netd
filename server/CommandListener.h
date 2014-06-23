@@ -33,9 +33,6 @@
 #include "FirewallController.h"
 #include "ClatdController.h"
 
-class PermissionsController;
-class RouteController;
-
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
     static NatController *sNatCtrl;
@@ -48,11 +45,9 @@ class CommandListener : public FrameworkListener {
     static SecondaryTableController *sSecondaryTableCtrl;
     static FirewallController *sFirewallCtrl;
     static ClatdController *sClatdCtrl;
-    static RouteController* sRouteController;
 
 public:
     static NetworkController *sNetCtrl;
-    static PermissionsController* sPermissionsController;
 
     CommandListener();
     virtual ~CommandListener() {}
@@ -157,8 +152,7 @@ private:
         int runCommand(SocketClient* client, int argc, char** argv);
     private:
         int syntaxError(SocketClient* cli, const char* message);
-        int paramError(SocketClient* cli, const char* message);
-        int operationError(SocketClient* cli, const char* message);
+        int operationError(SocketClient* cli, const char* message, int ret);
         int success(SocketClient* cli);
     };
 };

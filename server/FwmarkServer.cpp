@@ -19,17 +19,13 @@
 #include "Fwmark.h"
 #include "FwmarkCommand.h"
 #include "NetworkController.h"
-#include "PermissionsController.h"
 #include "resolv_netid.h"
 
 #include <sys/socket.h>
 #include <unistd.h>
 
-FwmarkServer::FwmarkServer(NetworkController* networkController,
-                           PermissionsController* permissionsController)
-        : SocketListener("fwmarkd", true),
-          mNetworkController(networkController),
-          mPermissionsController(permissionsController) {
+FwmarkServer::FwmarkServer(NetworkController* networkController) :
+        SocketListener("fwmarkd", true), mNetworkController(networkController) {
 }
 
 bool FwmarkServer::onDataAvailable(SocketClient* client) {
@@ -95,13 +91,13 @@ int FwmarkServer::processClient(SocketClient* client, int* fd) {
         return -errno;
     }
 
-    fwmark.permission = mPermissionsController->getPermissionForUser(client->getUid());
+    fwmark.permission = mNetworkController->getPermissionForUser(client->getUid());
 
     switch (command.cmdId) {
         case FwmarkCommand::ON_ACCEPT: {
             // Called after a socket accept(). The kernel would've marked the netId into the socket
             // already, so we just need to check permissions here.
-            if (!mPermissionsController->isUserPermittedOnNetwork(client->getUid(), fwmark.netId)) {
+            if (!mNetworkController->isUserPermittedOnNetwork(client->getUid(), fwmark.netId)) {
                 return -EPERM;
             }
             break;
@@ -130,8 +126,8 @@ int FwmarkServer::processClient(SocketClient* client, int* fd) {
                 if (!mNetworkController->isValidNetwork(command.netId)) {
                     return -ENONET;
                 }
-                if (!mPermissionsController->isUserPermittedOnNetwork(client->getUid(),
-                                                                      command.netId)) {
+                if (!mNetworkController->isUserPermittedOnNetwork(client->getUid(),
+                                                                  command.netId)) {
                     return -EPERM;
                 }
             }

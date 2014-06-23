@@ -32,35 +32,22 @@
 
 #include "NetworkController.h"
 
-#include "PermissionsController.h"
+#include "PhysicalNetwork.h"
 #include "RouteController.h"
 
-#define LOG_TAG "NetworkController"
-
-#include <sys/socket.h>
-#include <linux/if.h>
-
-#include "cutils/log.h"
+#define LOG_TAG "Netd"
+#include "log/log.h"
 #include "resolv_netid.h"
 
 namespace {
 
 // Keep these in sync with ConnectivityService.java.
-const unsigned int MIN_NET_ID = 10;
-const unsigned int MAX_NET_ID = 65535;
+const unsigned MIN_NET_ID = 10;
+const unsigned MAX_NET_ID = 65535;
 
 }  // namespace
 
-NetworkController::NetworkController(PermissionsController* permissionsController,
-                                     RouteController* routeController)
-        : mDefaultNetId(NETID_UNSET),
-          mPermissionsController(permissionsController),
-          mRouteController(routeController) {
-}
-
-void NetworkController::clearNetworkPreference() {
-    android::RWLock::AutoWLock lock(mRWLock);
-    mUidMap.clear();
+NetworkController::NetworkController() : mDefaultNetId(NETID_UNSET) {
 }
 
 unsigned NetworkController::getDefaultNetwork() const {
@@ -68,312 +55,258 @@ unsigned NetworkController::getDefaultNetwork() const {
     return mDefaultNetId;
 }
 
-bool NetworkController::setDefaultNetwork(unsigned newNetId) {
-    // newNetId must be either NETID_UNSET or a valid network. If it's NETID_UNSET, the caller is
-    // asking for there to be no default network, which is a request we support.
-    if (newNetId != NETID_UNSET && !isValidNetwork(newNetId)) {
-        ALOGE("invalid netId %u", newNetId);
-        errno = EINVAL;
-        return false;
+int NetworkController::setDefaultNetwork(unsigned netId) {
+    android::RWLock::AutoWLock lock(mRWLock);
+
+    if (netId == mDefaultNetId) {
+        return 0;
     }
 
-    unsigned oldNetId;
-    {
-        android::RWLock::AutoWLock lock(mRWLock);
-        oldNetId = mDefaultNetId;
-        mDefaultNetId = newNetId;
-    }
-
-    if (oldNetId == newNetId) {
-        return true;
-    }
-
-    bool status = true;
-    Permission permission;
-    InterfaceRange range;
-
-    // Add default network rules for the new netId.
-    permission = mPermissionsController->getPermissionForNetwork(newNetId);
-    range = mNetIdToInterfaces.equal_range(newNetId);
-    for (InterfaceIteratorConst iter = range.first; iter != range.second; ++iter) {
-        if (!mRouteController->addToDefaultNetwork(iter->second.c_str(), permission)) {
-            ALOGE("failed to add interface %s to default netId %u", iter->second.c_str(), newNetId);
-            status = false;
+    if (netId != NETID_UNSET) {
+        auto iter = mPhysicalNetworks.find(netId);
+        if (iter == mPhysicalNetworks.end()) {
+            ALOGE("invalid netId %u", netId);
+            return -EINVAL;
+        }
+        if (int ret = iter->second->addAsDefault()) {
+            return ret;
         }
     }
 
-    // Remove the old default network rules.
-    permission = mPermissionsController->getPermissionForNetwork(oldNetId);
-    range = mNetIdToInterfaces.equal_range(oldNetId);
-    for (InterfaceIteratorConst iter = range.first; iter != range.second; ++iter) {
-        if (!mRouteController->removeFromDefaultNetwork(iter->second.c_str(), permission)) {
-            ALOGE("failed to remove interface %s from default netId %u", iter->second.c_str(),
-                  oldNetId);
-            status = false;
+    if (mDefaultNetId != NETID_UNSET) {
+        auto iter = mPhysicalNetworks.find(mDefaultNetId);
+        if (iter == mPhysicalNetworks.end()) {
+            ALOGE("cannot find previously set default network with netId %u", mDefaultNetId);
+            return -ESRCH;
+        }
+        if (int ret = iter->second->removeAsDefault()) {
+            return ret;
         }
     }
 
-    return status;
+    mDefaultNetId = netId;
+    return 0;
 }
 
-bool NetworkController::setNetworkForUidRange(int uid_start, int uid_end, unsigned netId,
-                                              bool forward_dns) {
-    if (uid_start > uid_end || !isValidNetwork(netId)) {
+bool NetworkController::setNetworkForUidRange(uid_t uidStart, uid_t uidEnd, unsigned netId,
+                                              bool forwardDns) {
+    if (uidStart > uidEnd || !isValidNetwork(netId)) {
         errno = EINVAL;
         return false;
     }
 
     android::RWLock::AutoWLock lock(mRWLock);
-    for (std::list<UidEntry>::iterator it = mUidMap.begin(); it != mUidMap.end(); ++it) {
-        if (it->uid_start != uid_start || it->uid_end != uid_end || it->netId != netId)
-            continue;
-        it->forward_dns = forward_dns;
-        return true;
+    for (UidEntry& entry : mUidMap) {
+        if (entry.uidStart == uidStart && entry.uidEnd == uidEnd && entry.netId == netId) {
+            entry.forwardDns = forwardDns;
+            return true;
+        }
     }
 
-    mUidMap.push_front(UidEntry(uid_start, uid_end, netId, forward_dns));
+    mUidMap.push_front(UidEntry(uidStart, uidEnd, netId, forwardDns));
     return true;
 }
 
-bool NetworkController::clearNetworkForUidRange(int uid_start, int uid_end, unsigned netId) {
-    if (uid_start > uid_end || !isValidNetwork(netId)) {
+bool NetworkController::clearNetworkForUidRange(uid_t uidStart, uid_t uidEnd, unsigned netId) {
+    if (uidStart > uidEnd || !isValidNetwork(netId)) {
         errno = EINVAL;
         return false;
     }
 
     android::RWLock::AutoWLock lock(mRWLock);
-    for (std::list<UidEntry>::iterator it = mUidMap.begin(); it != mUidMap.end(); ++it) {
-        if (it->uid_start != uid_start || it->uid_end != uid_end || it->netId != netId)
-            continue;
-        mUidMap.erase(it);
-        return true;
+    for (auto iter = mUidMap.begin(); iter != mUidMap.end(); ++iter) {
+        if (iter->uidStart == uidStart && iter->uidEnd == uidEnd && iter->netId == netId) {
+            mUidMap.erase(iter);
+            return true;
+        }
     }
 
     errno = ENOENT;
     return false;
 }
 
-unsigned NetworkController::getNetwork(int uid, unsigned requested_netId, bool for_dns) const {
+unsigned NetworkController::getNetwork(uid_t uid, unsigned requestedNetId, bool forDns) const {
     android::RWLock::AutoRLock lock(mRWLock);
-    for (std::list<UidEntry>::const_iterator it = mUidMap.begin(); it != mUidMap.end(); ++it) {
-        if (uid < it->uid_start || it->uid_end < uid)
-            continue;
-        if (for_dns && !it->forward_dns)
-            break;
-        return it->netId;
+    for (const UidEntry& entry : mUidMap) {
+        if (entry.uidStart <= uid && uid <= entry.uidEnd) {
+            if (forDns && !entry.forwardDns) {
+                break;
+            }
+            return entry.netId;
+        }
     }
-    if (mValidNetworks.find(requested_netId) != mValidNetworks.end())
-        return requested_netId;
-    return mDefaultNetId;
+    return getNetworkLocked(requestedNetId) ? requestedNetId : mDefaultNetId;
 }
 
 unsigned NetworkController::getNetworkId(const char* interface) const {
-    for (InterfaceIteratorConst iter = mNetIdToInterfaces.begin(); iter != mNetIdToInterfaces.end();
-         ++iter) {
-        if (iter->second == interface) {
-            return iter->first;
+    android::RWLock::AutoRLock lock(mRWLock);
+    for (const auto& entry : mPhysicalNetworks) {
+        if (entry.second->hasInterface(interface)) {
+            return entry.first;
         }
     }
     return NETID_UNSET;
 }
 
-bool NetworkController::createNetwork(unsigned netId, Permission permission) {
+bool NetworkController::isValidNetwork(unsigned netId) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+    return getNetworkLocked(netId);
+}
+
+int NetworkController::createNetwork(unsigned netId, Permission permission) {
     if (netId < MIN_NET_ID || netId > MAX_NET_ID) {
         ALOGE("invalid netId %u", netId);
-        errno = EINVAL;
-        return false;
-    }
-
-    {
-        android::RWLock::AutoWLock lock(mRWLock);
-        if (!mValidNetworks.insert(netId).second) {
-            ALOGE("duplicate netId %u", netId);
-            errno = EEXIST;
-            return false;
-        }
-    }
-
-    mPermissionsController->setPermissionForNetwork(permission, netId);
-    return true;
-}
-
-int NetworkController::addInterfaceToNetwork(unsigned netId, const char* interface) {
-    if (!isValidNetwork(netId) || !interface) {
-        ALOGE("invalid netId %u or interface null", netId);
         return -EINVAL;
     }
 
-    unsigned existingNetId = getNetworkId(interface);
-    if (existingNetId != NETID_UNSET) {
-        ALOGE("interface %s already assigned to netId %u", interface, existingNetId);
-        return -EBUSY;
+    if (isValidNetwork(netId)) {
+        ALOGE("duplicate netId %u", netId);
+        return -EEXIST;
     }
 
-    int ret;
-    Permission permission = mPermissionsController->getPermissionForNetwork(netId);
-    if ((ret = mRouteController->addInterfaceToNetwork(netId, interface, permission)) != 0) {
-        ALOGE("failed to add interface %s to netId %u", interface, netId);
+    PhysicalNetwork* physicalNetwork = new PhysicalNetwork(netId);
+    if (int ret = physicalNetwork->setPermission(permission)) {
+        ALOGE("inconceivable! setPermission cannot fail on an empty network");
+        delete physicalNetwork;
         return ret;
     }
 
-    mNetIdToInterfaces.insert(std::pair<unsigned, std::string>(netId, interface));
-
-    if (netId == getDefaultNetwork() &&
-            (ret = mRouteController->addToDefaultNetwork(interface, permission)) != 0) {
-        ALOGE("failed to add interface %s to default netId %u", interface, netId);
-        return ret;
-    }
-
+    android::RWLock::AutoWLock lock(mRWLock);
+    mPhysicalNetworks[netId] = physicalNetwork;
     return 0;
 }
 
-int NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* interface) {
-    if (!isValidNetwork(netId) || !interface) {
-        ALOGE("invalid netId %u or interface null", netId);
-        return -EINVAL;
-    }
-
-    int ret = -ENOENT;
-    InterfaceRange range = mNetIdToInterfaces.equal_range(netId);
-    for (InterfaceIterator iter = range.first; iter != range.second; ++iter) {
-        if (iter->second == interface) {
-            mNetIdToInterfaces.erase(iter);
-            ret = 0;
-            break;
-        }
-    }
-
-    if (ret) {
-        ALOGE("interface %s not assigned to netId %u", interface, netId);
-        return ret;
-    }
-
-    Permission permission = mPermissionsController->getPermissionForNetwork(netId);
-    if (netId == getDefaultNetwork() &&
-            (ret = mRouteController->removeFromDefaultNetwork(interface, permission)) != 0) {
-        ALOGE("failed to remove interface %s from default netId %u", interface, netId);
-        return ret;
-    }
-
-    if ((ret = mRouteController->removeInterfaceFromNetwork(netId, interface, permission)) != 0) {
-        ALOGE("failed to remove interface %s from netId %u", interface, netId);
-        return ret;
-    }
-
-    return 0;
-}
-
-bool NetworkController::destroyNetwork(unsigned netId) {
+int NetworkController::destroyNetwork(unsigned netId) {
     if (!isValidNetwork(netId)) {
         ALOGE("invalid netId %u", netId);
-        errno = EINVAL;
-        return false;
+        return -EINVAL;
     }
 
     // TODO: ioctl(SIOCKILLADDR, ...) to kill all sockets on the old network.
 
-    bool status = true;
-
-    InterfaceRange range = mNetIdToInterfaces.equal_range(netId);
-    for (InterfaceIteratorConst iter = range.first; iter != range.second; ) {
-        char interface[IFNAMSIZ];
-        strncpy(interface, iter->second.c_str(), sizeof(interface));
-        interface[sizeof(interface) - 1] = 0;
-        ++iter;
-        if (!removeInterfaceFromNetwork(netId, interface)) {
-            status = false;
+    android::RWLock::AutoWLock lock(mRWLock);
+    Network* network = getNetworkLocked(netId);
+    if (int ret = network->clearInterfaces()) {
+        return ret;
+    }
+    if (mDefaultNetId == netId) {
+        PhysicalNetwork* physicalNetwork = static_cast<PhysicalNetwork*>(network);
+        if (int ret = physicalNetwork->removeAsDefault()) {
+            ALOGE("inconceivable! removeAsDefault cannot fail on an empty network");
+            return ret;
         }
+        mDefaultNetId = NETID_UNSET;
     }
-
-    if (netId == getDefaultNetwork()) {
-        setDefaultNetwork(NETID_UNSET);
-    }
-
-    {
-        android::RWLock::AutoWLock lock(mRWLock);
-        mValidNetworks.erase(netId);
-    }
-
-    mPermissionsController->setPermissionForNetwork(PERMISSION_NONE, netId);
-
+    mPhysicalNetworks.erase(netId);
+    delete network;
     _resolv_delete_cache_for_net(netId);
-    return status;
-}
-
-void NetworkController::setPermissionForUser(Permission permission,
-                                             const std::vector<unsigned>& uid) {
-    for (size_t i = 0; i < uid.size(); ++i) {
-        mPermissionsController->setPermissionForUser(permission, uid[i]);
-    }
-}
-
-int NetworkController::setPermissionForNetwork(Permission newPermission,
-                                               const std::vector<unsigned>& netId) {
-    for (size_t i = 0; i < netId.size(); ++i) {
-        if (!isValidNetwork(netId[i])) {
-            ALOGE("invalid netId %u", netId[i]);
-            return -EINVAL;
-        }
-
-        Permission oldPermission = mPermissionsController->getPermissionForNetwork(netId[i]);
-        if (oldPermission == newPermission) {
-            continue;
-        }
-
-        // TODO: ioctl(SIOCKILLADDR, ...) to kill sockets on the network that don't have
-        // newPermission.
-
-        InterfaceRange range = mNetIdToInterfaces.equal_range(netId[i]);
-        for (InterfaceIteratorConst iter = range.first; iter != range.second; ++iter) {
-            int ret = mRouteController->modifyNetworkPermission(netId[i], iter->second.c_str(),
-                                                                oldPermission, newPermission);
-            if (ret) {
-                ALOGE("failed to change permission on interface %s of netId %u from %x to %x",
-                      iter->second.c_str(), netId[i], oldPermission, newPermission);
-                return ret;
-            }
-        }
-
-        mPermissionsController->setPermissionForNetwork(newPermission, netId[i]);
-    }
-
     return 0;
 }
 
-int NetworkController::addRoute(unsigned netId, const char* interface, const char* destination,
-                                const char* nexthop, bool legacy, unsigned uid) {
-    return modifyRoute(netId, interface, destination, nexthop, true, legacy, uid);
-}
-
-int NetworkController::removeRoute(unsigned netId, const char* interface, const char* destination,
-                                   const char* nexthop, bool legacy, unsigned uid) {
-    return modifyRoute(netId, interface, destination, nexthop, false, legacy, uid);
-}
-
-bool NetworkController::isValidNetwork(unsigned netId) const {
-    if (netId == NETID_UNSET) {
-        return false;
-    }
-
-    android::RWLock::AutoRLock lock(mRWLock);
-    return mValidNetworks.find(netId) != mValidNetworks.end();
-}
-
-int NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,
-                                   const char* nexthop, bool add, bool legacy, unsigned uid) {
+int NetworkController::addInterfaceToNetwork(unsigned netId, const char* interface) {
     if (!isValidNetwork(netId)) {
         ALOGE("invalid netId %u", netId);
         return -EINVAL;
     }
 
-    if (getNetworkId(interface) != netId) {
-        ALOGE("netId %u has no such interface %s", netId, interface);
+    unsigned existingNetId = getNetworkId(interface);
+    if (existingNetId != NETID_UNSET && existingNetId != netId) {
+        ALOGE("interface %s already assigned to netId %u", interface, existingNetId);
+        return -EBUSY;
+    }
+
+    android::RWLock::AutoWLock lock(mRWLock);
+    return getNetworkLocked(netId)->addInterface(interface);
+}
+
+int NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* interface) {
+    if (!isValidNetwork(netId)) {
+        ALOGE("invalid netId %u", netId);
+        return -EINVAL;
+    }
+
+    android::RWLock::AutoWLock lock(mRWLock);
+    return getNetworkLocked(netId)->removeInterface(interface);
+}
+
+Permission NetworkController::getPermissionForUser(uid_t uid) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+    auto iter = mUsers.find(uid);
+    return iter != mUsers.end() ? iter->second : PERMISSION_NONE;
+}
+
+void NetworkController::setPermissionForUsers(Permission permission,
+                                              const std::vector<uid_t>& uids) {
+    android::RWLock::AutoWLock lock(mRWLock);
+    for (uid_t uid : uids) {
+        if (permission == PERMISSION_NONE) {
+            mUsers.erase(uid);
+        } else {
+            mUsers[uid] = permission;
+        }
+    }
+}
+
+bool NetworkController::isUserPermittedOnNetwork(uid_t uid, unsigned netId) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+    auto userIter = mUsers.find(uid);
+    Permission userPermission = (userIter != mUsers.end() ? userIter->second : PERMISSION_NONE);
+    auto networkIter = mPhysicalNetworks.find(netId);
+    if (networkIter == mPhysicalNetworks.end()) {
+        return false;
+    }
+    Permission networkPermission = networkIter->second->getPermission();
+    return (userPermission & networkPermission) == networkPermission;
+}
+
+int NetworkController::setPermissionForNetworks(Permission permission,
+                                                const std::vector<unsigned>& netIds) {
+    android::RWLock::AutoWLock lock(mRWLock);
+    for (unsigned netId : netIds) {
+        auto iter = mPhysicalNetworks.find(netId);
+        if (iter == mPhysicalNetworks.end()) {
+            ALOGE("invalid netId %u", netId);
+            return -EINVAL;
+        }
+
+        // TODO: ioctl(SIOCKILLADDR, ...) to kill socets on the network that don't have permission.
+
+        if (int ret = iter->second->setPermission(permission)) {
+            return ret;
+        }
+    }
+    return 0;
+}
+
+int NetworkController::addRoute(unsigned netId, const char* interface, const char* destination,
+                                const char* nexthop, bool legacy, uid_t uid) {
+    return modifyRoute(netId, interface, destination, nexthop, true, legacy, uid);
+}
+
+int NetworkController::removeRoute(unsigned netId, const char* interface, const char* destination,
+                                   const char* nexthop, bool legacy, uid_t uid) {
+    return modifyRoute(netId, interface, destination, nexthop, false, legacy, uid);
+}
+
+Network* NetworkController::getNetworkLocked(unsigned netId) const {
+    auto physicalNetworkIter = mPhysicalNetworks.find(netId);
+    if (physicalNetworkIter != mPhysicalNetworks.end()) {
+        return physicalNetworkIter->second;
+    }
+    return NULL;
+}
+
+int NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,
+                                   const char* nexthop, bool add, bool legacy, uid_t uid) {
+    unsigned existingNetId = getNetworkId(interface);
+    if (netId == NETID_UNSET || existingNetId != netId) {
+        ALOGE("interface %s assigned to netId %u, not %u", interface, existingNetId, netId);
         return -ENOENT;
     }
 
     RouteController::TableType tableType;
     if (legacy) {
-        if (mPermissionsController->getPermissionForUser(uid) & PERMISSION_CONNECTIVITY_INTERNAL) {
+        if (getPermissionForUser(uid) & PERMISSION_CONNECTIVITY_INTERNAL) {
             tableType = RouteController::PRIVILEGED_LEGACY;
         } else {
             tableType = RouteController::LEGACY;
@@ -382,10 +315,11 @@ int NetworkController::modifyRoute(unsigned netId, const char* interface, const 
         tableType = RouteController::INTERFACE;
     }
 
-    return add ? mRouteController->addRoute(interface, destination, nexthop, tableType, uid) :
-                 mRouteController->removeRoute(interface, destination, nexthop, tableType, uid);
+    return add ? RouteController::addRoute(interface, destination, nexthop, tableType, uid) :
+                 RouteController::removeRoute(interface, destination, nexthop, tableType, uid);
 }
 
-NetworkController::UidEntry::UidEntry(int start, int end, unsigned netId, bool forward_dns)
-    : uid_start(start), uid_end(end), netId(netId), forward_dns(forward_dns) {
+NetworkController::UidEntry::UidEntry(uid_t uidStart, uid_t uidEnd, unsigned netId,
+                                      bool forwardDns) :
+        uidStart(uidStart), uidEnd(uidEnd), netId(netId), forwardDns(forwardDns) {
 }

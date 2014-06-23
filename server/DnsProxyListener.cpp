@@ -39,14 +39,10 @@
 #include "DnsProxyListener.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
-#include "PermissionsController.h"
 #include "ResponseCode.h"
 
-DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl,
-        const PermissionsController* permCtrl) :
-                 FrameworkListener("dnsproxyd"),
-                 mNetCtrl(netCtrl),
-                 mPermCtrl(permCtrl) {
+DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl) :
+        FrameworkListener("dnsproxyd"), mNetCtrl(netCtrl) {
     registerCmd(new GetAddrInfoCmd(this));
     registerCmd(new GetHostByAddrCmd(this));
     registerCmd(new GetHostByNameCmd(this));
@@ -58,7 +54,7 @@ uint32_t DnsProxyListener::calcMark(SocketClient *c, unsigned netId) const {
     // If netd's UID is forced into a VPN that isn't the intended network,
     // use VPN protect bit to force it into the desired network.
     fwmark.protectedFromVpn = mNetCtrl->getNetwork(getuid(), netId, true) != netId;
-    fwmark.permission = mPermCtrl->getPermissionForUser(c->getUid());
+    fwmark.permission = mNetCtrl->getPermissionForUser(c->getUid());
     return fwmark.intValue;
 }
 

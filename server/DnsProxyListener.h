@@ -22,16 +22,14 @@
 #include "NetdCommand.h"
 
 class NetworkController;
-class PermissionsController;
 
 class DnsProxyListener : public FrameworkListener {
 public:
-    DnsProxyListener(const NetworkController* netCtrl, const PermissionsController* permCtrl);
+    explicit DnsProxyListener(const NetworkController* netCtrl);
     virtual ~DnsProxyListener() {}
 
 private:
     const NetworkController *mNetCtrl;
-    const PermissionsController *mPermCtrl;
     class GetAddrInfoCmd : public NetdCommand {
     public:
         GetAddrInfoCmd(const DnsProxyListener* dnsProxyListener);

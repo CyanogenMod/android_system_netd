@@ -17,7 +17,10 @@
 #ifndef NETD_SERVER_ROUTE_CONTROLLER_H
 #define NETD_SERVER_ROUTE_CONTROLLER_H
 
+#include "NetdConstants.h"
 #include "Permission.h"
+
+#include <sys/types.h>
 
 class RouteController {
 public:
@@ -30,21 +33,25 @@ public:
 
     static const int ROUTE_TABLE_OFFSET_FROM_INDEX = 1000;
 
-    static void Init();
+    static int Init() WARN_UNUSED_RESULT;
 
-    static int addInterfaceToNetwork(unsigned netId, const char* interface, Permission permission);
+    static int addInterfaceToNetwork(unsigned netId, const char* interface,
+                                     Permission permission) WARN_UNUSED_RESULT;
     static int removeInterfaceFromNetwork(unsigned netId, const char* interface,
-                                          Permission permission);
-    static int modifyNetworkPermission(unsigned netId, const char* interface,
-                                       Permission oldPermission, Permission newPermission);
+                                          Permission permission) WARN_UNUSED_RESULT;
 
-    static int addToDefaultNetwork(const char* interface, Permission permission);
-    static int removeFromDefaultNetwork(const char* interface, Permission permission);
+    static int modifyNetworkPermission(unsigned netId, const char* interface,
+                                       Permission oldPermission,
+                                       Permission newPermission) WARN_UNUSED_RESULT;
+
+    static int addToDefaultNetwork(const char* interface, Permission permission) WARN_UNUSED_RESULT;
+    static int removeFromDefaultNetwork(const char* interface,
+                                        Permission permission) WARN_UNUSED_RESULT;
 
     static int addRoute(const char* interface, const char* destination, const char* nexthop,
-                        TableType tableType, unsigned uid);
+                        TableType tableType, uid_t uid) WARN_UNUSED_RESULT;
     static int removeRoute(const char* interface, const char* destination, const char* nexthop,
-                           TableType tableType, unsigned uid);
+                           TableType tableType, uid_t uid) WARN_UNUSED_RESULT;
 };
 
 #endif  // NETD_SERVER_ROUTE_CONTROLLER_H

@@ -44,7 +44,6 @@
 #include "oem_iptables_hook.h"
 #include "NetdConstants.h"
 #include "FirewallController.h"
-#include "PermissionsController.h"
 #include "RouteController.h"
 
 #include <string>
@@ -68,8 +67,6 @@ Permission parseMultiplePermissions(int argc, char** argv, int* nextArg) {
 
 }  // namespace
 
-PermissionsController* CommandListener::sPermissionsController = NULL;
-RouteController* CommandListener::sRouteController = NULL;
 NetworkController *CommandListener::sNetCtrl = NULL;
 TetherController *CommandListener::sTetherCtrl = NULL;
 NatController *CommandListener::sNatCtrl = NULL;
@@ -175,12 +172,8 @@ CommandListener::CommandListener() :
     registerCmd(new ClatdCmd());
     registerCmd(new NetworkCommand());
 
-    if (!sPermissionsController)
-        sPermissionsController = new PermissionsController();
-    if (!sRouteController)
-        sRouteController = new RouteController();
     if (!sNetCtrl)
-        sNetCtrl = new NetworkController(sPermissionsController, sRouteController);
+        sNetCtrl = new NetworkController();
     if (!sSecondaryTableCtrl)
         sSecondaryTableCtrl = new SecondaryTableController(sNetCtrl);
     if (!sTetherCtrl)
@@ -247,7 +240,9 @@ CommandListener::CommandListener() :
 
     sSecondaryTableCtrl->setupIptablesHooks();
 
-    sRouteController->Init();
+    if (int ret = RouteController::Init()) {
+        ALOGE("failed to initialize RouteController (%s)", strerror(-ret));
+    }
 }
 
 CommandListener::InterfaceCmd::InterfaceCmd() :
@@ -1563,12 +1558,9 @@ int CommandListener::NetworkCommand::syntaxError(SocketClient* client, const cha
     return 0;
 }
 
-int CommandListener::NetworkCommand::paramError(SocketClient* client, const char* message) {
-    client->sendMsg(ResponseCode::CommandParameterError, message, false);
-    return 0;
-}
-
-int CommandListener::NetworkCommand::operationError(SocketClient* client, const char* message) {
+int CommandListener::NetworkCommand::operationError(SocketClient* client, const char* message,
+                                                    int ret) {
+    errno = -ret;
     client->sendMsg(ResponseCode::OperationFailed, message, true);
     return 0;
 }
@@ -1581,6 +1573,71 @@ int CommandListener::NetworkCommand::success(SocketClient* client) {
 int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, char** argv) {
     if (argc < 2) {
         return syntaxError(client, "Missing argument");
+    }
+
+    //    0      1      2      3      4       5         6            7           8
+    // network route [legacy <uid>]  add   <netId> <interface> <destination> [nexthop]
+    // network route [legacy <uid>] remove <netId> <interface> <destination> [nexthop]
+    if (!strcmp(argv[1], "route")) {
+        if (argc < 6 || argc > 9) {
+            return syntaxError(client, "Incorrect number of arguments");
+        }
+
+        int nextArg = 2;
+        bool legacy = false;
+        uid_t uid = 0;
+        if (!strcmp(argv[nextArg], "legacy")) {
+            ++nextArg;
+            legacy = true;
+            uid = strtoul(argv[nextArg++], NULL, 0);
+        }
+
+        bool add = false;
+        if (!strcmp(argv[nextArg], "add")) {
+            add = true;
+        } else if (strcmp(argv[nextArg], "remove")) {
+            return syntaxError(client, "Unknown argument");
+        }
+        ++nextArg;
+
+        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
+        unsigned netId = strtoul(argv[nextArg++], NULL, 0);
+        const char* interface = argv[nextArg++];
+        const char* destination = argv[nextArg++];
+        const char* nexthop = argc > nextArg ? argv[nextArg] : NULL;
+
+        int ret;
+        if (add) {
+            ret = sNetCtrl->addRoute(netId, interface, destination, nexthop, legacy, uid);
+        } else {
+            ret = sNetCtrl->removeRoute(netId, interface, destination, nexthop, legacy, uid);
+        }
+        if (ret) {
+            return operationError(client, add ? "addRoute() failed" : "removeRoute() failed", ret);
+        }
+
+        return success(client);
+    }
+
+    //    0         1         2         3
+    // network   addiface  <netId> <interface>
+    // network removeiface <netId> <interface>
+    if (!strcmp(argv[1], "addiface") || !strcmp(argv[1], "removeiface")) {
+        if (argc != 4) {
+            return syntaxError(client, "Missing argument");
+        }
+        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
+        unsigned netId = strtoul(argv[2], NULL, 0);
+        if (!strcmp(argv[1], "addiface")) {
+            if (int ret = sNetCtrl->addInterfaceToNetwork(netId, argv[3])) {
+                return operationError(client, "addInterfaceToNetwork() failed", ret);
+            }
+        } else {
+            if (int ret = sNetCtrl->removeInterfaceFromNetwork(netId, argv[3])) {
+                return operationError(client, "removeInterfaceFromNetwork() failed", ret);
+            }
+        }
+        return success(client);
     }
 
     //    0      1       2          3
@@ -1596,8 +1653,8 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         if (nextArg != argc) {
             return syntaxError(client, "Unknown trailing argument(s)");
         }
-        if (!sNetCtrl->createNetwork(netId, permission)) {
-            return operationError(client, "createNetwork() failed");
+        if (int ret = sNetCtrl->createNetwork(netId, permission)) {
+            return operationError(client, "createNetwork() failed", ret);
         }
         return success(client);
     }
@@ -1610,32 +1667,31 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         }
         // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
         unsigned netId = strtoul(argv[2], NULL, 0);
-        if (!sNetCtrl->destroyNetwork(netId)) {
-            return operationError(client, "destroyNetwork() failed");
+        if (int ret = sNetCtrl->destroyNetwork(netId)) {
+            return operationError(client, "destroyNetwork() failed", ret);
         }
         return success(client);
     }
 
-    //    0         1         2         3
-    // network   addiface  <netId> <interface>
-    // network removeiface <netId> <interface>
-    if (!strcmp(argv[1], "addiface") || !strcmp(argv[1], "removeiface")) {
-        if (argc != 4) {
+    //    0       1      2      3
+    // network default  set  <netId>
+    // network default clear
+    if (!strcmp(argv[1], "default")) {
+        if (argc < 3) {
             return syntaxError(client, "Missing argument");
         }
-        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
-        unsigned netId = strtoul(argv[2], NULL, 0);
-        int ret;
-        if (!strcmp(argv[1], "addiface")) {
-            if ((ret = sNetCtrl->addInterfaceToNetwork(netId, argv[3])) != 0) {
-                errno = -ret;
-                return operationError(client, "addInterfaceToNetwork() failed");
+        unsigned netId = NETID_UNSET;
+        if (!strcmp(argv[2], "set")) {
+            if (argc < 4) {
+                return syntaxError(client, "Missing netId");
             }
-        } else {
-            if ((ret = sNetCtrl->removeInterfaceFromNetwork(netId, argv[3])) != 0) {
-                errno = -ret;
-                return operationError(client, "removeInterfaceFromNetwork() failed");
-            }
+            // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
+            netId = strtoul(argv[3], NULL, 0);
+        } else if (strcmp(argv[2], "clear")) {
+            return syntaxError(client, "Unknown argument");
+        }
+        if (int ret = sNetCtrl->setDefaultNetwork(netId)) {
+            return operationError(client, "setDefaultNetwork() failed", ret);
         }
         return success(client);
     }
@@ -1669,84 +1725,14 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
             return syntaxError(client, "Missing id");
         }
         if (!strcmp(argv[2], "user")) {
-            sNetCtrl->setPermissionForUser(permission, ids);
+            sNetCtrl->setPermissionForUsers(permission, ids);
         } else if (!strcmp(argv[2], "network")) {
-            int ret = sNetCtrl->setPermissionForNetwork(permission, ids);
-            if (ret) {
-                errno = -ret;
-                return operationError(client, "setPermissionForNetwork() failed");
+            if (int ret = sNetCtrl->setPermissionForNetworks(permission, ids)) {
+                return operationError(client, "setPermissionForNetworks() failed", ret);
             }
         } else {
             return syntaxError(client, "Unknown argument");
         }
-        return success(client);
-    }
-
-    //    0       1      2      3
-    // network default  set  <netId>
-    // network default clear
-    if (!strcmp(argv[1], "default")) {
-        if (argc < 3) {
-            return syntaxError(client, "Missing argument");
-        }
-        unsigned netId = NETID_UNSET;
-        if (!strcmp(argv[2], "set")) {
-            if (argc < 4) {
-                return syntaxError(client, "Missing netId");
-            }
-            // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
-            netId = strtoul(argv[3], NULL, 0);
-        } else if (strcmp(argv[2], "clear")) {
-            return syntaxError(client, "Unknown argument");
-        }
-        if (!sNetCtrl->setDefaultNetwork(netId)) {
-            return operationError(client, "setDefaultNetwork() failed");
-        }
-        return success(client);
-    }
-
-    //    0      1      2      3      4       5         6            7           8
-    // network route [legacy <uid>]  add   <netId> <interface> <destination> [nexthop]
-    // network route [legacy <uid>] remove <netId> <interface> <destination> [nexthop]
-    if (!strcmp(argv[1], "route")) {
-        if (argc < 6 || argc > 9) {
-            return syntaxError(client, "Incorrect number of arguments");
-        }
-
-        int nextArg = 2;
-        bool legacy = false;
-        unsigned uid = 0;
-        if (!strcmp(argv[nextArg], "legacy")) {
-            ++nextArg;
-            legacy = true;
-            uid = strtoul(argv[nextArg++], NULL, 0);
-        }
-
-        bool add = false;
-        if (!strcmp(argv[nextArg], "add")) {
-            add = true;
-        } else if (strcmp(argv[nextArg], "remove")) {
-            return syntaxError(client, "Unknown argument");
-        }
-        ++nextArg;
-
-        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
-        unsigned netId = strtoul(argv[nextArg++], NULL, 0);
-        const char* interface = argv[nextArg++];
-        const char* destination = argv[nextArg++];
-        const char* nexthop = argc > nextArg ? argv[nextArg] : NULL;
-
-        int ret;
-        if (add) {
-            ret = sNetCtrl->addRoute(netId, interface, destination, nexthop, legacy, uid);
-        } else {
-            ret = sNetCtrl->removeRoute(netId, interface, destination, nexthop, legacy, uid);
-        }
-        if (ret != 0) {
-            errno = -ret;
-            return operationError(client, add ? "addRoute() failed" : "removeRoute() failed");
-        }
-
         return success(client);
     }
 

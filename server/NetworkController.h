@@ -17,20 +17,18 @@
 #ifndef NETD_SERVER_NETWORK_CONTROLLER_H
 #define NETD_SERVER_NETWORK_CONTROLLER_H
 
+#include "NetdConstants.h"
 #include "Permission.h"
+
 #include "utils/RWLock.h"
 
 #include <list>
 #include <map>
-#include <set>
-#include <stddef.h>
-#include <stdint.h>
-#include <string>
-#include <utility>
+#include <sys/types.h>
 #include <vector>
 
-class PermissionsController;
-class RouteController;
+class Network;
+class PhysicalNetwork;
 
 /*
  * Keeps track of default, per-pid, and per-uid-range network selection, as
@@ -40,72 +38,62 @@ class RouteController;
  */
 class NetworkController {
 public:
-    NetworkController(PermissionsController* permissionsController,
-                      RouteController* routeController);
+    NetworkController();
 
-    void clearNetworkPreference();
     unsigned getDefaultNetwork() const;
-    bool setDefaultNetwork(unsigned netId);
-    bool setNetworkForUidRange(int uid_start, int uid_end, unsigned netId, bool forward_dns);
-    bool clearNetworkForUidRange(int uid_start, int uid_end, unsigned netId);
+    int setDefaultNetwork(unsigned netId) WARN_UNUSED_RESULT;
 
-    // Order of preference: UID-specific, requested_netId, PID-specific, default.
-    // Specify NETID_UNSET for requested_netId if the default network is preferred.
-    // for_dns indicates if we're querrying the netId for a DNS request.  This avoids sending DNS
+    bool setNetworkForUidRange(uid_t uidStart, uid_t uidEnd, unsigned netId, bool forwardDns);
+    bool clearNetworkForUidRange(uid_t uidStart, uid_t uidEnd, unsigned netId);
+
+    // Order of preference: UID-specific, requestedNetId, default.
+    // Specify NETID_UNSET for requestedNetId if the default network is preferred.
+    // forDns indicates if we're querying the netId for a DNS request. This avoids sending DNS
     // requests to VPNs without DNS servers.
-    unsigned getNetwork(int uid, unsigned requested_netId, bool for_dns) const;
-
+    unsigned getNetwork(uid_t uid, unsigned requestedNetId, bool forDns) const;
     unsigned getNetworkId(const char* interface) const;
+    bool isValidNetwork(unsigned netId) const;
 
-    bool createNetwork(unsigned netId, Permission permission);
-    bool destroyNetwork(unsigned netId);
-    int addInterfaceToNetwork(unsigned netId, const char* interface);
-    int removeInterfaceFromNetwork(unsigned netId, const char* interface);
+    int createNetwork(unsigned netId, Permission permission) WARN_UNUSED_RESULT;
+    int destroyNetwork(unsigned netId) WARN_UNUSED_RESULT;
 
-    void setPermissionForUser(Permission permission, const std::vector<unsigned>& uid);
-    int setPermissionForNetwork(Permission permission, const std::vector<unsigned>& netId);
+    int addInterfaceToNetwork(unsigned netId, const char* interface) WARN_UNUSED_RESULT;
+    int removeInterfaceFromNetwork(unsigned netId, const char* interface) WARN_UNUSED_RESULT;
+
+    Permission getPermissionForUser(uid_t uid) const;
+    void setPermissionForUsers(Permission permission, const std::vector<uid_t>& uids);
+    bool isUserPermittedOnNetwork(uid_t uid, unsigned netId) const;
+    int setPermissionForNetworks(Permission permission,
+                                 const std::vector<unsigned>& netIds) WARN_UNUSED_RESULT;
 
     // Routes are added to tables determined by the interface, so only |interface| is actually used.
     // |netId| is given only to sanity check that the interface has the correct netId.
     int addRoute(unsigned netId, const char* interface, const char* destination,
-                 const char* nexthop, bool legacy, unsigned uid);
+                 const char* nexthop, bool legacy, uid_t uid) WARN_UNUSED_RESULT;
     int removeRoute(unsigned netId, const char* interface, const char* destination,
-                    const char* nexthop, bool legacy, unsigned uid);
-
-    bool isValidNetwork(unsigned netId) const;
+                    const char* nexthop, bool legacy, uid_t uid) WARN_UNUSED_RESULT;
 
 private:
-    typedef std::multimap<unsigned, std::string>::const_iterator InterfaceIteratorConst;
-    typedef std::multimap<unsigned, std::string>::iterator InterfaceIterator;
-    typedef std::pair<InterfaceIterator, InterfaceIterator> InterfaceRange;
+    Network* getNetworkLocked(unsigned netId) const;
 
     int modifyRoute(unsigned netId, const char* interface, const char* destination,
-                    const char* nexthop, bool add, bool legacy, unsigned uid);
+                    const char* nexthop, bool add, bool legacy, uid_t uid) WARN_UNUSED_RESULT;
 
     struct UidEntry {
-        int uid_start;
-        int uid_end;
-        unsigned netId;
-        bool forward_dns;
-        UidEntry(int uid_start, int uid_end, unsigned netId, bool forward_dns);
+        const uid_t uidStart;
+        const uid_t uidEnd;
+        const unsigned netId;
+        bool forwardDns;
+
+        UidEntry(uid_t uidStart, uid_t uidEnd, unsigned netId, bool forwardDns);
     };
 
-    // mRWLock guards all accesses to mUidMap, mDefaultNetId and mValidNetworks.
+    // mRWLock guards all accesses to mUidMap, mDefaultNetId, mPhysicalNetworks and mUsers.
     mutable android::RWLock mRWLock;
     std::list<UidEntry> mUidMap;
     unsigned mDefaultNetId;
-    std::set<unsigned> mValidNetworks;
-
-    PermissionsController* const mPermissionsController;
-    RouteController* const mRouteController;
-
-    // Maps a netId to all its interfaces.
-    //
-    // We need to know interface names to configure incoming packet marking and because routing
-    // tables are associated with interfaces and not with netIds.
-    //
-    // An interface may belong to at most one netId, but a netId may have multiple interfaces.
-    std::multimap<unsigned, std::string> mNetIdToInterfaces;
+    std::map<unsigned, PhysicalNetwork*> mPhysicalNetworks;  // Map keys are NetIds.
+    std::map<uid_t, Permission> mUsers;
 };
 
 #endif  // NETD_SERVER_NETWORK_CONTROLLER_H
