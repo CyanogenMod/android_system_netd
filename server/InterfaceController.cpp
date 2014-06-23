@@ -61,7 +61,7 @@ InterfaceController::InterfaceController()
 	libh_ = dlopen(if_cmd_lib_file_name, RTLD_NOW | RTLD_LOCAL);
 	if (libh_ == NULL) {
 		const char *err_str = dlerror();
-		ALOGW("Warning (%s) while opening the net interface command library", err_str ? err_str : "unknown");
+		ALOGV("Warning (%s) while opening the net interface command library", err_str ? err_str : "unknown");
 	} else {
 		sendCommandInit_ = (int (*)(void))dlsym(libh_, set_cmd_init_func_name);
 		if (sendCommandInit_ == NULL) {
