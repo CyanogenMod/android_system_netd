@@ -1625,12 +1625,15 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         }
         // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
         unsigned netId = strtoul(argv[2], NULL, 0);
+        int ret;
         if (!strcmp(argv[1], "addiface")) {
-            if (!sNetCtrl->addInterfaceToNetwork(netId, argv[3])) {
+            if ((ret = sNetCtrl->addInterfaceToNetwork(netId, argv[3])) != 0) {
+                errno = -ret;
                 return operationError(client, "addInterfaceToNetwork() failed");
             }
         } else {
-            if (!sNetCtrl->removeInterfaceFromNetwork(netId, argv[3])) {
+            if ((ret = sNetCtrl->removeInterfaceFromNetwork(netId, argv[3])) != 0) {
+                errno = -ret;
                 return operationError(client, "removeInterfaceFromNetwork() failed");
             }
         }
@@ -1666,11 +1669,11 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
             return syntaxError(client, "Missing id");
         }
         if (!strcmp(argv[2], "user")) {
-            if (!sNetCtrl->setPermissionForUser(permission, ids)) {
-                return operationError(client, "setPermissionForUser() failed");
-            }
+            sNetCtrl->setPermissionForUser(permission, ids);
         } else if (!strcmp(argv[2], "network")) {
-            if (!sNetCtrl->setPermissionForNetwork(permission, ids)) {
+            int ret = sNetCtrl->setPermissionForNetwork(permission, ids);
+            if (ret) {
+                errno = -ret;
                 return operationError(client, "setPermissionForNetwork() failed");
             }
         } else {

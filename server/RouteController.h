@@ -32,14 +32,14 @@ public:
 
     static void Init();
 
-    static bool addInterfaceToNetwork(unsigned netId, const char* interface, Permission permission);
-    static bool removeInterfaceFromNetwork(unsigned netId, const char* interface,
-                                           Permission permission);
-    static bool modifyNetworkPermission(unsigned netId, const char* interface,
-                                        Permission oldPermission, Permission newPermission);
+    static int addInterfaceToNetwork(unsigned netId, const char* interface, Permission permission);
+    static int removeInterfaceFromNetwork(unsigned netId, const char* interface,
+                                          Permission permission);
+    static int modifyNetworkPermission(unsigned netId, const char* interface,
+                                       Permission oldPermission, Permission newPermission);
 
-    static bool addToDefaultNetwork(const char* interface, Permission permission);
-    static bool removeFromDefaultNetwork(const char* interface, Permission permission);
+    static int addToDefaultNetwork(const char* interface, Permission permission);
+    static int removeFromDefaultNetwork(const char* interface, Permission permission);
 
     static int addRoute(const char* interface, const char* destination, const char* nexthop,
                         TableType tableType, unsigned uid);

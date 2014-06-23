@@ -59,11 +59,11 @@ public:
 
     bool createNetwork(unsigned netId, Permission permission);
     bool destroyNetwork(unsigned netId);
-    bool addInterfaceToNetwork(unsigned netId, const char* interface);
-    bool removeInterfaceFromNetwork(unsigned netId, const char* interface);
+    int addInterfaceToNetwork(unsigned netId, const char* interface);
+    int removeInterfaceFromNetwork(unsigned netId, const char* interface);
 
-    bool setPermissionForUser(Permission permission, const std::vector<unsigned>& uid);
-    bool setPermissionForNetwork(Permission permission, const std::vector<unsigned>& netId);
+    void setPermissionForUser(Permission permission, const std::vector<unsigned>& uid);
+    int setPermissionForNetwork(Permission permission, const std::vector<unsigned>& netId);
 
     // Routes are added to tables determined by the interface, so only |interface| is actually used.
     // |netId| is given only to sanity check that the interface has the correct netId.

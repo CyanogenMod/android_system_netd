@@ -123,8 +123,10 @@ int sendNetlinkRequest(uint16_t action, uint16_t flags, iovec* iov, int iovlen) 
 // + If |mask| is non-zero, the rule matches the specified fwmark and mask. Otherwise, |fwmark| is
 //   ignored.
 // + If |interface| is non-NULL, the rule matches the specified outgoing interface.
-bool modifyIpRule(uint16_t action, uint32_t priority, uint32_t table, uint32_t fwmark,
-                  uint32_t mask, const char* interface) {
+//
+// Returns 0 on success or negative errno on failure.
+int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table, uint32_t fwmark, uint32_t mask,
+                 const char* interface) {
     // The interface name must include exactly one terminating NULL and be properly padded, or older
     // kernels will refuse to delete rules.
     uint8_t padding[RTA_ALIGNTO] = {0, 0, 0, 0};
@@ -172,12 +174,11 @@ bool modifyIpRule(uint16_t action, uint32_t priority, uint32_t table, uint32_t f
         rule.family = family[i];
         int ret = sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov));
         if (ret) {
-            errno = -ret;
-            return false;
+            return ret;
         }
     }
 
-    return true;
+    return 0;
 }
 
 // Adds or deletes an IPv4 or IPv6 route.
@@ -247,14 +248,15 @@ int modifyIpRoute(uint16_t action, uint32_t table, const char* interface, const 
     return sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov));
 }
 
-bool modifyPerNetworkRules(unsigned netId, const char* interface, Permission permission, bool add,
-                           bool modifyIptables) {
+int modifyPerNetworkRules(unsigned netId, const char* interface, Permission permission, bool add,
+                          bool modifyIptables) {
     uint32_t table = getRouteTableForInterface(interface);
     if (!table) {
-        return false;
+        return -ESRCH;
     }
 
     uint16_t action = add ? RTM_NEWRULE : RTM_DELRULE;
+    int ret;
 
     Fwmark fwmark;
     fwmark.permission = permission;
@@ -266,9 +268,9 @@ bool modifyPerNetworkRules(unsigned netId, const char* interface, Permission per
     //
     // Supports apps that use SO_BINDTODEVICE or IP_PKTINFO options and the kernel that already
     // knows the outgoing interface (typically for link-local communications).
-    if (!modifyIpRule(action, RULE_PRIORITY_PER_NETWORK_INTERFACE, table, fwmark.intValue,
-                      mask.intValue, interface)) {
-        return false;
+    if ((ret = modifyIpRule(action, RULE_PRIORITY_PER_NETWORK_INTERFACE, table, fwmark.intValue,
+                            mask.intValue, interface)) != 0) {
+        return ret;
     }
 
     // A rule to route traffic based on the chosen network.
@@ -278,9 +280,9 @@ bool modifyPerNetworkRules(unsigned netId, const char* interface, Permission per
     // network stay on that network even if the default network changes.
     fwmark.netId = netId;
     mask.netId = FWMARK_NET_ID_MASK;
-    if (!modifyIpRule(action, RULE_PRIORITY_PER_NETWORK_NORMAL, table, fwmark.intValue,
-                      mask.intValue, NULL)) {
-        return false;
+    if ((ret = modifyIpRule(action, RULE_PRIORITY_PER_NETWORK_NORMAL, table, fwmark.intValue,
+                            mask.intValue, NULL)) != 0) {
+        return ret;
     }
 
     // A rule to route traffic based on an explicitly chosen network.
@@ -291,9 +293,9 @@ bool modifyPerNetworkRules(unsigned netId, const char* interface, Permission per
     // checked at the time the netId was set into the fwmark, but we do so to be consistent.
     fwmark.explicitlySelected = true;
     mask.explicitlySelected = true;
-    if (!modifyIpRule(action, RULE_PRIORITY_PER_NETWORK_EXPLICIT, table, fwmark.intValue,
-                      mask.intValue, NULL)) {
-        return false;
+    if ((ret = modifyIpRule(action, RULE_PRIORITY_PER_NETWORK_EXPLICIT, table, fwmark.intValue,
+                            mask.intValue, NULL)) != 0) {
+        return ret;
     }
 
     // An iptables rule to mark incoming packets on a network with the netId of the network.
@@ -309,17 +311,17 @@ bool modifyPerNetworkRules(unsigned netId, const char* interface, Permission per
         snprintf(markString, sizeof(markString), "0x%x", netId);
         if (execIptables(V4V6, "-t", "mangle", iptablesAction, "INPUT", "-i", interface,
                          "-j", "MARK", "--set-mark", markString, NULL)) {
-            return false;
+            return -EREMOTEIO;
         }
     }
 
-    return true;
+    return 0;
 }
 
-bool modifyDefaultNetworkRules(const char* interface, Permission permission, uint16_t action) {
+int modifyDefaultNetworkRules(const char* interface, Permission permission, uint16_t action) {
     uint32_t table = getRouteTableForInterface(interface);
     if (!table) {
-        return false;
+        return -ESRCH;
     }
 
     Fwmark fwmark;
@@ -454,29 +456,29 @@ void RouteController::Init() {
 #endif
 }
 
-bool RouteController::addInterfaceToNetwork(unsigned netId, const char* interface,
-                                            Permission permission) {
+int RouteController::addInterfaceToNetwork(unsigned netId, const char* interface,
+                                           Permission permission) {
     return modifyPerNetworkRules(netId, interface, permission, true, true);
 }
 
-bool RouteController::removeInterfaceFromNetwork(unsigned netId, const char* interface,
-                                                 Permission permission) {
+int RouteController::removeInterfaceFromNetwork(unsigned netId, const char* interface,
+                                                Permission permission) {
     return modifyPerNetworkRules(netId, interface, permission, false, true) &&
            flushRoutes(interface);
 }
 
-bool RouteController::modifyNetworkPermission(unsigned netId, const char* interface,
-                                              Permission oldPermission, Permission newPermission) {
+int RouteController::modifyNetworkPermission(unsigned netId, const char* interface,
+                                             Permission oldPermission, Permission newPermission) {
     // Add the new rules before deleting the old ones, to avoid race conditions.
     return modifyPerNetworkRules(netId, interface, newPermission, true, false) &&
            modifyPerNetworkRules(netId, interface, oldPermission, false, false);
 }
 
-bool RouteController::addToDefaultNetwork(const char* interface, Permission permission) {
+int RouteController::addToDefaultNetwork(const char* interface, Permission permission) {
     return modifyDefaultNetworkRules(interface, permission, RTM_NEWRULE);
 }
 
-bool RouteController::removeFromDefaultNetwork(const char* interface, Permission permission) {
+int RouteController::removeFromDefaultNetwork(const char* interface, Permission permission) {
     return modifyDefaultNetworkRules(interface, permission, RTM_DELRULE);
 }
 

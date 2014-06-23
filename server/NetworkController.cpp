@@ -197,71 +197,70 @@ bool NetworkController::createNetwork(unsigned netId, Permission permission) {
     return true;
 }
 
-bool NetworkController::addInterfaceToNetwork(unsigned netId, const char* interface) {
+int NetworkController::addInterfaceToNetwork(unsigned netId, const char* interface) {
     if (!isValidNetwork(netId) || !interface) {
         ALOGE("invalid netId %u or interface null", netId);
-        errno = EINVAL;
-        return false;
+        return -EINVAL;
     }
 
     unsigned existingNetId = getNetworkId(interface);
     if (existingNetId != NETID_UNSET) {
         ALOGE("interface %s already assigned to netId %u", interface, existingNetId);
-        errno = EBUSY;
-        return false;
+        return -EBUSY;
     }
 
+    int ret;
     Permission permission = mPermissionsController->getPermissionForNetwork(netId);
-    if (!mRouteController->addInterfaceToNetwork(netId, interface, permission)) {
+    if ((ret = mRouteController->addInterfaceToNetwork(netId, interface, permission)) != 0) {
         ALOGE("failed to add interface %s to netId %u", interface, netId);
-        return false;
+        return ret;
     }
 
     mNetIdToInterfaces.insert(std::pair<unsigned, std::string>(netId, interface));
 
     if (netId == getDefaultNetwork() &&
-            !mRouteController->addToDefaultNetwork(interface, permission)) {
+            (ret = mRouteController->addToDefaultNetwork(interface, permission)) != 0) {
         ALOGE("failed to add interface %s to default netId %u", interface, netId);
-        return false;
+        return ret;
     }
 
-    return true;
+    return 0;
 }
 
-bool NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* interface) {
+int NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* interface) {
     if (!isValidNetwork(netId) || !interface) {
         ALOGE("invalid netId %u or interface null", netId);
-        errno = EINVAL;
-        return false;
+        return -EINVAL;
     }
 
-    bool status = false;
+    int ret = -ENOENT;
     InterfaceRange range = mNetIdToInterfaces.equal_range(netId);
     for (InterfaceIterator iter = range.first; iter != range.second; ++iter) {
         if (iter->second == interface) {
             mNetIdToInterfaces.erase(iter);
-            status = true;
+            ret = 0;
             break;
         }
     }
-    if (!status) {
+
+    if (ret) {
         ALOGE("interface %s not assigned to netId %u", interface, netId);
-        errno = ENOENT;
+        return ret;
     }
 
     Permission permission = mPermissionsController->getPermissionForNetwork(netId);
     if (netId == getDefaultNetwork() &&
-            !mRouteController->removeFromDefaultNetwork(interface, permission)) {
+            (ret = mRouteController->removeFromDefaultNetwork(interface, permission)) != 0) {
         ALOGE("failed to remove interface %s from default netId %u", interface, netId);
-        status = false;
+        return ret;
     }
 
-    if (!mRouteController->removeInterfaceFromNetwork(netId, interface, permission)) {
+    if ((ret = mRouteController->removeInterfaceFromNetwork(netId, interface, permission)) != 0) {
         ALOGE("failed to remove interface %s from netId %u", interface, netId);
-        status = false;
+        return ret;
     }
 
-    return status;
+    return 0;
 }
 
 bool NetworkController::destroyNetwork(unsigned netId) {
@@ -301,24 +300,19 @@ bool NetworkController::destroyNetwork(unsigned netId) {
     return status;
 }
 
-bool NetworkController::setPermissionForUser(Permission permission,
+void NetworkController::setPermissionForUser(Permission permission,
                                              const std::vector<unsigned>& uid) {
     for (size_t i = 0; i < uid.size(); ++i) {
         mPermissionsController->setPermissionForUser(permission, uid[i]);
     }
-    return true;
 }
 
-bool NetworkController::setPermissionForNetwork(Permission newPermission,
-                                                const std::vector<unsigned>& netId) {
-    bool status = true;
-
+int NetworkController::setPermissionForNetwork(Permission newPermission,
+                                               const std::vector<unsigned>& netId) {
     for (size_t i = 0; i < netId.size(); ++i) {
         if (!isValidNetwork(netId[i])) {
             ALOGE("invalid netId %u", netId[i]);
-            errno = EINVAL;
-            status = false;
-            continue;
+            return -EINVAL;
         }
 
         Permission oldPermission = mPermissionsController->getPermissionForNetwork(netId[i]);
@@ -331,18 +325,19 @@ bool NetworkController::setPermissionForNetwork(Permission newPermission,
 
         InterfaceRange range = mNetIdToInterfaces.equal_range(netId[i]);
         for (InterfaceIteratorConst iter = range.first; iter != range.second; ++iter) {
-            if (!mRouteController->modifyNetworkPermission(netId[i], iter->second.c_str(),
-                                                           oldPermission, newPermission)) {
+            int ret = mRouteController->modifyNetworkPermission(netId[i], iter->second.c_str(),
+                                                                oldPermission, newPermission);
+            if (ret) {
                 ALOGE("failed to change permission on interface %s of netId %u from %x to %x",
                       iter->second.c_str(), netId[i], oldPermission, newPermission);
-                status = false;
+                return ret;
             }
         }
 
         mPermissionsController->setPermissionForNetwork(newPermission, netId[i]);
     }
 
-    return status;
+    return 0;
 }
 
 int NetworkController::addRoute(unsigned netId, const char* interface, const char* destination,
