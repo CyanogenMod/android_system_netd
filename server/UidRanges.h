@@ -14,25 +14,24 @@
  * limitations under the License.
  */
 
-#ifndef NETD_SERVER_VIRTUAL_NETWORK_H
-#define NETD_SERVER_VIRTUAL_NETWORK_H
+#ifndef NETD_SERVER_UID_RANGES_H
+#define NETD_SERVER_UID_RANGES_H
 
-#include "Network.h"
-#include "UidRanges.h"
+#include <sys/types.h>
+#include <utility>
+#include <vector>
 
-class VirtualNetwork : public Network {
+class UidRanges {
 public:
-    VirtualNetwork(unsigned netId, uid_t ownerUid);
-    virtual ~VirtualNetwork();
+    const std::vector<std::pair<uid_t, uid_t>>& getRanges() const;
 
-    int addUsers(const UidRanges& uidRanges) WARN_UNUSED_RESULT;
-    int removeUsers(const UidRanges& uidRanges) WARN_UNUSED_RESULT;
+    bool parseFrom(int argc, char* argv[]);
+
+    void add(const UidRanges& other);
+    void remove(const UidRanges& other);
 
 private:
-    int addInterface(const std::string& interface) override WARN_UNUSED_RESULT;
-    int removeInterface(const std::string& interface) override WARN_UNUSED_RESULT;
-
-    UidRanges mUidRanges;
+    std::vector<std::pair<uid_t, uid_t>> mRanges;
 };
 
-#endif  // NETD_SERVER_VIRTUAL_NETWORK_H
+#endif  // NETD_SERVER_UID_RANGES_H

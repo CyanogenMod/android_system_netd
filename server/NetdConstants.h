@@ -49,4 +49,6 @@ int parsePrefix(const char *prefix, uint8_t *family, void *address, int size, ui
 
 #define WARN_UNUSED_RESULT __attribute__((__warn_unused_result__))
 
+const uid_t INVALID_UID = static_cast<uid_t>(-1);
+
 #endif

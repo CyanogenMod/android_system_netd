@@ -29,6 +29,7 @@
 
 class Network;
 class PhysicalNetwork;
+class UidRanges;
 class VirtualNetwork;
 
 /*
@@ -67,6 +68,9 @@ public:
     bool isUserPermittedOnNetwork(uid_t uid, unsigned netId) const;
     int setPermissionForNetworks(Permission permission,
                                  const std::vector<unsigned>& netIds) WARN_UNUSED_RESULT;
+
+    int addUsersToNetwork(unsigned netId, const UidRanges& uidRanges) WARN_UNUSED_RESULT;
+    int removeUsersFromNetwork(unsigned netId, const UidRanges& uidRanges) WARN_UNUSED_RESULT;
 
     // Routes are added to tables determined by the interface, so only |interface| is actually used.
     // |netId| is given only to sanity check that the interface has the correct netId.

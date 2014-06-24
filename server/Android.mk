@@ -64,6 +64,7 @@ LOCAL_SRC_FILES := \
         SecondaryTableController.cpp \
         SoftapController.cpp \
         TetherController.cpp \
+        UidRanges.cpp \
         VirtualNetwork.cpp \
         main.cpp \
         oem_iptables_hook.cpp \

@@ -302,6 +302,32 @@ int NetworkController::setPermissionForNetworks(Permission permission,
     return 0;
 }
 
+int NetworkController::addUsersToNetwork(unsigned netId, const UidRanges& uidRanges) {
+    android::RWLock::AutoWLock lock(mRWLock);
+    auto iter = mVirtualNetworks.find(netId);
+    if (iter == mVirtualNetworks.end()) {
+        ALOGE("invalid netId %u", netId);
+        return -EINVAL;
+    }
+    if (int ret = iter->second->addUsers(uidRanges)) {
+        return ret;
+    }
+    return 0;
+}
+
+int NetworkController::removeUsersFromNetwork(unsigned netId, const UidRanges& uidRanges) {
+    android::RWLock::AutoWLock lock(mRWLock);
+    auto iter = mVirtualNetworks.find(netId);
+    if (iter == mVirtualNetworks.end()) {
+        ALOGE("invalid netId %u", netId);
+        return -EINVAL;
+    }
+    if (int ret = iter->second->removeUsers(uidRanges)) {
+        return ret;
+    }
+    return 0;
+}
+
 int NetworkController::addRoute(unsigned netId, const char* interface, const char* destination,
                                 const char* nexthop, bool legacy, uid_t uid) {
     return modifyRoute(netId, interface, destination, nexthop, true, legacy, uid);

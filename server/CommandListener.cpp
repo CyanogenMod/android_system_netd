@@ -45,6 +45,7 @@
 #include "NetdConstants.h"
 #include "FirewallController.h"
 #include "RouteController.h"
+#include "UidRanges.h"
 
 #include <string>
 #include <vector>
@@ -1746,8 +1747,33 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return success(client);
     }
 
-    // network <bind|unbind> <netId> <uid1> .. <uidN>
-    //     -- uid range can be specified as "uidX-uidY"
+    //    0      1     2       3           4
+    // network users  add   <netId> [<uid>[-<uid>]] ...
+    // network users remove <netId> [<uid>[-<uid>]] ...
+    if (!strcmp(argv[1], "users")) {
+        if (argc < 4) {
+            return syntaxError(client, "Missing argument");
+        }
+        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
+        unsigned netId = strtoul(argv[3], NULL, 0);
+        UidRanges uidRanges;
+        if (!uidRanges.parseFrom(argc - 4, argv + 4)) {
+            return syntaxError(client, "Invalid UIDs");
+        }
+        if (!strcmp(argv[2], "add")) {
+            if (int ret = sNetCtrl->addUsersToNetwork(netId, uidRanges)) {
+                return operationError(client, "addUsersToNetwork() failed", ret);
+            }
+        } else if (!strcmp(argv[2], "remove")) {
+            if (int ret = sNetCtrl->removeUsersFromNetwork(netId, uidRanges)) {
+                return operationError(client, "removeUsersFromNetwork() failed", ret);
+            }
+        } else {
+            return syntaxError(client, "Unknown argument");
+        }
+        return success(client);
+    }
+
     // TODO:
     //   o tethering
     //   o p2p

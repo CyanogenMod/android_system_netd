@@ -22,6 +22,8 @@
 
 #include <sys/types.h>
 
+class UidRanges;
+
 class RouteController {
 public:
     // How the routing table number is determined for route modification requests.
@@ -40,8 +42,10 @@ public:
     static int removeInterfaceFromNetwork(unsigned netId, const char* interface,
                                           Permission permission) WARN_UNUSED_RESULT;
 
-    static int addInterfaceToVpn(unsigned netId, const char* interface) WARN_UNUSED_RESULT;
-    static int removeInterfaceFromVpn(unsigned netId, const char* interface) WARN_UNUSED_RESULT;
+    static int addInterfaceToVpn(unsigned netId, const char* interface,
+                                 const UidRanges& uidRanges) WARN_UNUSED_RESULT;
+    static int removeInterfaceFromVpn(unsigned netId, const char* interface,
+                                      const UidRanges& uidRanges) WARN_UNUSED_RESULT;
 
     static int modifyNetworkPermission(unsigned netId, const char* interface,
                                        Permission oldPermission,
@@ -50,6 +54,11 @@ public:
     static int addToDefaultNetwork(const char* interface, Permission permission) WARN_UNUSED_RESULT;
     static int removeFromDefaultNetwork(const char* interface,
                                         Permission permission) WARN_UNUSED_RESULT;
+
+    static int addUsersToVpn(unsigned netId, const char* interface,
+                             const UidRanges& uidRanges) WARN_UNUSED_RESULT;
+    static int removeUsersFromVpn(unsigned netId, const char* interface,
+                                  const UidRanges& uidRanges) WARN_UNUSED_RESULT;
 
     static int addRoute(const char* interface, const char* destination, const char* nexthop,
                         TableType tableType, uid_t uid) WARN_UNUSED_RESULT;
