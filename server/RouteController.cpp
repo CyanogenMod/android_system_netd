@@ -50,9 +50,21 @@ const uint32_t RULE_PRIORITY_MAIN                  = 20000;
 const uint32_t RULE_PRIORITY_UNREACHABLE           = 21000;
 #endif
 
+const uid_t kInvalidUid = (uid_t) -1;
+
 // TODO: These should be turned into per-UID tables once the kernel supports UID-based routing.
 const int ROUTE_TABLE_PRIVILEGED_LEGACY = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 901;
 const int ROUTE_TABLE_LEGACY            = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 902;
+
+// TODO: These values aren't defined by the Linux kernel, because our UID routing changes are not
+// upstream (yet?), so we can't just pick them up from kernel headers. When (if?) the changes make
+// it upstream, we'll remove this and rely on the kernel header values. For now, add a static assert
+// that will warn us if upstream has given these values some other meaning.
+const uint16_t FRA_UID_START = 18;
+const uint16_t FRA_UID_END   = 19;
+static_assert(FRA_UID_START > FRA_MAX,
+             "Android-specific FRA_UID_{START,END} values also assigned in Linux uapi. "
+             "Check that these values match what the kernel does and then update this assertion.");
 
 const uint16_t kNetlinkRequestFlags = NLM_F_REQUEST | NLM_F_ACK;
 const uint16_t kNetlinkCreateRequestFlags = kNetlinkRequestFlags | NLM_F_CREATE | NLM_F_EXCL;
@@ -126,7 +138,7 @@ int sendNetlinkRequest(uint16_t action, uint16_t flags, iovec* iov, int iovlen) 
 //
 // Returns 0 on success or negative errno on failure.
 int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table, uint32_t fwmark, uint32_t mask,
-                 const char* interface) {
+                 const char* interface, uid_t uidStart, uid_t uidEnd) {
     // The interface name must include exactly one terminating NULL and be properly padded, or older
     // kernels will refuse to delete rules.
     uint8_t padding[RTA_ALIGNTO] = {0, 0, 0, 0};
@@ -141,31 +153,43 @@ int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table, uint32_t fw
         paddingLength = RTA_SPACE(interfaceLength) - RTA_LENGTH(interfaceLength);
     }
 
+    // Either both start and end UID must be specified, or neither.
+    if ((uidStart == kInvalidUid) != (uidStart == kInvalidUid)) {
+        return -EUSERS;
+    }
+    bool isUidRule = (uidStart != kInvalidUid);
+
     // Assemble a rule request and put it in an array of iovec structures.
     fib_rule_hdr rule = {
         .action = static_cast<uint8_t>(table ? FR_ACT_TO_TBL : FR_ACT_UNREACHABLE),
     };
 
-    rtattr fra_priority = { U16_RTA_LENGTH(sizeof(priority)),  FRA_PRIORITY };
-    rtattr fra_table    = { U16_RTA_LENGTH(sizeof(table)),     FRA_TABLE };
-    rtattr fra_fwmark   = { U16_RTA_LENGTH(sizeof(fwmark)),    FRA_FWMARK };
-    rtattr fra_fwmask   = { U16_RTA_LENGTH(sizeof(mask)),      FRA_FWMASK };
-    rtattr fra_oifname  = { U16_RTA_LENGTH(interfaceLength),   FRA_OIFNAME };
+    rtattr fra_priority  = { U16_RTA_LENGTH(sizeof(priority)),  FRA_PRIORITY };
+    rtattr fra_table     = { U16_RTA_LENGTH(sizeof(table)),     FRA_TABLE };
+    rtattr fra_fwmark    = { U16_RTA_LENGTH(sizeof(fwmark)),    FRA_FWMARK };
+    rtattr fra_fwmask    = { U16_RTA_LENGTH(sizeof(mask)),      FRA_FWMASK };
+    rtattr fra_oifname   = { U16_RTA_LENGTH(interfaceLength),   FRA_OIFNAME };
+    rtattr fra_uid_start = { U16_RTA_LENGTH(sizeof(uidStart)),  FRA_UID_START };
+    rtattr fra_uid_end   = { U16_RTA_LENGTH(sizeof(uidEnd)),    FRA_UID_END };
 
     iovec iov[] = {
-        { NULL,           0 },
-        { &rule,          sizeof(rule) },
-        { &fra_priority,  sizeof(fra_priority) },
-        { &priority,      sizeof(priority) },
-        { &fra_table,     table ? sizeof(fra_table) : 0 },
-        { &table,         table ? sizeof(table) : 0 },
-        { &fra_fwmark,    mask ? sizeof(fra_fwmark) : 0 },
-        { &fwmark,        mask ? sizeof(fwmark) : 0 },
-        { &fra_fwmask,    mask ? sizeof(fra_fwmask) : 0 },
-        { &mask,          mask ? sizeof(mask) : 0 },
-        { &fra_oifname,   interface ? sizeof(fra_oifname) : 0 },
-        { oifname,        interfaceLength },
-        { padding,        paddingLength },
+        { NULL,            0 },
+        { &rule,           sizeof(rule) },
+        { &fra_priority,   sizeof(fra_priority) },
+        { &priority,       sizeof(priority) },
+        { &fra_table,      table ? sizeof(fra_table) : 0 },
+        { &table,          table ? sizeof(table) : 0 },
+        { &fra_fwmark,     mask ? sizeof(fra_fwmark) : 0 },
+        { &fwmark,         mask ? sizeof(fwmark) : 0 },
+        { &fra_fwmask,     mask ? sizeof(fra_fwmask) : 0 },
+        { &mask,           mask ? sizeof(mask) : 0 },
+        { &fra_uid_start,  isUidRule ? sizeof(fra_uid_start) : 0 },
+        { &uidStart,       isUidRule ? sizeof(uidStart) : 0 },
+        { &fra_uid_end,    isUidRule ? sizeof(fra_uid_end) : 0 },
+        { &uidEnd,         isUidRule ? sizeof(uidEnd) : 0 },
+        { &fra_oifname,    interface ? sizeof(fra_oifname) : 0 },
+        { oifname,         interfaceLength },
+        { padding,         paddingLength },
     };
 
     uint16_t flags = (action == RTM_NEWRULE) ? kNetlinkCreateRequestFlags : kNetlinkRequestFlags;
@@ -179,6 +203,11 @@ int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table, uint32_t fw
     }
 
     return 0;
+}
+
+int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table,
+                 uint32_t fwmark, uint32_t mask, const char* interface) {
+    return modifyIpRule(action, priority, table, fwmark, mask, interface, kInvalidUid, kInvalidUid);
 }
 
 // Adds or deletes an IPv4 or IPv6 route.
