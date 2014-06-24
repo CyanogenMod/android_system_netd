@@ -120,6 +120,8 @@ bool runIpRuleCommand(const char* action, uint32_t priority, uint32_t table, uin
     return true;
 }
 
+#if 0
+
 // Adds or deletes an IPv4 or IPv6 route.
 // Returns 0 on success or negative errno on failure.
 int modifyIpRoute(uint16_t action, uint32_t table, const char* interface, const char* destination,
@@ -222,6 +224,35 @@ int modifyIpRoute(uint16_t action, uint32_t table, const char* interface, const 
     return ret;
 }
 
+#else
+
+int modifyIpRoute(int action, uint32_t table, const char* interface, const char* destination,
+                  const char* nexthop) {
+    char tableString[UINT32_STRLEN];
+    snprintf(tableString, sizeof(tableString), "%u", table);
+
+    int argc = 0;
+    const char* argv[16];
+
+    argv[argc++] = IP_PATH;
+    argv[argc++] = "route";
+    argv[argc++] = action == RTM_NEWROUTE ? ADD : DEL;
+    argv[argc++] = "table";
+    argv[argc++] = tableString;
+    if (destination) {
+        argv[argc++] = destination;
+        argv[argc++] = "dev";
+        argv[argc++] = interface;
+        if (nexthop) {
+            argv[argc++] = "via";
+            argv[argc++] = nexthop;
+        }
+    }
+    return android_fork_execvp(argc, const_cast<char**>(argv), NULL, false, false);
+}
+
+#endif
+
 bool modifyPerNetworkRules(unsigned netId, const char* interface, Permission permission, bool add,
                            bool modifyIptables) {
     uint32_t table = getRouteTableForInterface(interface);
@@ -313,7 +344,7 @@ bool modifyDefaultNetworkRules(const char* interface, Permission permission, con
 // route, to the main table as well.
 // Returns 0 on success or negative errno on failure.
 int modifyRoute(const char* interface, const char* destination, const char* nexthop,
-                 int action, RouteController::TableType tableType, unsigned /* uid */) {
+                int action, RouteController::TableType tableType, unsigned /* uid */) {
     uint32_t table = 0;
     switch (tableType) {
         case RouteController::INTERFACE: {
