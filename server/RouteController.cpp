@@ -50,7 +50,7 @@ const uint32_t RULE_PRIORITY_MAIN                  = 20000;
 const uint32_t RULE_PRIORITY_UNREACHABLE           = 21000;
 #endif
 
-const uid_t kInvalidUid = (uid_t) -1;
+const uid_t INVALID_UID = static_cast<uid_t>(-1);
 
 // TODO: These should be turned into per-UID tables once the kernel supports UID-based routing.
 const int ROUTE_TABLE_PRIVILEGED_LEGACY = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 901;
@@ -66,8 +66,8 @@ static_assert(FRA_UID_START > FRA_MAX,
              "Android-specific FRA_UID_{START,END} values also assigned in Linux uapi. "
              "Check that these values match what the kernel does and then update this assertion.");
 
-const uint16_t kNetlinkRequestFlags = NLM_F_REQUEST | NLM_F_ACK;
-const uint16_t kNetlinkCreateRequestFlags = kNetlinkRequestFlags | NLM_F_CREATE | NLM_F_EXCL;
+const uint16_t NETLINK_REQUEST_FLAGS = NLM_F_REQUEST | NLM_F_ACK;
+const uint16_t NETLINK_CREATE_REQUEST_FLAGS = NETLINK_REQUEST_FLAGS | NLM_F_CREATE | NLM_F_EXCL;
 
 std::map<std::string, uint32_t> interfaceToIndex;
 
@@ -154,45 +154,45 @@ int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table, uint32_t fw
     }
 
     // Either both start and end UID must be specified, or neither.
-    if ((uidStart == kInvalidUid) != (uidStart == kInvalidUid)) {
+    if ((uidStart == INVALID_UID) != (uidStart == INVALID_UID)) {
         return -EUSERS;
     }
-    bool isUidRule = (uidStart != kInvalidUid);
+    bool isUidRule = (uidStart != INVALID_UID);
 
     // Assemble a rule request and put it in an array of iovec structures.
     fib_rule_hdr rule = {
         .action = static_cast<uint8_t>(table ? FR_ACT_TO_TBL : FR_ACT_UNREACHABLE),
     };
 
-    rtattr fra_priority  = { U16_RTA_LENGTH(sizeof(priority)),  FRA_PRIORITY };
-    rtattr fra_table     = { U16_RTA_LENGTH(sizeof(table)),     FRA_TABLE };
-    rtattr fra_fwmark    = { U16_RTA_LENGTH(sizeof(fwmark)),    FRA_FWMARK };
-    rtattr fra_fwmask    = { U16_RTA_LENGTH(sizeof(mask)),      FRA_FWMASK };
-    rtattr fra_oifname   = { U16_RTA_LENGTH(interfaceLength),   FRA_OIFNAME };
-    rtattr fra_uid_start = { U16_RTA_LENGTH(sizeof(uidStart)),  FRA_UID_START };
-    rtattr fra_uid_end   = { U16_RTA_LENGTH(sizeof(uidEnd)),    FRA_UID_END };
+    rtattr fraPriority  = { U16_RTA_LENGTH(sizeof(priority)),  FRA_PRIORITY };
+    rtattr fraTable     = { U16_RTA_LENGTH(sizeof(table)),     FRA_TABLE };
+    rtattr fraFwmark    = { U16_RTA_LENGTH(sizeof(fwmark)),    FRA_FWMARK };
+    rtattr fraFwmask    = { U16_RTA_LENGTH(sizeof(mask)),      FRA_FWMASK };
+    rtattr fraOifname   = { U16_RTA_LENGTH(interfaceLength),   FRA_OIFNAME };
+    rtattr fraUidStart  = { U16_RTA_LENGTH(sizeof(uidStart)),  FRA_UID_START };
+    rtattr fraUidEnd    = { U16_RTA_LENGTH(sizeof(uidEnd)),    FRA_UID_END };
 
     iovec iov[] = {
-        { NULL,            0 },
-        { &rule,           sizeof(rule) },
-        { &fra_priority,   sizeof(fra_priority) },
-        { &priority,       sizeof(priority) },
-        { &fra_table,      table ? sizeof(fra_table) : 0 },
-        { &table,          table ? sizeof(table) : 0 },
-        { &fra_fwmark,     mask ? sizeof(fra_fwmark) : 0 },
-        { &fwmark,         mask ? sizeof(fwmark) : 0 },
-        { &fra_fwmask,     mask ? sizeof(fra_fwmask) : 0 },
-        { &mask,           mask ? sizeof(mask) : 0 },
-        { &fra_uid_start,  isUidRule ? sizeof(fra_uid_start) : 0 },
-        { &uidStart,       isUidRule ? sizeof(uidStart) : 0 },
-        { &fra_uid_end,    isUidRule ? sizeof(fra_uid_end) : 0 },
-        { &uidEnd,         isUidRule ? sizeof(uidEnd) : 0 },
-        { &fra_oifname,    interface ? sizeof(fra_oifname) : 0 },
-        { oifname,         interfaceLength },
-        { padding,         paddingLength },
+        { NULL,          0 },
+        { &rule,         sizeof(rule) },
+        { &fraPriority,  sizeof(fraPriority) },
+        { &priority,     sizeof(priority) },
+        { &fraTable,     table ? sizeof(fraTable) : 0 },
+        { &table,        table ? sizeof(table) : 0 },
+        { &fraFwmark,    mask ? sizeof(fraFwmark) : 0 },
+        { &fwmark,       mask ? sizeof(fwmark) : 0 },
+        { &fraFwmask,    mask ? sizeof(fraFwmask) : 0 },
+        { &mask,         mask ? sizeof(mask) : 0 },
+        { &fraUidStart,  isUidRule ? sizeof(fraUidStart) : 0 },
+        { &uidStart,     isUidRule ? sizeof(uidStart) : 0 },
+        { &fraUidEnd,    isUidRule ? sizeof(fraUidEnd) : 0 },
+        { &uidEnd,       isUidRule ? sizeof(uidEnd) : 0 },
+        { &fraOifname,   interface ? sizeof(fraOifname) : 0 },
+        { oifname,       interfaceLength },
+        { padding,       paddingLength },
     };
 
-    uint16_t flags = (action == RTM_NEWRULE) ? kNetlinkCreateRequestFlags : kNetlinkRequestFlags;
+    uint16_t flags = (action == RTM_NEWRULE) ? NETLINK_CREATE_REQUEST_FLAGS : NETLINK_REQUEST_FLAGS;
     uint8_t family[] = {AF_INET, AF_INET6};
     for (size_t i = 0; i < ARRAY_SIZE(family); ++i) {
         rule.family = family[i];
@@ -207,7 +207,7 @@ int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table, uint32_t fw
 
 int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table,
                  uint32_t fwmark, uint32_t mask, const char* interface) {
-    return modifyIpRule(action, priority, table, fwmark, mask, interface, kInvalidUid, kInvalidUid);
+    return modifyIpRule(action, priority, table, fwmark, mask, interface, INVALID_UID, INVALID_UID);
 }
 
 // Adds or deletes an IPv4 or IPv6 route.
@@ -255,25 +255,25 @@ int modifyIpRoute(uint16_t action, uint32_t table, const char* interface, const 
         .rtm_dst_len = prefixLength,
     };
 
-    rtattr rta_table   = { U16_RTA_LENGTH(sizeof(table)),    RTA_TABLE };
-    rtattr rta_oif     = { U16_RTA_LENGTH(sizeof(ifindex)),  RTA_OIF };
-    rtattr rta_dst     = { U16_RTA_LENGTH(rawLength),        RTA_DST };
-    rtattr rta_gateway = { U16_RTA_LENGTH(rawLength),        RTA_GATEWAY };
+    rtattr rtaTable   = { U16_RTA_LENGTH(sizeof(table)),    RTA_TABLE };
+    rtattr rtaOif     = { U16_RTA_LENGTH(sizeof(ifindex)),  RTA_OIF };
+    rtattr rtaDst     = { U16_RTA_LENGTH(rawLength),        RTA_DST };
+    rtattr rtaGateway = { U16_RTA_LENGTH(rawLength),        RTA_GATEWAY };
 
     iovec iov[] = {
-        { NULL,          0 },
-        { &rtmsg,        sizeof(rtmsg) },
-        { &rta_table,    sizeof(rta_table) },
-        { &table,        sizeof(table) },
-        { &rta_dst,      sizeof(rta_dst) },
-        { rawAddress,    static_cast<size_t>(rawLength) },
-        { &rta_oif,      interface ? sizeof(rta_oif) : 0 },
-        { &ifindex,      interface ? sizeof(ifindex) : 0 },
-        { &rta_gateway,  nexthop ? sizeof(rta_gateway) : 0 },
-        { rawNexthop,    nexthop ? static_cast<size_t>(rawLength) : 0 },
+        { NULL,         0 },
+        { &rtmsg,       sizeof(rtmsg) },
+        { &rtaTable,    sizeof(rtaTable) },
+        { &table,       sizeof(table) },
+        { &rtaDst,      sizeof(rtaDst) },
+        { rawAddress,   static_cast<size_t>(rawLength) },
+        { &rtaOif,      interface ? sizeof(rtaOif) : 0 },
+        { &ifindex,     interface ? sizeof(ifindex) : 0 },
+        { &rtaGateway,  nexthop ? sizeof(rtaGateway) : 0 },
+        { rawNexthop,   nexthop ? static_cast<size_t>(rawLength) : 0 },
     };
 
-    uint16_t flags = (action == RTM_NEWROUTE) ? kNetlinkCreateRequestFlags : kNetlinkRequestFlags;
+    uint16_t flags = (action == RTM_NEWROUTE) ? NETLINK_CREATE_REQUEST_FLAGS : NETLINK_REQUEST_FLAGS;
     return sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov));
 }
 
