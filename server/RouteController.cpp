@@ -392,7 +392,11 @@ int modifyRoute(const char* interface, const char* destination, const char* next
     }
 
     int ret = modifyIpRoute(action, table, interface, destination, nexthop);
-    if (ret != 0) {
+    // We allow apps to call requestRouteToHost() multiple times with the same route, so ignore
+    // EEXIST failures when adding routes to legacy tables.
+    if (ret != 0 && !(action == RTM_NEWROUTE && ret == -EEXIST &&
+                      (tableType == RouteController::LEGACY ||
+                       tableType == RouteController::PRIVILEGED_LEGACY))) {
         return ret;
     }
 
