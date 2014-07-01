@@ -32,22 +32,19 @@ namespace {
 
 // BEGIN CONSTANTS --------------------------------------------------------------------------------
 
-const uint32_t RULE_PRIORITY_PRIVILEGED_LEGACY     = 11000;
-const uint32_t RULE_PRIORITY_SECURE_VPN            = 12000;
-const uint32_t RULE_PRIORITY_PER_NETWORK_EXPLICIT  = 13000;
-const uint32_t RULE_PRIORITY_PER_NETWORK_INTERFACE = 14000;
-const uint32_t RULE_PRIORITY_LEGACY                = 16000;
-const uint32_t RULE_PRIORITY_PER_NETWORK_NORMAL    = 17000;
-const uint32_t RULE_PRIORITY_DEFAULT_NETWORK       = 19000;
-const uint32_t RULE_PRIORITY_MAIN                  = 20000;
+const uint32_t RULE_PRIORITY_VPN_OVERRIDES      = 11000;
+const uint32_t RULE_PRIORITY_SECURE_VPN         = 12000;
+const uint32_t RULE_PRIORITY_EXPLICIT_NETWORK   = 13000;
+const uint32_t RULE_PRIORITY_OUTPUT_INTERFACE   = 14000;
+const uint32_t RULE_PRIORITY_PRIVILEGED_LEGACY  = 16000;
+const uint32_t RULE_PRIORITY_LEGACY             = 17000;
+const uint32_t RULE_PRIORITY_IMPLICIT_NETWORK   = 18000;
+const uint32_t RULE_PRIORITY_DEFAULT_NETWORK    = 21000;
+const uint32_t RULE_PRIORITY_DIRECTLY_CONNECTED = 22000;
 // TODO: Uncomment once we are sure everything works.
 #if 0
-const uint32_t RULE_PRIORITY_UNREACHABLE           = 21000;
+const uint32_t RULE_PRIORITY_UNREACHABLE        = 23000;
 #endif
-
-// TODO: These should be turned into per-UID tables once the kernel supports UID-based routing.
-const int ROUTE_TABLE_PRIVILEGED_LEGACY = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 901;
-const int ROUTE_TABLE_LEGACY            = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX - 902;
 
 // TODO: These values aren't defined by the Linux kernel, because our UID routing changes are not
 // upstream (yet?), so we can't just pick them up from kernel headers. When (if?) the changes make
@@ -309,7 +306,7 @@ WARN_UNUSED_RESULT int modifyIncomingPacketMark(unsigned netId, const char* inte
     //
     // This is so that the kernel can:
     // + Use the right fwmark for (and thus correctly route) replies (e.g.: TCP RST, ICMP errors,
-    //   ping replies).
+    //   ping replies, SYN-ACKs, etc).
     // + Mark sockets that accept connections from this interface so that the connection stays on
     //   the same interface.
     char markString[UINT32_HEX_STRLEN];
@@ -322,9 +319,21 @@ WARN_UNUSED_RESULT int modifyIncomingPacketMark(unsigned netId, const char* inte
     return 0;
 }
 
+// A rule to let UID 0 (as a proxy for the kernel) access the routes on a given network.
+WARN_UNUSED_RESULT int modifyKernelAccessRule(uint16_t action, unsigned netId, uint32_t priority,
+                                              uint32_t table) {
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.netId = netId;
+    mask.netId = FWMARK_NET_ID_MASK;
+
+    return modifyIpRule(action, priority, table, fwmark.intValue, mask.intValue, NULL, 0, 0);
+}
+
 WARN_UNUSED_RESULT int modifyPerNetworkRules(unsigned netId, const char* interface, uint32_t table,
                                              Permission permission, uid_t uidStart, uid_t uidEnd,
-                                             bool add, bool modifyIptables) {
+                                             bool add, bool modifyInterfaceBasedRules) {
     if (!table) {
         table = getRouteTableForInterface(interface);
         if (!table) {
@@ -344,7 +353,7 @@ WARN_UNUSED_RESULT int modifyPerNetworkRules(unsigned netId, const char* interfa
     // knows the outgoing interface (typically for link-local communications).
     fwmark.permission = permission;
     mask.permission = permission;
-    if (int ret = modifyIpRule(action, RULE_PRIORITY_PER_NETWORK_INTERFACE, table, fwmark.intValue,
+    if (int ret = modifyIpRule(action, RULE_PRIORITY_OUTPUT_INTERFACE, table, fwmark.intValue,
                                mask.intValue, interface, uidStart, uidEnd)) {
         return ret;
     }
@@ -356,7 +365,7 @@ WARN_UNUSED_RESULT int modifyPerNetworkRules(unsigned netId, const char* interfa
     // network stay on that network even if the default network changes.
     fwmark.netId = netId;
     mask.netId = FWMARK_NET_ID_MASK;
-    if (int ret = modifyIpRule(action, RULE_PRIORITY_PER_NETWORK_NORMAL, table, fwmark.intValue,
+    if (int ret = modifyIpRule(action, RULE_PRIORITY_IMPLICIT_NETWORK, table, fwmark.intValue,
                                mask.intValue, NULL, uidStart, uidEnd)) {
         return ret;
     }
@@ -370,12 +379,19 @@ WARN_UNUSED_RESULT int modifyPerNetworkRules(unsigned netId, const char* interfa
     // updated via modifyNetworkPermission().
     fwmark.explicitlySelected = true;
     mask.explicitlySelected = true;
-    if (int ret = modifyIpRule(action, RULE_PRIORITY_PER_NETWORK_EXPLICIT, table, fwmark.intValue,
+    if (int ret = modifyIpRule(action, RULE_PRIORITY_EXPLICIT_NETWORK, table, fwmark.intValue,
                                mask.intValue, NULL, uidStart, uidEnd)) {
         return ret;
     }
 
-    if (modifyIptables) {
+    if (permission != PERMISSION_NONE) {
+        if (int ret = modifyKernelAccessRule(action, netId, RULE_PRIORITY_IMPLICIT_NETWORK,
+                                             table)) {
+            return ret;
+        }
+    }
+
+    if (modifyInterfaceBasedRules) {
         if (int ret = modifyIncomingPacketMark(netId, interface, add)) {
             return ret;
         }
@@ -423,6 +439,11 @@ WARN_UNUSED_RESULT int modifyVpnRules(unsigned netId, const char* interface,
     }
 
     if (modifyInterfaceBasedRules) {
+        if (int ret = modifyKernelAccessRule(action, netId, RULE_PRIORITY_IMPLICIT_NETWORK,
+                                             table)) {
+            return ret;
+        }
+
         if (int ret = modifyIncomingPacketMark(netId, interface, add)) {
             return ret;
         }
@@ -450,8 +471,8 @@ WARN_UNUSED_RESULT int modifyVpnRules(unsigned netId, const char* interface,
     return 0;
 }
 
-WARN_UNUSED_RESULT int modifyDefaultNetworkRules(const char* interface, Permission permission,
-                                                 uint16_t action) {
+WARN_UNUSED_RESULT int modifyDefaultNetworkRules(uint16_t action, const char* interface,
+                                                 Permission permission) {
     uint32_t table = getRouteTableForInterface(interface);
     if (!table) {
         ALOGE("cannot find interface %s", interface);
@@ -467,16 +488,25 @@ WARN_UNUSED_RESULT int modifyDefaultNetworkRules(const char* interface, Permissi
     fwmark.permission = permission;
     mask.permission = permission;
 
-    return modifyIpRule(action, RULE_PRIORITY_DEFAULT_NETWORK, table, fwmark.intValue,
-                        mask.intValue, NULL, INVALID_UID, INVALID_UID);
+    if (int ret = modifyIpRule(action, RULE_PRIORITY_DEFAULT_NETWORK, table, fwmark.intValue,
+                               mask.intValue, NULL, INVALID_UID, INVALID_UID)) {
+        return ret;
+    }
+
+    if (permission != PERMISSION_NONE) {
+        if (int ret = modifyKernelAccessRule(action, 0, RULE_PRIORITY_DEFAULT_NETWORK, table)) {
+            return ret;
+        }
+    }
+
+    return 0;
 }
 
 // Adds or removes an IPv4 or IPv6 route to the specified table and, if it's a directly-connected
 // route, to the main table as well.
 // Returns 0 on success or negative errno on failure.
-WARN_UNUSED_RESULT int modifyRoute(const char* interface, const char* destination,
-                                   const char* nexthop, uint16_t action,
-                                   RouteController::TableType tableType, uid_t /*uid*/) {
+WARN_UNUSED_RESULT int modifyRoute(uint16_t action, const char* interface, const char* destination,
+                                   const char* nexthop, RouteController::TableType tableType) {
     uint32_t table = 0;
     switch (tableType) {
         case RouteController::INTERFACE: {
@@ -484,13 +514,11 @@ WARN_UNUSED_RESULT int modifyRoute(const char* interface, const char* destinatio
             break;
         }
         case RouteController::LEGACY: {
-            // TODO: Use the UID to assign a unique table per UID instead of this fixed table.
-            table = ROUTE_TABLE_LEGACY;
+            table = RouteController::ROUTE_TABLE_LEGACY;
             break;
         }
         case RouteController::PRIVILEGED_LEGACY: {
-            // TODO: Use the UID to assign a unique table per UID instead of this fixed table.
-            table = ROUTE_TABLE_PRIVILEGED_LEGACY;
+            table = RouteController::ROUTE_TABLE_PRIVILEGED_LEGACY;
             break;
         }
     }
@@ -556,53 +584,49 @@ WARN_UNUSED_RESULT int flushRoutes(const char* interface) {
 }  // namespace
 
 int RouteController::Init() {
-    Fwmark fwmark;
-    Fwmark mask;
-
     // Add a new rule to look up the 'main' table, with the same selectors as the "default network"
     // rule, but with a lower priority. Since the default network rule points to a table with a
     // default route, the rule we're adding will never be used for normal routing lookups. However,
     // the kernel may fall-through to it to find directly-connected routes when it validates that a
     // nexthop (in a route being added) is reachable.
-    //
-    // TODO: This isn't true if the default network requires non-zero permissions. In that case, an
-    // app without those permissions may still be able to access directly-connected routes, since
-    // it won't match the default network rule. Fix this by only allowing the root UID (as a proxy
-    // for the kernel) to lookup this main table rule.
-    fwmark.netId = 0;
-    mask.netId = FWMARK_NET_ID_MASK;
-    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_MAIN, RT_TABLE_MAIN, fwmark.intValue,
+    if (int ret = modifyKernelAccessRule(RTM_NEWRULE, 0, RULE_PRIORITY_DIRECTLY_CONNECTED,
+                                         RT_TABLE_MAIN)) {
+        return ret;
+    }
+
+    Fwmark fwmark;
+    Fwmark mask;
+
+    // Add rules to allow legacy routes to override the default network.
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
+
+    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_PRIVILEGED_LEGACY,
+                               RouteController::ROUTE_TABLE_PRIVILEGED_LEGACY, fwmark.intValue,
                                mask.intValue, NULL, INVALID_UID, INVALID_UID)) {
         return ret;
     }
 
-    // Add rules to allow lookup of legacy routes.
-    //
-    // TODO: Remove these once the kernel supports UID-based routing. Instead, add them on demand
-    // when routes are added.
-    fwmark.netId = 0;
-    mask.netId = 0;
-
-    fwmark.explicitlySelected = false;
-    mask.explicitlySelected = true;
-    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LEGACY, ROUTE_TABLE_LEGACY,
-                               fwmark.intValue, mask.intValue, NULL, INVALID_UID, INVALID_UID)) {
+    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LEGACY,
+                               RouteController::ROUTE_TABLE_LEGACY, fwmark.intValue, mask.intValue,
+                               NULL, INVALID_UID, INVALID_UID)) {
         return ret;
     }
 
+    // Add a rule to allow legacy routes from privileged apps to override VPNs.
     fwmark.permission = PERMISSION_CONNECTIVITY_INTERNAL;
     mask.permission = PERMISSION_CONNECTIVITY_INTERNAL;
 
-    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_PRIVILEGED_LEGACY,
-                               ROUTE_TABLE_PRIVILEGED_LEGACY, fwmark.intValue, mask.intValue, NULL,
-                               INVALID_UID, INVALID_UID)) {
+    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_VPN_OVERRIDES,
+                               RouteController::ROUTE_TABLE_PRIVILEGED_LEGACY, fwmark.intValue,
+                               mask.intValue, NULL, INVALID_UID, INVALID_UID)) {
         return ret;
     }
 
 // TODO: Uncomment once we are sure everything works.
 #if 0
-    // Add a rule to preempt the pre-defined "from all lookup main" rule. This ensures that packets
-    // that are already marked with a specific NetId don't fall-through to the main table.
+    // Add a rule to preempt the pre-defined "from all lookup main" rule. Packets that reach this
+    // rule will be null-routed, and won't fall-through to the main table.
     return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_UNREACHABLE, 0, 0, 0, NULL, INVALID_UID,
                         INVALID_UID);
 #else
@@ -618,11 +642,11 @@ int RouteController::addInterfaceToNetwork(unsigned netId, const char* interface
 
 int RouteController::removeInterfaceFromNetwork(unsigned netId, const char* interface,
                                                 Permission permission) {
-    if (int ret = modifyPerNetworkRules(netId, interface, 0, permission, INVALID_UID, INVALID_UID,
-                                        false, true)) {
+    if (int ret = flushRoutes(interface)) {
         return ret;
     }
-    return flushRoutes(interface);
+    return modifyPerNetworkRules(netId, interface, 0, permission, INVALID_UID, INVALID_UID, false,
+                                 true);
 }
 
 int RouteController::addInterfaceToVpn(unsigned netId, const char* interface,
@@ -632,10 +656,10 @@ int RouteController::addInterfaceToVpn(unsigned netId, const char* interface,
 
 int RouteController::removeInterfaceFromVpn(unsigned netId, const char* interface,
                                             const UidRanges& uidRanges) {
-    if (int ret = modifyVpnRules(netId, interface, uidRanges, false, true)) {
+    if (int ret = flushRoutes(interface)) {
         return ret;
     }
-    return flushRoutes(interface);
+    return modifyVpnRules(netId, interface, uidRanges, false, true);
 }
 
 int RouteController::modifyNetworkPermission(unsigned netId, const char* interface,
@@ -660,19 +684,19 @@ int RouteController::removeUsersFromVpn(unsigned netId, const char* interface,
 }
 
 int RouteController::addToDefaultNetwork(const char* interface, Permission permission) {
-    return modifyDefaultNetworkRules(interface, permission, RTM_NEWRULE);
+    return modifyDefaultNetworkRules(RTM_NEWRULE, interface, permission);
 }
 
 int RouteController::removeFromDefaultNetwork(const char* interface, Permission permission) {
-    return modifyDefaultNetworkRules(interface, permission, RTM_DELRULE);
+    return modifyDefaultNetworkRules(RTM_DELRULE, interface, permission);
 }
 
 int RouteController::addRoute(const char* interface, const char* destination, const char* nexthop,
-                              TableType tableType, uid_t uid) {
-    return modifyRoute(interface, destination, nexthop, RTM_NEWROUTE, tableType, uid);
+                              TableType tableType) {
+    return modifyRoute(RTM_NEWROUTE, interface, destination, nexthop, tableType);
 }
 
 int RouteController::removeRoute(const char* interface, const char* destination,
-                                 const char* nexthop, TableType tableType, uid_t uid) {
-    return modifyRoute(interface, destination, nexthop, RTM_DELROUTE, tableType, uid);
+                                 const char* nexthop, TableType tableType) {
+    return modifyRoute(RTM_DELROUTE, interface, destination, nexthop, tableType);
 }

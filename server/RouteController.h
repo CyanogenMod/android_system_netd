@@ -29,10 +29,12 @@ public:
     // How the routing table number is determined for route modification requests.
     enum TableType {
         INTERFACE,  // Compute the table number based on the interface index.
-        LEGACY,  // Based on the UID; such tables can override the default network routes.
-        PRIVILEGED_LEGACY,  // Based on the UID; such tables can bypass VPNs.
+        LEGACY,  // Use a fixed table that's used to override the default network.
+        PRIVILEGED_LEGACY,  // A fixed table, only modifiable by privileged apps; overrides VPNs.
     };
 
+    static const int ROUTE_TABLE_LEGACY            =   98;
+    static const int ROUTE_TABLE_PRIVILEGED_LEGACY =   99;
     static const int ROUTE_TABLE_OFFSET_FROM_INDEX = 1000;
 
     static int Init() WARN_UNUSED_RESULT;
@@ -61,9 +63,9 @@ public:
                                   const UidRanges& uidRanges) WARN_UNUSED_RESULT;
 
     static int addRoute(const char* interface, const char* destination, const char* nexthop,
-                        TableType tableType, uid_t uid) WARN_UNUSED_RESULT;
+                        TableType tableType) WARN_UNUSED_RESULT;
     static int removeRoute(const char* interface, const char* destination, const char* nexthop,
-                           TableType tableType, uid_t uid) WARN_UNUSED_RESULT;
+                           TableType tableType) WARN_UNUSED_RESULT;
 };
 
 #endif  // NETD_SERVER_ROUTE_CONTROLLER_H

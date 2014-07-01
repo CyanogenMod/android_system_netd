@@ -371,8 +371,8 @@ int NetworkController::modifyRoute(unsigned netId, const char* interface, const 
         tableType = RouteController::INTERFACE;
     }
 
-    return add ? RouteController::addRoute(interface, destination, nexthop, tableType, uid) :
-                 RouteController::removeRoute(interface, destination, nexthop, tableType, uid);
+    return add ? RouteController::addRoute(interface, destination, nexthop, tableType) :
+                 RouteController::removeRoute(interface, destination, nexthop, tableType);
 }
 
 NetworkController::UidEntry::UidEntry(uid_t uidStart, uid_t uidEnd, unsigned netId,
