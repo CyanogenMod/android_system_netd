@@ -181,7 +181,7 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t
     if (interface) {
         interfaceLength = strlcpy(oifname, interface, IFNAMSIZ) + 1;
         if (interfaceLength > IFNAMSIZ) {
-            ALOGE("interface name too long (%zu > %zu)", interfaceLength, IFNAMSIZ);
+            ALOGE("interface name too long (%zu > %u)", interfaceLength, IFNAMSIZ);
             return -ENAMETOOLONG;
         }
         paddingLength = RTA_SPACE(interfaceLength) - RTA_LENGTH(interfaceLength);
@@ -189,7 +189,7 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t
 
     // Either both start and end UID must be specified, or neither.
     if ((uidStart == INVALID_UID) != (uidEnd == INVALID_UID)) {
-        ALOGE("incompatible start and end UIDs (%zu vs %zu)", uidStart, uidEnd);
+        ALOGE("incompatible start and end UIDs (%u vs %u)", uidStart, uidEnd);
         return -EUSERS;
     }
     bool isUidRule = (uidStart != INVALID_UID);
