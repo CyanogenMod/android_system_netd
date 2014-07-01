@@ -140,7 +140,7 @@ WARN_UNUSED_RESULT int sendNetlinkRequest(uint16_t action, uint16_t flags, iovec
                 ALOGE("netlink response contains error (%s)", strerror(-ret));
             }
         } else {
-            ALOGE("bad netlink response message size (%d != %u)", ret, sizeof(response));
+            ALOGE("bad netlink response message size (%d != %zu)", ret, sizeof(response));
             ret = -EBADMSG;
         }
     } else {
@@ -181,7 +181,7 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t
     if (interface) {
         interfaceLength = strlcpy(oifname, interface, IFNAMSIZ) + 1;
         if (interfaceLength > IFNAMSIZ) {
-            ALOGE("interface name too long (%u > %u)", interfaceLength, IFNAMSIZ);
+            ALOGE("interface name too long (%zu > %zu)", interfaceLength, IFNAMSIZ);
             return -ENAMETOOLONG;
         }
         paddingLength = RTA_SPACE(interfaceLength) - RTA_LENGTH(interfaceLength);
@@ -189,7 +189,7 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t
 
     // Either both start and end UID must be specified, or neither.
     if ((uidStart == INVALID_UID) != (uidEnd == INVALID_UID)) {
-        ALOGE("incompatible start and end UIDs (%u vs %u)", uidStart, uidEnd);
+        ALOGE("incompatible start and end UIDs (%zu vs %zu)", uidStart, uidEnd);
         return -EUSERS;
     }
     bool isUidRule = (uidStart != INVALID_UID);
@@ -254,7 +254,7 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
     }
 
     if (static_cast<size_t>(rawLength) > sizeof(rawAddress)) {
-        ALOGE("impossible! address too long (%d vs %u)", rawLength, sizeof(rawAddress));
+        ALOGE("impossible! address too long (%d vs %zu)", rawLength, sizeof(rawAddress));
         return -ENOBUFS;  // Cannot happen; parsePrefix only supports IPv4 and IPv6.
     }
 
