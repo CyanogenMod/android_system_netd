@@ -63,8 +63,7 @@ int netdClientAccept4(int sockfd, sockaddr* addr, socklen_t* addrlen, int flags)
     }
     if (FwmarkClient::shouldSetFwmark(family)) {
         FwmarkCommand command = {FwmarkCommand::ON_ACCEPT, 0};
-        int error = FwmarkClient().send(&command, sizeof(command), acceptedSocket);
-        if (error) {
+        if (int error = FwmarkClient().send(&command, sizeof(command), acceptedSocket)) {
             return closeFdAndSetErrno(acceptedSocket, error);
         }
     }
@@ -74,8 +73,7 @@ int netdClientAccept4(int sockfd, sockaddr* addr, socklen_t* addrlen, int flags)
 int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
     if (sockfd >= 0 && addr && FwmarkClient::shouldSetFwmark(addr->sa_family)) {
         FwmarkCommand command = {FwmarkCommand::ON_CONNECT, 0};
-        int error = FwmarkClient().send(&command, sizeof(command), sockfd);
-        if (error) {
+        if (int error = FwmarkClient().send(&command, sizeof(command), sockfd)) {
             errno = -error;
             return -1;
         }
@@ -90,8 +88,7 @@ int netdClientSocket(int domain, int type, int protocol) {
     }
     unsigned netId = netIdForProcess;
     if (netId != NETID_UNSET && FwmarkClient::shouldSetFwmark(domain)) {
-        int error = setNetworkForSocket(netId, socketFd);
-        if (error) {
+        if (int error = setNetworkForSocket(netId, socketFd)) {
             return closeFdAndSetErrno(socketFd, error);
         }
     }
