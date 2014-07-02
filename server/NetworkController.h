@@ -28,9 +28,7 @@
 #include <vector>
 
 class Network;
-class PhysicalNetwork;
 class UidRanges;
-class VirtualNetwork;
 
 /*
  * Keeps track of default, per-pid, and per-uid-range network selection, as
@@ -94,12 +92,11 @@ private:
         UidEntry(uid_t uidStart, uid_t uidEnd, unsigned netId, bool forwardDns);
     };
 
-    // mRWLock guards all accesses to mUidMap, mDefaultNetId, mPhysicalNetworks and mUsers.
+    // mRWLock guards all accesses to mUidMap, mDefaultNetId, mNetworks and mUsers.
     mutable android::RWLock mRWLock;
     std::list<UidEntry> mUidMap;
     unsigned mDefaultNetId;
-    std::map<unsigned, PhysicalNetwork*> mPhysicalNetworks;  // Map keys are NetIds.
-    std::map<unsigned, VirtualNetwork*> mVirtualNetworks;  // Map keys are NetIds.
+    std::map<unsigned, Network*> mNetworks;  // Map keys are NetIds.
     std::map<uid_t, Permission> mUsers;
 };
 

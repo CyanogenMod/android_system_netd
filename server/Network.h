@@ -25,12 +25,19 @@
 // A Network represents a collection of interfaces participating as a single administrative unit.
 class Network {
 public:
+    enum Type {
+        PHYSICAL,
+        VIRTUAL,
+    };
+
     explicit Network(unsigned netId);
 
     // You MUST ensure that no interfaces are still assigned to this network, say by calling
     // clearInterfaces(), before deleting it. This is because interface removal may fail. If we
     // automatically removed interfaces in the destructor, you wouldn't know if it failed.
     virtual ~Network();
+
+    virtual Type getType() const = 0;
 
     bool hasInterface(const std::string& interface) const;
 

@@ -32,6 +32,8 @@ public:
     int addAsDefault() WARN_UNUSED_RESULT;
     int removeAsDefault() WARN_UNUSED_RESULT;
 
+    Type getType() const override;
+
 private:
     int addInterface(const std::string& interface) override WARN_UNUSED_RESULT;
     int removeInterface(const std::string& interface) override WARN_UNUSED_RESULT;

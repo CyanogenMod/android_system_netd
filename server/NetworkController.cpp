@@ -64,23 +64,23 @@ int NetworkController::setDefaultNetwork(unsigned netId) {
     }
 
     if (netId != NETID_UNSET) {
-        auto iter = mPhysicalNetworks.find(netId);
-        if (iter == mPhysicalNetworks.end()) {
+        Network* network = getNetworkLocked(netId);
+        if (!network || network->getType() != Network::PHYSICAL) {
             ALOGE("invalid netId %u", netId);
             return -EINVAL;
         }
-        if (int ret = iter->second->addAsDefault()) {
+        if (int ret = static_cast<PhysicalNetwork*>(network)->addAsDefault()) {
             return ret;
         }
     }
 
     if (mDefaultNetId != NETID_UNSET) {
-        auto iter = mPhysicalNetworks.find(mDefaultNetId);
-        if (iter == mPhysicalNetworks.end()) {
+        Network* network = getNetworkLocked(mDefaultNetId);
+        if (!network || network->getType() != Network::PHYSICAL) {
             ALOGE("cannot find previously set default network with netId %u", mDefaultNetId);
             return -ESRCH;
         }
-        if (int ret = iter->second->removeAsDefault()) {
+        if (int ret = static_cast<PhysicalNetwork*>(network)->removeAsDefault()) {
             return ret;
         }
     }
@@ -141,12 +141,7 @@ unsigned NetworkController::getNetwork(uid_t uid, unsigned requestedNetId, bool 
 
 unsigned NetworkController::getNetworkId(const char* interface) const {
     android::RWLock::AutoRLock lock(mRWLock);
-    for (const auto& entry : mPhysicalNetworks) {
-        if (entry.second->hasInterface(interface)) {
-            return entry.first;
-        }
-    }
-    for (const auto& entry : mVirtualNetworks) {
+    for (const auto& entry : mNetworks) {
         if (entry.second->hasInterface(interface)) {
             return entry.first;
         }
@@ -178,7 +173,7 @@ int NetworkController::createNetwork(unsigned netId, Permission permission) {
     }
 
     android::RWLock::AutoWLock lock(mRWLock);
-    mPhysicalNetworks[netId] = physicalNetwork;
+    mNetworks[netId] = physicalNetwork;
     return 0;
 }
 
@@ -194,7 +189,7 @@ int NetworkController::createVpn(unsigned netId, uid_t ownerUid) {
     }
 
     android::RWLock::AutoWLock lock(mRWLock);
-    mVirtualNetworks[netId] = new VirtualNetwork(netId, ownerUid);
+    mNetworks[netId] = new VirtualNetwork(netId, ownerUid);
     return 0;
 }
 
@@ -212,15 +207,13 @@ int NetworkController::destroyNetwork(unsigned netId) {
         return ret;
     }
     if (mDefaultNetId == netId) {
-        PhysicalNetwork* physicalNetwork = static_cast<PhysicalNetwork*>(network);
-        if (int ret = physicalNetwork->removeAsDefault()) {
+        if (int ret = static_cast<PhysicalNetwork*>(network)->removeAsDefault()) {
             ALOGE("inconceivable! removeAsDefault cannot fail on an empty network");
             return ret;
         }
         mDefaultNetId = NETID_UNSET;
     }
-    mPhysicalNetworks.erase(netId);
-    mVirtualNetworks.erase(netId);
+    mNetworks.erase(netId);
     delete network;
     _resolv_delete_cache_for_net(netId);
     return 0;
@@ -255,7 +248,7 @@ int NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* in
 Permission NetworkController::getPermissionForUser(uid_t uid) const {
     android::RWLock::AutoRLock lock(mRWLock);
     auto iter = mUsers.find(uid);
-    return iter != mUsers.end() ? iter->second : PERMISSION_NONE;
+    return iter == mUsers.end() ? PERMISSION_NONE : iter->second;
 }
 
 void NetworkController::setPermissionForUsers(Permission permission,
@@ -274,12 +267,12 @@ void NetworkController::setPermissionForUsers(Permission permission,
 bool NetworkController::isUserPermittedOnNetwork(uid_t uid, unsigned netId) const {
     android::RWLock::AutoRLock lock(mRWLock);
     auto userIter = mUsers.find(uid);
-    Permission userPermission = (userIter != mUsers.end() ? userIter->second : PERMISSION_NONE);
-    auto networkIter = mPhysicalNetworks.find(netId);
-    if (networkIter == mPhysicalNetworks.end()) {
+    Permission userPermission = (userIter == mUsers.end() ? PERMISSION_NONE : userIter->second);
+    Network* network = getNetworkLocked(netId);
+    if (!network || network->getType() != Network::PHYSICAL) {
         return false;
     }
-    Permission networkPermission = networkIter->second->getPermission();
+    Permission networkPermission = static_cast<PhysicalNetwork*>(network)->getPermission();
     return (userPermission & networkPermission) == networkPermission;
 }
 
@@ -287,15 +280,15 @@ int NetworkController::setPermissionForNetworks(Permission permission,
                                                 const std::vector<unsigned>& netIds) {
     android::RWLock::AutoWLock lock(mRWLock);
     for (unsigned netId : netIds) {
-        auto iter = mPhysicalNetworks.find(netId);
-        if (iter == mPhysicalNetworks.end()) {
+        Network* network = getNetworkLocked(netId);
+        if (!network || network->getType() != Network::PHYSICAL) {
             ALOGE("invalid netId %u", netId);
             return -EINVAL;
         }
 
         // TODO: ioctl(SIOCKILLADDR, ...) to kill socets on the network that don't have permission.
 
-        if (int ret = iter->second->setPermission(permission)) {
+        if (int ret = static_cast<PhysicalNetwork*>(network)->setPermission(permission)) {
             return ret;
         }
     }
@@ -304,12 +297,12 @@ int NetworkController::setPermissionForNetworks(Permission permission,
 
 int NetworkController::addUsersToNetwork(unsigned netId, const UidRanges& uidRanges) {
     android::RWLock::AutoWLock lock(mRWLock);
-    auto iter = mVirtualNetworks.find(netId);
-    if (iter == mVirtualNetworks.end()) {
+    Network* network = getNetworkLocked(netId);
+    if (!network || network->getType() != Network::VIRTUAL) {
         ALOGE("invalid netId %u", netId);
         return -EINVAL;
     }
-    if (int ret = iter->second->addUsers(uidRanges)) {
+    if (int ret = static_cast<VirtualNetwork*>(network)->addUsers(uidRanges)) {
         return ret;
     }
     return 0;
@@ -317,12 +310,12 @@ int NetworkController::addUsersToNetwork(unsigned netId, const UidRanges& uidRan
 
 int NetworkController::removeUsersFromNetwork(unsigned netId, const UidRanges& uidRanges) {
     android::RWLock::AutoWLock lock(mRWLock);
-    auto iter = mVirtualNetworks.find(netId);
-    if (iter == mVirtualNetworks.end()) {
+    Network* network = getNetworkLocked(netId);
+    if (!network || network->getType() != Network::VIRTUAL) {
         ALOGE("invalid netId %u", netId);
         return -EINVAL;
     }
-    if (int ret = iter->second->removeUsers(uidRanges)) {
+    if (int ret = static_cast<VirtualNetwork*>(network)->removeUsers(uidRanges)) {
         return ret;
     }
     return 0;
@@ -339,17 +332,8 @@ int NetworkController::removeRoute(unsigned netId, const char* interface, const 
 }
 
 Network* NetworkController::getNetworkLocked(unsigned netId) const {
-    auto physicalNetworkIter = mPhysicalNetworks.find(netId);
-    if (physicalNetworkIter != mPhysicalNetworks.end()) {
-        return physicalNetworkIter->second;
-    }
-    {
-        auto iter = mVirtualNetworks.find(netId);
-        if (iter != mVirtualNetworks.end()) {
-            return iter->second;
-        }
-    }
-    return NULL;
+    auto iter = mNetworks.find(netId);
+    return iter == mNetworks.end() ? NULL : iter->second;
 }
 
 int NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,

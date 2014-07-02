@@ -51,6 +51,10 @@ int VirtualNetwork::removeInterface(const std::string& interface) {
     return 0;
 }
 
+Network::Type VirtualNetwork::getType() const {
+    return VIRTUAL;
+}
+
 int VirtualNetwork::addUsers(const UidRanges& uidRanges) {
     for (const std::string& interface : mInterfaces) {
         if (int ret = RouteController::addUsersToVpn(mNetId, interface.c_str(), uidRanges)) {
