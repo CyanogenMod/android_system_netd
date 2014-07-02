@@ -1644,17 +1644,16 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     //    0      1       2          3
     // network create <netId> [<permission> ...]
     //
-    //    0      1       2     3      4
-    // network create <netId> vpn <ownerUid>
+    //    0      1       2     3
+    // network create <netId> vpn
     if (!strcmp(argv[1], "create")) {
         if (argc < 3) {
             return syntaxError(client, "Missing argument");
         }
         // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
         unsigned netId = strtoul(argv[2], NULL, 0);
-        if (argc == 5 && !strcmp(argv[3], "vpn")) {
-            uid_t ownerUid = strtoul(argv[4], NULL, 0);
-            if (int ret = sNetCtrl->createVpn(netId, ownerUid)) {
+        if (argc == 4 && !strcmp(argv[3], "vpn")) {
+            if (int ret = sNetCtrl->createVpn(netId)) {
                 return operationError(client, "createVpn() failed", ret);
             }
         } else {
@@ -1768,6 +1767,27 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
             if (int ret = sNetCtrl->removeUsersFromNetwork(netId, uidRanges)) {
                 return operationError(client, "removeUsersFromNetwork() failed", ret);
             }
+        } else {
+            return syntaxError(client, "Unknown argument");
+        }
+        return success(client);
+    }
+
+    //    0       1      2     3
+    // network protect allow <uid> ...
+    // network protect  deny <uid> ...
+    if (!strcmp(argv[1], "protect")) {
+        if (argc < 4) {
+            return syntaxError(client, "Missing argument");
+        }
+        std::vector<uid_t> uids;
+        for (int i = 3; i < argc; ++i) {
+            uids.push_back(strtoul(argv[i], NULL, 0));
+        }
+        if (!strcmp(argv[2], "allow")) {
+            sNetCtrl->allowProtect(uids);
+        } else if (!strcmp(argv[2], "deny")) {
+            sNetCtrl->denyProtect(uids);
         } else {
             return syntaxError(client, "Unknown argument");
         }

@@ -21,7 +21,7 @@
 #define LOG_TAG "Netd"
 #include "log/log.h"
 
-VirtualNetwork::VirtualNetwork(unsigned netId, uid_t /*ownerUid*/) : Network(netId) {
+VirtualNetwork::VirtualNetwork(unsigned netId): Network(netId) {
 }
 
 VirtualNetwork::~VirtualNetwork() {

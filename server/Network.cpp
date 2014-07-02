@@ -19,9 +19,6 @@
 #define LOG_TAG "Netd"
 #include "log/log.h"
 
-Network::Network(unsigned netId) : mNetId(netId) {
-}
-
 Network::~Network() {
     if (!mInterfaces.empty()) {
         ALOGE("deleting network with netId %u without clearing its interfaces", mNetId);
@@ -42,4 +39,7 @@ int Network::clearInterfaces() {
         }
     }
     return 0;
+}
+
+Network::Network(unsigned netId) : mNetId(netId) {
 }

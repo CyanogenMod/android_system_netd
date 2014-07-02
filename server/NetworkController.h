@@ -24,6 +24,7 @@
 
 #include <list>
 #include <map>
+#include <set>
 #include <sys/types.h>
 #include <vector>
 
@@ -55,7 +56,7 @@ public:
     bool isValidNetwork(unsigned netId) const;
 
     int createNetwork(unsigned netId, Permission permission) WARN_UNUSED_RESULT;
-    int createVpn(unsigned netId, uid_t ownerUid) WARN_UNUSED_RESULT;
+    int createVpn(unsigned netId) WARN_UNUSED_RESULT;
     int destroyNetwork(unsigned netId) WARN_UNUSED_RESULT;
 
     int addInterfaceToNetwork(unsigned netId, const char* interface) WARN_UNUSED_RESULT;
@@ -77,6 +78,9 @@ public:
     int removeRoute(unsigned netId, const char* interface, const char* destination,
                     const char* nexthop, bool legacy, uid_t uid) WARN_UNUSED_RESULT;
 
+    void allowProtect(const std::vector<uid_t>& uids);
+    void denyProtect(const std::vector<uid_t>& uids);
+
 private:
     Network* getNetworkLocked(unsigned netId) const;
 
@@ -92,12 +96,14 @@ private:
         UidEntry(uid_t uidStart, uid_t uidEnd, unsigned netId, bool forwardDns);
     };
 
-    // mRWLock guards all accesses to mUidMap, mDefaultNetId, mNetworks and mUsers.
+    // mRWLock guards all accesses to mUidMap, mDefaultNetId, mNetworks, mUsers and
+    // mProtectableUsers.
     mutable android::RWLock mRWLock;
     std::list<UidEntry> mUidMap;
     unsigned mDefaultNetId;
     std::map<unsigned, Network*> mNetworks;  // Map keys are NetIds.
     std::map<uid_t, Permission> mUsers;
+    std::set<uid_t> mProtectableUsers;
 };
 
 #endif  // NETD_SERVER_NETWORK_CONTROLLER_H

@@ -22,7 +22,7 @@
 
 class VirtualNetwork : public Network {
 public:
-    VirtualNetwork(unsigned netId, uid_t ownerUid);
+    explicit VirtualNetwork(unsigned netId);
     virtual ~VirtualNetwork();
 
     int addUsers(const UidRanges& uidRanges) WARN_UNUSED_RESULT;

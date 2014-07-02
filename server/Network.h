@@ -30,8 +30,6 @@ public:
         VIRTUAL,
     };
 
-    explicit Network(unsigned netId);
-
     // You MUST ensure that no interfaces are still assigned to this network, say by calling
     // clearInterfaces(), before deleting it. This is because interface removal may fail. If we
     // automatically removed interfaces in the destructor, you wouldn't know if it failed.
@@ -47,6 +45,8 @@ public:
     int clearInterfaces() WARN_UNUSED_RESULT;
 
 protected:
+    explicit Network(unsigned netId);
+
     const unsigned mNetId;
     std::set<std::string> mInterfaces;
 };

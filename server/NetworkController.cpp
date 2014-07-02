@@ -177,7 +177,7 @@ int NetworkController::createNetwork(unsigned netId, Permission permission) {
     return 0;
 }
 
-int NetworkController::createVpn(unsigned netId, uid_t ownerUid) {
+int NetworkController::createVpn(unsigned netId) {
     if (netId < MIN_NET_ID || netId > MAX_NET_ID) {
         ALOGE("invalid netId %u", netId);
         return -EINVAL;
@@ -189,7 +189,7 @@ int NetworkController::createVpn(unsigned netId, uid_t ownerUid) {
     }
 
     android::RWLock::AutoWLock lock(mRWLock);
-    mNetworks[netId] = new VirtualNetwork(netId, ownerUid);
+    mNetworks[netId] = new VirtualNetwork(netId);
     return 0;
 }
 
@@ -329,6 +329,18 @@ int NetworkController::addRoute(unsigned netId, const char* interface, const cha
 int NetworkController::removeRoute(unsigned netId, const char* interface, const char* destination,
                                    const char* nexthop, bool legacy, uid_t uid) {
     return modifyRoute(netId, interface, destination, nexthop, false, legacy, uid);
+}
+
+void NetworkController::allowProtect(const std::vector<uid_t>& uids) {
+    android::RWLock::AutoWLock lock(mRWLock);
+    mProtectableUsers.insert(uids.begin(), uids.end());
+}
+
+void NetworkController::denyProtect(const std::vector<uid_t>& uids) {
+    android::RWLock::AutoWLock lock(mRWLock);
+    for (uid_t uid : uids) {
+        mProtectableUsers.erase(uid);
+    }
 }
 
 Network* NetworkController::getNetworkLocked(unsigned netId) const {
