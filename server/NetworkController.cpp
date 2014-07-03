@@ -366,9 +366,9 @@ int NetworkController::modifyRoute(unsigned netId, const char* interface, const 
     RouteController::TableType tableType;
     if (legacy) {
         if ((getPermissionForUser(uid) & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) {
-            tableType = RouteController::PRIVILEGED_LEGACY;
+            tableType = RouteController::LEGACY_SYSTEM;
         } else {
-            tableType = RouteController::LEGACY;
+            tableType = RouteController::LEGACY_NETWORK;
         }
     } else {
         tableType = RouteController::INTERFACE;

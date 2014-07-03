@@ -22,6 +22,7 @@
 #define LOG_TAG "Netd"
 #include "log/log.h"
 #include "logwrap/logwrap.h"
+#include "resolv_netid.h"
 
 #include <arpa/inet.h>
 #include <linux/fib_rules.h>
@@ -32,19 +33,21 @@ namespace {
 
 // BEGIN CONSTANTS --------------------------------------------------------------------------------
 
-const uint32_t RULE_PRIORITY_VPN_OVERRIDES      = 11000;
-const uint32_t RULE_PRIORITY_SECURE_VPN         = 12000;
-const uint32_t RULE_PRIORITY_EXPLICIT_NETWORK   = 13000;
-const uint32_t RULE_PRIORITY_OUTPUT_INTERFACE   = 14000;
-const uint32_t RULE_PRIORITY_PRIVILEGED_LEGACY  = 16000;
-const uint32_t RULE_PRIORITY_LEGACY             = 17000;
-const uint32_t RULE_PRIORITY_IMPLICIT_NETWORK   = 18000;
-const uint32_t RULE_PRIORITY_DEFAULT_NETWORK    = 21000;
-const uint32_t RULE_PRIORITY_DIRECTLY_CONNECTED = 22000;
-// TODO: Uncomment once we are sure everything works.
-#if 0
-const uint32_t RULE_PRIORITY_UNREACHABLE        = 23000;
-#endif
+const uint32_t RULE_PRIORITY_VPN_OVERRIDE_SYSTEM = 10000;
+// const uint32_t RULE_PRIORITY_VPN_OVERRIDE_LOCAL  = 11000;
+const uint32_t RULE_PRIORITY_SECURE_VPN          = 12000;
+const uint32_t RULE_PRIORITY_EXPLICIT_NETWORK    = 13000;
+const uint32_t RULE_PRIORITY_OUTPUT_INTERFACE    = 14000;
+const uint32_t RULE_PRIORITY_LEGACY_SYSTEM       = 15000;
+const uint32_t RULE_PRIORITY_LEGACY_NETWORK      = 16000;
+// const uint32_t RULE_PRIORITY_LOCAL_NETWORK       = 17000;
+// const uint32_t RULE_PRIORITY_TETHERING           = 18000;
+const uint32_t RULE_PRIORITY_IMPLICIT_NETWORK    = 19000;
+// const uint32_t RULE_PRIORITY_BYPASSABLE_VPN      = 20000;
+// const uint32_t RULE_PRIORITY_VPN_FALLTHROUGH     = 21000;
+const uint32_t RULE_PRIORITY_DEFAULT_NETWORK     = 22000;
+const uint32_t RULE_PRIORITY_DIRECTLY_CONNECTED  = 23000;
+const uint32_t RULE_PRIORITY_UNREACHABLE         = 24000;
 
 // TODO: These values aren't defined by the Linux kernel, because our UID routing changes are not
 // upstream (yet?), so we can't just pick them up from kernel headers. When (if?) the changes make
@@ -64,6 +67,12 @@ const sockaddr_nl NETLINK_ADDRESS = {AF_NETLINK, 0, 0, 0};
 const uint8_t AF_FAMILIES[] = {AF_INET, AF_INET6};
 
 const char* const IP_VERSIONS[] = {"-4", "-6"};
+
+const uid_t UID_ROOT = 0;
+const char* const OIF_NONE = NULL;
+const bool ACTION_ADD = true;
+const bool ACTION_DEL = false;
+const bool MODIFY_NON_UID_BASED_RULES = true;
 
 // Avoids "non-constant-expression cannot be narrowed from type 'unsigned int' to 'unsigned short'"
 // warnings when using RTA_LENGTH(x) inside static initializers (even when x is already uint16_t).
@@ -96,12 +105,14 @@ uint32_t getRouteTableForInterface(const char* interface) {
     } else {
         // If the interface goes away if_nametoindex() will return 0 but we still need to know
         // the index so we can remove the rules and routes.
-        std::map<std::string, uint32_t>::iterator it = interfaceToIndex.find(interface);
-        if (it != interfaceToIndex.end()) {
-            index = it->second;
+        auto iter = interfaceToIndex.find(interface);
+        if (iter == interfaceToIndex.end()) {
+            ALOGE("cannot find interface %s", interface);
+            return RT_TABLE_UNSPEC;
         }
+        index = iter->second;
     }
-    return index ? index + RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX : 0;
+    return index + RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX;
 }
 
 // Sends a netlink request and expects an ack.
@@ -175,7 +186,7 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t
     uint16_t paddingLength = 0;
     size_t interfaceLength = 0;
     char oifname[IFNAMSIZ];
-    if (interface) {
+    if (interface != OIF_NONE) {
         interfaceLength = strlcpy(oifname, interface, IFNAMSIZ) + 1;
         if (interfaceLength > IFNAMSIZ) {
             ALOGE("interface name too long (%zu > %u)", interfaceLength, IFNAMSIZ);
@@ -193,7 +204,8 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t
 
     // Assemble a rule request and put it in an array of iovec structures.
     fib_rule_hdr rule = {
-        .action = static_cast<uint8_t>(table ? FR_ACT_TO_TBL : FR_ACT_UNREACHABLE),
+        .action = static_cast<uint8_t>(table != RT_TABLE_UNSPEC ? FR_ACT_TO_TBL :
+                                                                  FR_ACT_UNREACHABLE),
     };
 
     rtattr fraOifname = { U16_RTA_LENGTH(interfaceLength), FRA_OIFNAME };
@@ -203,8 +215,8 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t
         { &rule,             sizeof(rule) },
         { &FRATTR_PRIORITY,  sizeof(FRATTR_PRIORITY) },
         { &priority,         sizeof(priority) },
-        { &FRATTR_TABLE,     table ? sizeof(FRATTR_TABLE) : 0 },
-        { &table,            table ? sizeof(table) : 0 },
+        { &FRATTR_TABLE,     table != RT_TABLE_UNSPEC ? sizeof(FRATTR_TABLE) : 0 },
+        { &table,            table != RT_TABLE_UNSPEC ? sizeof(table) : 0 },
         { &FRATTR_FWMARK,    mask ? sizeof(FRATTR_FWMARK) : 0 },
         { &fwmark,           mask ? sizeof(fwmark) : 0 },
         { &FRATTR_FWMASK,    mask ? sizeof(FRATTR_FWMASK) : 0 },
@@ -213,7 +225,7 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t
         { &uidStart,         isUidRule ? sizeof(uidStart) : 0 },
         { &FRATTR_UID_END,   isUidRule ? sizeof(FRATTR_UID_END) : 0 },
         { &uidEnd,           isUidRule ? sizeof(uidEnd) : 0 },
-        { &fraOifname,       interface ? sizeof(fraOifname) : 0 },
+        { &fraOifname,       interface != OIF_NONE ? sizeof(fraOifname) : 0 },
         { oifname,           interfaceLength },
         { PADDING_BUFFER,    paddingLength },
     };
@@ -257,7 +269,7 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
 
     // If an interface was specified, find the ifindex.
     uint32_t ifindex;
-    if (interface) {
+    if (interface != OIF_NONE) {
         ifindex = if_nametoindex(interface);
         if (!ifindex) {
             ALOGE("cannot find interface %s", interface);
@@ -290,8 +302,8 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
         { &table,        sizeof(table) },
         { &rtaDst,       sizeof(rtaDst) },
         { rawAddress,    static_cast<size_t>(rawLength) },
-        { &RTATTR_OIF,   interface ? sizeof(RTATTR_OIF) : 0 },
-        { &ifindex,      interface ? sizeof(ifindex) : 0 },
+        { &RTATTR_OIF,   interface != OIF_NONE ? sizeof(RTATTR_OIF) : 0 },
+        { &ifindex,      interface != OIF_NONE ? sizeof(ifindex) : 0 },
         { &rtaGateway,   nexthop ? sizeof(rtaGateway) : 0 },
         { rawNexthop,    nexthop ? static_cast<size_t>(rawLength) : 0 },
     };
@@ -301,205 +313,263 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
     return sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov));
 }
 
-WARN_UNUSED_RESULT int modifyIncomingPacketMark(unsigned netId, const char* interface, bool add) {
-    // An iptables rule to mark incoming packets on a network with the netId of the network.
-    //
-    // This is so that the kernel can:
-    // + Use the right fwmark for (and thus correctly route) replies (e.g.: TCP RST, ICMP errors,
-    //   ping replies, SYN-ACKs, etc).
-    // + Mark sockets that accept connections from this interface so that the connection stays on
-    //   the same interface.
+// Add rules to allow legacy routes added through the requestRouteToHost() API.
+WARN_UNUSED_RESULT int AddLegacyRouteRules() {
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
+
+    // Rules to allow legacy routes to override the default network.
+    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LEGACY_SYSTEM,
+                               RouteController::ROUTE_TABLE_LEGACY_SYSTEM, fwmark.intValue,
+                               mask.intValue, OIF_NONE, INVALID_UID, INVALID_UID)) {
+        return ret;
+    }
+    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LEGACY_NETWORK,
+                               RouteController::ROUTE_TABLE_LEGACY_NETWORK, fwmark.intValue,
+                               mask.intValue, OIF_NONE, INVALID_UID, INVALID_UID)) {
+        return ret;
+    }
+
+    fwmark.permission = PERMISSION_SYSTEM;
+    mask.permission = PERMISSION_SYSTEM;
+
+    // A rule to allow legacy routes from system apps to override VPNs.
+    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_VPN_OVERRIDE_SYSTEM,
+                        RouteController::ROUTE_TABLE_LEGACY_SYSTEM, fwmark.intValue, mask.intValue,
+                        OIF_NONE, INVALID_UID, INVALID_UID);
+}
+
+// Add a new rule to look up the 'main' table, with the same selectors as the "default network"
+// rule, but with a lower priority. Since the default network rule points to a table with a default
+// route, the rule we're adding will never be used for normal routing lookups. However, the kernel
+// may fall-through to it to find directly-connected routes when it validates that a nexthop (in a
+// route being added) is reachable.
+WARN_UNUSED_RESULT int AddDirectlyConnectedRule() {
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.netId = NETID_UNSET;
+    mask.netId = FWMARK_NET_ID_MASK;
+
+    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_DIRECTLY_CONNECTED, RT_TABLE_MAIN,
+                        fwmark.intValue, mask.intValue, OIF_NONE, UID_ROOT, UID_ROOT);
+}
+
+// Add a rule to preempt the pre-defined "from all lookup main" rule. Packets that reach this rule
+// will be null-routed, and won't fall-through to the main table.
+WARN_UNUSED_RESULT int AddUnreachableRule() {
+    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_UNREACHABLE, RT_TABLE_UNSPEC, MARK_UNSET,
+                        MARK_UNSET, OIF_NONE, INVALID_UID, INVALID_UID);
+}
+
+// An iptables rule to mark incoming packets on a network with the netId of the network.
+//
+// This is so that the kernel can:
+// + Use the right fwmark for (and thus correctly route) replies (e.g.: TCP RST, ICMP errors, ping
+//   replies, SYN-ACKs, etc).
+// + Mark sockets that accept connections from this interface so that the connection stays on the
+//   same interface.
+WARN_UNUSED_RESULT int modifyIncomingPacketMark(unsigned netId, const char* interface,
+                                                Permission permission, bool add) {
+    Fwmark fwmark;
+
+    fwmark.netId = netId;
+    fwmark.explicitlySelected = true;
+    fwmark.protectedFromVpn = true;
+    fwmark.permission = permission;
+
     char markString[UINT32_HEX_STRLEN];
-    snprintf(markString, sizeof(markString), "0x%x", netId);
+    snprintf(markString, sizeof(markString), "0x%x", fwmark.intValue);
+
     if (execIptables(V4V6, "-t", "mangle", add ? "-A" : "-D", "INPUT", "-i", interface, "-j",
                      "MARK", "--set-mark", markString, NULL)) {
         ALOGE("failed to change iptables rule that sets incoming packet mark");
         return -EREMOTEIO;
     }
+
     return 0;
 }
 
-// A rule to let UID 0 (as a proxy for the kernel) access the routes on a given network.
-WARN_UNUSED_RESULT int modifyKernelAccessRule(uint16_t action, unsigned netId, uint32_t priority,
-                                              uint32_t table) {
+// A rule to route traffic based on an explicitly chosen network.
+//
+// Supports apps that use the multinetwork APIs to restrict their traffic to a network.
+//
+// Even though we check permissions at the time we set a netId into the fwmark of a socket, we need
+// to check it again in the rules here, because a network's permissions may have been updated via
+// modifyNetworkPermission().
+WARN_UNUSED_RESULT int modifyExplicitNetworkRule(unsigned netId, uint32_t table,
+                                                 Permission permission, uid_t uidStart,
+                                                 uid_t uidEnd, bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
     fwmark.netId = netId;
     mask.netId = FWMARK_NET_ID_MASK;
 
-    return modifyIpRule(action, priority, table, fwmark.intValue, mask.intValue, NULL, 0, 0);
-}
-
-WARN_UNUSED_RESULT int modifyPerNetworkRules(unsigned netId, const char* interface, uint32_t table,
-                                             Permission permission, uid_t uidStart, uid_t uidEnd,
-                                             bool add, bool modifyInterfaceBasedRules) {
-    if (!table) {
-        table = getRouteTableForInterface(interface);
-        if (!table) {
-            ALOGE("cannot find interface %s", interface);
-            return -ESRCH;
-        }
-    }
-
-    uint16_t action = add ? RTM_NEWRULE : RTM_DELRULE;
-
-    Fwmark fwmark;
-    Fwmark mask;
-
-    // A rule to route traffic based on a chosen outgoing interface.
-    //
-    // Supports apps that use SO_BINDTODEVICE or IP_PKTINFO options and the kernel that already
-    // knows the outgoing interface (typically for link-local communications).
-    fwmark.permission = permission;
-    mask.permission = permission;
-    if (int ret = modifyIpRule(action, RULE_PRIORITY_OUTPUT_INTERFACE, table, fwmark.intValue,
-                               mask.intValue, interface, uidStart, uidEnd)) {
-        return ret;
-    }
-
-    // A rule to route traffic based on the chosen network.
-    //
-    // This is for sockets that have not explicitly requested a particular network, but have been
-    // bound to one when they called connect(). This ensures that sockets connected on a particular
-    // network stay on that network even if the default network changes.
-    fwmark.netId = netId;
-    mask.netId = FWMARK_NET_ID_MASK;
-    if (int ret = modifyIpRule(action, RULE_PRIORITY_IMPLICIT_NETWORK, table, fwmark.intValue,
-                               mask.intValue, NULL, uidStart, uidEnd)) {
-        return ret;
-    }
-
-    // A rule to route traffic based on an explicitly chosen network.
-    //
-    // Supports apps that use the multinetwork APIs to restrict their traffic to a network.
-    //
-    // Even though we check permissions at the time we set a netId into the fwmark of a socket, we
-    // still need to check it again in the rules here, because a network's permissions may have been
-    // updated via modifyNetworkPermission().
     fwmark.explicitlySelected = true;
     mask.explicitlySelected = true;
-    if (int ret = modifyIpRule(action, RULE_PRIORITY_EXPLICIT_NETWORK, table, fwmark.intValue,
-                               mask.intValue, NULL, uidStart, uidEnd)) {
-        return ret;
-    }
 
-    if (permission != PERMISSION_NONE) {
-        if (int ret = modifyKernelAccessRule(action, netId, RULE_PRIORITY_IMPLICIT_NETWORK,
-                                             table)) {
-            return ret;
-        }
-    }
+    fwmark.permission = permission;
+    mask.permission = permission;
 
-    if (modifyInterfaceBasedRules) {
-        if (int ret = modifyIncomingPacketMark(netId, interface, add)) {
-            return ret;
-        }
-    }
-
-    return 0;
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_EXPLICIT_NETWORK, table,
+                        fwmark.intValue, mask.intValue, OIF_NONE, uidStart, uidEnd);
 }
 
-// Adds or removes rules for VPNs that affect UIDs in |uidRanges|. If |modifyInterfaceBasedRules|
-// is true, also modifies the rules that are based only on the |interface| and not on |uidRanges|.
-// When adding or removing an interface to the VPN, set it to true. When adding or removing UIDs
-// without changing the VPN's interfaces, set it to false.
-WARN_UNUSED_RESULT int modifyVpnRules(unsigned netId, const char* interface,
-                                      const UidRanges& uidRanges, bool add,
-                                      bool modifyInterfaceBasedRules) {
-    uint32_t table = getRouteTableForInterface(interface);
-    if (!table) {
-        ALOGE("cannot find interface %s", interface);
-        return -ESRCH;
-    }
+// A rule to route traffic based on a chosen outgoing interface.
+//
+// Supports apps that use SO_BINDTODEVICE or IP_PKTINFO options and the kernel that already knows
+// the outgoing interface (typically for link-local communications).
+WARN_UNUSED_RESULT int modifyOutputInterfaceRule(const char* interface, uint32_t table,
+                                                 Permission permission, uid_t uidStart,
+                                                 uid_t uidEnd, bool add) {
+    Fwmark fwmark;
+    Fwmark mask;
 
-    uint16_t action = add ? RTM_NEWRULE : RTM_DELRULE;
+    fwmark.permission = permission;
+    mask.permission = permission;
 
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_OUTPUT_INTERFACE, table,
+                        fwmark.intValue, mask.intValue, interface, uidStart, uidEnd);
+}
+
+// A rule to route traffic based on the chosen network.
+//
+// This is for sockets that have not explicitly requested a particular network, but have been
+// bound to one when they called connect(). This ensures that sockets connected on a particular
+// network stay on that network even if the default network changes.
+WARN_UNUSED_RESULT int modifyImplicitNetworkRule(unsigned netId, uint32_t table,
+                                                 Permission permission, bool add) {
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.netId = netId;
+    mask.netId = FWMARK_NET_ID_MASK;
+
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
+
+    fwmark.permission = permission;
+    mask.permission = permission;
+
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_IMPLICIT_NETWORK, table,
+                        fwmark.intValue, mask.intValue, OIF_NONE, INVALID_UID, INVALID_UID);
+}
+
+// A rule to route all traffic from a given set of UIDs to go over the VPN.
+//
+// Notice that this rule doesn't use the netId. I.e., no matter what netId the user's socket may
+// have, if they are subject to this VPN, their traffic has to go through it. Allows the traffic to
+// bypass the VPN if the protectedFromVpn bit is set.
+WARN_UNUSED_RESULT int modifyVpnUidRangeRule(uint32_t table, uid_t uidStart, uid_t uidEnd,
+                                             bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
     fwmark.protectedFromVpn = false;
     mask.protectedFromVpn = true;
 
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_SECURE_VPN, table,
+                        fwmark.intValue, mask.intValue, OIF_NONE, uidStart, uidEnd);
+}
+
+// A rule to allow system apps to send traffic over this VPN even if they are not part of the target
+// set of UIDs.
+//
+// This is needed for DnsProxyListener to correctly resolve a request for a user who is in the
+// target set, but where the DnsProxyListener itself is not.
+WARN_UNUSED_RESULT int modifyVpnSystemPermissionRule(unsigned netId, uint32_t table, bool add) {
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.netId = netId;
+    mask.netId = FWMARK_NET_ID_MASK;
+
+    fwmark.permission = PERMISSION_SYSTEM;
+    mask.permission = PERMISSION_SYSTEM;
+
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_SECURE_VPN, table,
+                        fwmark.intValue, mask.intValue, OIF_NONE, INVALID_UID, INVALID_UID);
+}
+
+WARN_UNUSED_RESULT int modifyPhysicalNetwork(unsigned netId, const char* interface,
+                                             Permission permission, bool add) {
+    uint32_t table = getRouteTableForInterface(interface);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
+    if (int ret = modifyIncomingPacketMark(netId, interface, permission, add)) {
+        return ret;
+    }
+    if (int ret = modifyExplicitNetworkRule(netId, table, permission, INVALID_UID, INVALID_UID,
+                                            add)) {
+        return ret;
+    }
+    if (int ret = modifyOutputInterfaceRule(interface, table, permission, INVALID_UID, INVALID_UID,
+                                            add)) {
+        return ret;
+    }
+    return modifyImplicitNetworkRule(netId, table, permission, add);
+}
+
+WARN_UNUSED_RESULT int modifyVirtualNetwork(unsigned netId, const char* interface,
+                                            const UidRanges& uidRanges, bool add,
+                                            bool modifyNonUidBasedRules) {
+    uint32_t table = getRouteTableForInterface(interface);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
     for (const std::pair<uid_t, uid_t>& range : uidRanges.getRanges()) {
-        if (int ret = modifyPerNetworkRules(netId, interface, table, PERMISSION_NONE, range.first,
-                                            range.second, add, false)) {
+        if (int ret = modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, range.first,
+                                                range.second, add)) {
             return ret;
         }
-
-        // A rule to route all traffic from a given set of UIDs to go over the VPN.
-        //
-        // Notice that this rule doesn't use the netId. I.e., no matter what netId the user's socket
-        // may have, if they are subject to this VPN, their traffic has to go through it. Allows the
-        // traffic to bypass the VPN if the protectedFromVpn bit is set.
-        if (int ret = modifyIpRule(action, RULE_PRIORITY_SECURE_VPN, table, fwmark.intValue,
-                                   mask.intValue, NULL, range.first, range.second)) {
+        if (int ret = modifyOutputInterfaceRule(interface, table, PERMISSION_NONE, range.first,
+                                                range.second, add)) {
+            return ret;
+        }
+        if (int ret = modifyVpnUidRangeRule(table, range.first, range.second, add)) {
             return ret;
         }
     }
 
-    if (modifyInterfaceBasedRules) {
-        if (int ret = modifyKernelAccessRule(action, netId, RULE_PRIORITY_IMPLICIT_NETWORK,
-                                             table)) {
+    if (modifyNonUidBasedRules) {
+        if (int ret = modifyIncomingPacketMark(netId, interface, PERMISSION_NONE, add)) {
             return ret;
         }
-
-        if (int ret = modifyIncomingPacketMark(netId, interface, add)) {
+        if (int ret = modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, UID_ROOT, UID_ROOT,
+                                                add)) {
             return ret;
         }
-
-        // A rule to allow privileged apps to send traffic over this VPN even if they are not part
-        // of the target set of UIDs.
-        //
-        // This is needed for DnsProxyListener to correctly resolve a request for a user who is in
-        // the target set, but where the DnsProxyListener itself is not.
-        fwmark.protectedFromVpn = false;
-        mask.protectedFromVpn = false;
-
-        fwmark.netId = netId;
-        mask.netId = FWMARK_NET_ID_MASK;
-
-        fwmark.permission = PERMISSION_SYSTEM;
-        mask.permission = PERMISSION_SYSTEM;
-
-        if (int ret = modifyIpRule(action, RULE_PRIORITY_SECURE_VPN, table, fwmark.intValue,
-                                   mask.intValue, NULL, INVALID_UID, INVALID_UID)) {
-            return ret;
-        }
+        return modifyVpnSystemPermissionRule(netId, table, add);
     }
 
     return 0;
 }
 
-WARN_UNUSED_RESULT int modifyDefaultNetworkRules(uint16_t action, const char* interface,
-                                                 Permission permission) {
+WARN_UNUSED_RESULT int modifyDefaultNetwork(uint16_t action, const char* interface,
+                                            Permission permission) {
     uint32_t table = getRouteTableForInterface(interface);
-    if (!table) {
-        ALOGE("cannot find interface %s", interface);
+    if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
     }
 
     Fwmark fwmark;
     Fwmark mask;
 
-    fwmark.netId = 0;
+    fwmark.netId = NETID_UNSET;
     mask.netId = FWMARK_NET_ID_MASK;
 
     fwmark.permission = permission;
     mask.permission = permission;
 
-    if (int ret = modifyIpRule(action, RULE_PRIORITY_DEFAULT_NETWORK, table, fwmark.intValue,
-                               mask.intValue, NULL, INVALID_UID, INVALID_UID)) {
-        return ret;
-    }
-
-    if (permission != PERMISSION_NONE) {
-        if (int ret = modifyKernelAccessRule(action, 0, RULE_PRIORITY_DEFAULT_NETWORK, table)) {
-            return ret;
-        }
-    }
-
-    return 0;
+    return modifyIpRule(action, RULE_PRIORITY_DEFAULT_NETWORK, table, fwmark.intValue,
+                        mask.intValue, OIF_NONE, INVALID_UID, INVALID_UID);
 }
 
 // Adds or removes an IPv4 or IPv6 route to the specified table and, if it's a directly-connected
@@ -507,32 +577,30 @@ WARN_UNUSED_RESULT int modifyDefaultNetworkRules(uint16_t action, const char* in
 // Returns 0 on success or negative errno on failure.
 WARN_UNUSED_RESULT int modifyRoute(uint16_t action, const char* interface, const char* destination,
                                    const char* nexthop, RouteController::TableType tableType) {
-    uint32_t table = 0;
+    uint32_t table;
     switch (tableType) {
         case RouteController::INTERFACE: {
             table = getRouteTableForInterface(interface);
+            if (table == RT_TABLE_UNSPEC) {
+                return -ESRCH;
+            }
             break;
         }
-        case RouteController::LEGACY: {
-            table = RouteController::ROUTE_TABLE_LEGACY;
+        case RouteController::LEGACY_NETWORK: {
+            table = RouteController::ROUTE_TABLE_LEGACY_NETWORK;
             break;
         }
-        case RouteController::PRIVILEGED_LEGACY: {
-            table = RouteController::ROUTE_TABLE_PRIVILEGED_LEGACY;
+        case RouteController::LEGACY_SYSTEM: {
+            table = RouteController::ROUTE_TABLE_LEGACY_SYSTEM;
             break;
         }
-    }
-    if (!table) {
-        ALOGE("cannot find table for interface %s and tableType %d", interface, tableType);
-        return -ESRCH;
     }
 
     int ret = modifyIpRoute(action, table, interface, destination, nexthop);
     // We allow apps to call requestRouteToHost() multiple times with the same route, so ignore
     // EEXIST failures when adding routes to legacy tables.
-    if (ret != 0 && !(action == RTM_NEWROUTE && ret == -EEXIST &&
-                      (tableType == RouteController::LEGACY ||
-                       tableType == RouteController::PRIVILEGED_LEGACY))) {
+    if (ret && !(action == RTM_NEWROUTE && ret == -EEXIST &&
+                 tableType != RouteController::INTERFACE)) {
         return ret;
     }
 
@@ -554,11 +622,9 @@ WARN_UNUSED_RESULT int modifyRoute(uint16_t action, const char* interface, const
 // Returns 0 on success or negative errno on failure.
 WARN_UNUSED_RESULT int flushRoutes(const char* interface) {
     uint32_t table = getRouteTableForInterface(interface);
-    if (!table) {
-        ALOGE("cannot find interface %s", interface);
+    if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
     }
-    interfaceToIndex.erase(interface);
 
     char tableString[UINT32_STRLEN];
     snprintf(tableString, sizeof(tableString), "%u", table);
@@ -578,117 +644,84 @@ WARN_UNUSED_RESULT int flushRoutes(const char* interface) {
         }
     }
 
+    interfaceToIndex.erase(interface);
     return 0;
 }
 
 }  // namespace
 
 int RouteController::Init() {
-    // Add a new rule to look up the 'main' table, with the same selectors as the "default network"
-    // rule, but with a lower priority. Since the default network rule points to a table with a
-    // default route, the rule we're adding will never be used for normal routing lookups. However,
-    // the kernel may fall-through to it to find directly-connected routes when it validates that a
-    // nexthop (in a route being added) is reachable.
-    if (int ret = modifyKernelAccessRule(RTM_NEWRULE, 0, RULE_PRIORITY_DIRECTLY_CONNECTED,
-                                         RT_TABLE_MAIN)) {
+    if (int ret = AddDirectlyConnectedRule()) {
         return ret;
     }
 
-    Fwmark fwmark;
-    Fwmark mask;
-
-    // Add rules to allow legacy routes to override the default network.
-    fwmark.explicitlySelected = false;
-    mask.explicitlySelected = true;
-
-    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_PRIVILEGED_LEGACY,
-                               RouteController::ROUTE_TABLE_PRIVILEGED_LEGACY, fwmark.intValue,
-                               mask.intValue, NULL, INVALID_UID, INVALID_UID)) {
+    if (int ret = AddLegacyRouteRules()) {
         return ret;
     }
-
-    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LEGACY,
-                               RouteController::ROUTE_TABLE_LEGACY, fwmark.intValue, mask.intValue,
-                               NULL, INVALID_UID, INVALID_UID)) {
-        return ret;
+    // TODO: Enable once we are sure everything works.
+    if (false) {
+        return AddUnreachableRule();
     }
-
-    // Add a rule to allow legacy routes from system apps to override VPNs.
-    fwmark.permission = PERMISSION_SYSTEM;
-    mask.permission = PERMISSION_SYSTEM;
-
-    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_VPN_OVERRIDES,
-                               RouteController::ROUTE_TABLE_PRIVILEGED_LEGACY, fwmark.intValue,
-                               mask.intValue, NULL, INVALID_UID, INVALID_UID)) {
-        return ret;
-    }
-
-// TODO: Uncomment once we are sure everything works.
-#if 0
-    // Add a rule to preempt the pre-defined "from all lookup main" rule. Packets that reach this
-    // rule will be null-routed, and won't fall-through to the main table.
-    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_UNREACHABLE, 0, 0, 0, NULL, INVALID_UID,
-                        INVALID_UID);
-#else
     return 0;
-#endif
 }
 
-int RouteController::addInterfaceToNetwork(unsigned netId, const char* interface,
-                                           Permission permission) {
-    return modifyPerNetworkRules(netId, interface, 0, permission, INVALID_UID, INVALID_UID, true,
-                                 true);
+int RouteController::addInterfaceToPhysicalNetwork(unsigned netId, const char* interface,
+                                                   Permission permission) {
+    return modifyPhysicalNetwork(netId, interface, permission, ACTION_ADD);
 }
 
-int RouteController::removeInterfaceFromNetwork(unsigned netId, const char* interface,
-                                                Permission permission) {
-    if (int ret = modifyPerNetworkRules(netId, interface, 0, permission, INVALID_UID, INVALID_UID,
-                                        false, true)) {
+int RouteController::removeInterfaceFromPhysicalNetwork(unsigned netId, const char* interface,
+                                                        Permission permission) {
+    if (int ret = modifyPhysicalNetwork(netId, interface, permission, ACTION_DEL)) {
         return ret;
     }
     return flushRoutes(interface);
 }
 
-int RouteController::addInterfaceToVpn(unsigned netId, const char* interface,
-                                       const UidRanges& uidRanges) {
-    return modifyVpnRules(netId, interface, uidRanges, true, true);
+int RouteController::addInterfaceToVirtualNetwork(unsigned netId, const char* interface,
+                                                  const UidRanges& uidRanges) {
+    return modifyVirtualNetwork(netId, interface, uidRanges, ACTION_ADD,
+                                MODIFY_NON_UID_BASED_RULES);
 }
 
-int RouteController::removeInterfaceFromVpn(unsigned netId, const char* interface,
-                                            const UidRanges& uidRanges) {
-    if (int ret = modifyVpnRules(netId, interface, uidRanges, false, true)) {
+int RouteController::removeInterfaceFromVirtualNetwork(unsigned netId, const char* interface,
+                                                       const UidRanges& uidRanges) {
+    if (int ret = modifyVirtualNetwork(netId, interface, uidRanges, ACTION_DEL,
+                                       MODIFY_NON_UID_BASED_RULES)) {
         return ret;
     }
     return flushRoutes(interface);
 }
 
-int RouteController::modifyNetworkPermission(unsigned netId, const char* interface,
-                                             Permission oldPermission, Permission newPermission) {
+int RouteController::modifyPhysicalNetworkPermission(unsigned netId, const char* interface,
+                                                     Permission oldPermission,
+                                                     Permission newPermission) {
     // Add the new rules before deleting the old ones, to avoid race conditions.
-    if (int ret = modifyPerNetworkRules(netId, interface, 0, newPermission, INVALID_UID,
-                                        INVALID_UID, true, false)) {
+    if (int ret = modifyPhysicalNetwork(netId, interface, newPermission, ACTION_ADD)) {
         return ret;
     }
-    return modifyPerNetworkRules(netId, interface, 0, oldPermission, INVALID_UID, INVALID_UID,
-                                 false, false);
+    return modifyPhysicalNetwork(netId, interface, oldPermission, ACTION_DEL);
 }
 
-int RouteController::addUsersToVpn(unsigned netId, const char* interface,
-                                   const UidRanges& uidRanges) {
-    return modifyVpnRules(netId, interface, uidRanges, true, false);
+int RouteController::addUsersToVirtualNetwork(unsigned netId, const char* interface,
+                                              const UidRanges& uidRanges) {
+    return modifyVirtualNetwork(netId, interface, uidRanges, ACTION_ADD,
+                                !MODIFY_NON_UID_BASED_RULES);
 }
 
-int RouteController::removeUsersFromVpn(unsigned netId, const char* interface,
-                                        const UidRanges& uidRanges) {
-    return modifyVpnRules(netId, interface, uidRanges, false, false);
+int RouteController::removeUsersFromVirtualNetwork(unsigned netId, const char* interface,
+                                                   const UidRanges& uidRanges) {
+    return modifyVirtualNetwork(netId, interface, uidRanges, ACTION_DEL,
+                                !MODIFY_NON_UID_BASED_RULES);
 }
 
-int RouteController::addToDefaultNetwork(const char* interface, Permission permission) {
-    return modifyDefaultNetworkRules(RTM_NEWRULE, interface, permission);
+int RouteController::addInterfaceToDefaultNetwork(const char* interface, Permission permission) {
+    return modifyDefaultNetwork(RTM_NEWRULE, interface, permission);
 }
 
-int RouteController::removeFromDefaultNetwork(const char* interface, Permission permission) {
-    return modifyDefaultNetworkRules(RTM_DELRULE, interface, permission);
+int RouteController::removeInterfaceFromDefaultNetwork(const char* interface,
+                                                       Permission permission) {
+    return modifyDefaultNetwork(RTM_DELRULE, interface, permission);
 }
 
 int RouteController::addRoute(const char* interface, const char* destination, const char* nexthop,

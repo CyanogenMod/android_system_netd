@@ -28,39 +28,40 @@ class RouteController {
 public:
     // How the routing table number is determined for route modification requests.
     enum TableType {
-        INTERFACE,  // Compute the table number based on the interface index.
-        LEGACY,  // Use a fixed table that's used to override the default network.
-        PRIVILEGED_LEGACY,  // A fixed table, only modifiable by privileged apps; overrides VPNs.
+        INTERFACE,       // Compute the table number based on the interface index.
+        LEGACY_NETWORK,  // Use a fixed table that's used to override the default network.
+        LEGACY_SYSTEM,   // A fixed table, only modifiable by system apps; overrides VPNs too.
     };
 
-    static const int ROUTE_TABLE_LEGACY            =   98;
-    static const int ROUTE_TABLE_PRIVILEGED_LEGACY =   99;
+    static const int ROUTE_TABLE_LEGACY_NETWORK    =   98;
+    static const int ROUTE_TABLE_LEGACY_SYSTEM     =   99;
     static const int ROUTE_TABLE_OFFSET_FROM_INDEX = 1000;
 
     static int Init() WARN_UNUSED_RESULT;
 
-    static int addInterfaceToNetwork(unsigned netId, const char* interface,
-                                     Permission permission) WARN_UNUSED_RESULT;
-    static int removeInterfaceFromNetwork(unsigned netId, const char* interface,
-                                          Permission permission) WARN_UNUSED_RESULT;
+    static int addInterfaceToPhysicalNetwork(unsigned netId, const char* interface,
+                                             Permission permission) WARN_UNUSED_RESULT;
+    static int removeInterfaceFromPhysicalNetwork(unsigned netId, const char* interface,
+                                                  Permission permission) WARN_UNUSED_RESULT;
 
-    static int addInterfaceToVpn(unsigned netId, const char* interface,
-                                 const UidRanges& uidRanges) WARN_UNUSED_RESULT;
-    static int removeInterfaceFromVpn(unsigned netId, const char* interface,
-                                      const UidRanges& uidRanges) WARN_UNUSED_RESULT;
+    static int addInterfaceToVirtualNetwork(unsigned netId, const char* interface,
+                                            const UidRanges& uidRanges) WARN_UNUSED_RESULT;
+    static int removeInterfaceFromVirtualNetwork(unsigned netId, const char* interface,
+                                                 const UidRanges& uidRanges) WARN_UNUSED_RESULT;
 
-    static int modifyNetworkPermission(unsigned netId, const char* interface,
-                                       Permission oldPermission,
-                                       Permission newPermission) WARN_UNUSED_RESULT;
+    static int modifyPhysicalNetworkPermission(unsigned netId, const char* interface,
+                                               Permission oldPermission,
+                                               Permission newPermission) WARN_UNUSED_RESULT;
 
-    static int addToDefaultNetwork(const char* interface, Permission permission) WARN_UNUSED_RESULT;
-    static int removeFromDefaultNetwork(const char* interface,
-                                        Permission permission) WARN_UNUSED_RESULT;
+    static int addUsersToVirtualNetwork(unsigned netId, const char* interface,
+                                        const UidRanges& uidRanges) WARN_UNUSED_RESULT;
+    static int removeUsersFromVirtualNetwork(unsigned netId, const char* interface,
+                                             const UidRanges& uidRanges) WARN_UNUSED_RESULT;
 
-    static int addUsersToVpn(unsigned netId, const char* interface,
-                             const UidRanges& uidRanges) WARN_UNUSED_RESULT;
-    static int removeUsersFromVpn(unsigned netId, const char* interface,
-                                  const UidRanges& uidRanges) WARN_UNUSED_RESULT;
+    static int addInterfaceToDefaultNetwork(const char* interface,
+                                            Permission permission) WARN_UNUSED_RESULT;
+    static int removeInterfaceFromDefaultNetwork(const char* interface,
+                                                 Permission permission) WARN_UNUSED_RESULT;
 
     static int addRoute(const char* interface, const char* destination, const char* nexthop,
                         TableType tableType) WARN_UNUSED_RESULT;

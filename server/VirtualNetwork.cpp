@@ -31,7 +31,8 @@ int VirtualNetwork::addInterface(const std::string& interface) {
     if (hasInterface(interface)) {
         return 0;
     }
-    if (int ret = RouteController::addInterfaceToVpn(mNetId, interface.c_str(), mUidRanges)) {
+    if (int ret = RouteController::addInterfaceToVirtualNetwork(mNetId, interface.c_str(),
+                                                                mUidRanges)) {
         ALOGE("failed to add interface %s to VPN netId %u", interface.c_str(), mNetId);
         return ret;
     }
@@ -43,7 +44,8 @@ int VirtualNetwork::removeInterface(const std::string& interface) {
     if (!hasInterface(interface)) {
         return 0;
     }
-    if (int ret = RouteController::removeInterfaceFromVpn(mNetId, interface.c_str(), mUidRanges)) {
+    if (int ret = RouteController::removeInterfaceFromVirtualNetwork(mNetId, interface.c_str(),
+                                                                     mUidRanges)) {
         ALOGE("failed to remove interface %s from VPN netId %u", interface.c_str(), mNetId);
         return ret;
     }
@@ -57,7 +59,8 @@ Network::Type VirtualNetwork::getType() const {
 
 int VirtualNetwork::addUsers(const UidRanges& uidRanges) {
     for (const std::string& interface : mInterfaces) {
-        if (int ret = RouteController::addUsersToVpn(mNetId, interface.c_str(), uidRanges)) {
+        if (int ret = RouteController::addUsersToVirtualNetwork(mNetId, interface.c_str(),
+                                                                uidRanges)) {
             ALOGE("failed to add users on interface %s of netId %u", interface.c_str(), mNetId);
             return ret;
         }
@@ -68,7 +71,8 @@ int VirtualNetwork::addUsers(const UidRanges& uidRanges) {
 
 int VirtualNetwork::removeUsers(const UidRanges& uidRanges) {
     for (const std::string& interface : mInterfaces) {
-        if (int ret = RouteController::removeUsersFromVpn(mNetId, interface.c_str(), uidRanges)) {
+        if (int ret = RouteController::removeUsersFromVirtualNetwork(mNetId, interface.c_str(),
+                                                                     uidRanges)) {
             ALOGE("failed to remove users on interface %s of netId %u", interface.c_str(), mNetId);
             return ret;
         }

@@ -25,7 +25,7 @@ namespace {
 
 WARN_UNUSED_RESULT int addToDefault(unsigned netId, const std::string& interface,
                                     Permission permission) {
-    if (int ret = RouteController::addToDefaultNetwork(interface.c_str(), permission)) {
+    if (int ret = RouteController::addInterfaceToDefaultNetwork(interface.c_str(), permission)) {
         ALOGE("failed to add interface %s to default netId %u", interface.c_str(), netId);
         return ret;
     }
@@ -34,7 +34,8 @@ WARN_UNUSED_RESULT int addToDefault(unsigned netId, const std::string& interface
 
 WARN_UNUSED_RESULT int removeFromDefault(unsigned netId, const std::string& interface,
                                          Permission permission) {
-    if (int ret = RouteController::removeFromDefaultNetwork(interface.c_str(), permission)) {
+    if (int ret = RouteController::removeInterfaceFromDefaultNetwork(interface.c_str(),
+                                                                     permission)) {
         ALOGE("failed to remove interface %s from default netId %u", interface.c_str(), netId);
         return ret;
     }
@@ -59,8 +60,8 @@ int PhysicalNetwork::setPermission(Permission permission) {
         return 0;
     }
     for (const std::string& interface : mInterfaces) {
-        if (int ret = RouteController::modifyNetworkPermission(mNetId, interface.c_str(),
-                                                               mPermission, permission)) {
+        if (int ret = RouteController::modifyPhysicalNetworkPermission(mNetId, interface.c_str(),
+                                                                       mPermission, permission)) {
             ALOGE("failed to change permission on interface %s of netId %u from %x to %x",
                   interface.c_str(), mNetId, mPermission, permission);
             return ret;
@@ -114,7 +115,8 @@ int PhysicalNetwork::addInterface(const std::string& interface) {
     if (hasInterface(interface)) {
         return 0;
     }
-    if (int ret = RouteController::addInterfaceToNetwork(mNetId, interface.c_str(), mPermission)) {
+    if (int ret = RouteController::addInterfaceToPhysicalNetwork(mNetId, interface.c_str(),
+                                                                 mPermission)) {
         ALOGE("failed to add interface %s to netId %u", interface.c_str(), mNetId);
         return ret;
     }
@@ -131,8 +133,8 @@ int PhysicalNetwork::removeInterface(const std::string& interface) {
     if (!hasInterface(interface)) {
         return 0;
     }
-    if (int ret = RouteController::removeInterfaceFromNetwork(mNetId, interface.c_str(),
-                                                              mPermission)) {
+    if (int ret = RouteController::removeInterfaceFromPhysicalNetwork(mNetId, interface.c_str(),
+                                                                      mPermission)) {
         ALOGE("failed to remove interface %s from netId %u", interface.c_str(), mNetId);
         return ret;
     }
