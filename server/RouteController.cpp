@@ -567,7 +567,7 @@ WARN_UNUSED_RESULT int flushRoutes(const char* interface) {
         const char* argv[] = {
             IP_PATH,
             IP_VERSIONS[i],
-            "route"
+            "route",
             "flush",
             "table",
             tableString,
@@ -642,11 +642,11 @@ int RouteController::addInterfaceToNetwork(unsigned netId, const char* interface
 
 int RouteController::removeInterfaceFromNetwork(unsigned netId, const char* interface,
                                                 Permission permission) {
-    if (int ret = flushRoutes(interface)) {
+    if (int ret = modifyPerNetworkRules(netId, interface, 0, permission, INVALID_UID, INVALID_UID,
+                                        false, true)) {
         return ret;
     }
-    return modifyPerNetworkRules(netId, interface, 0, permission, INVALID_UID, INVALID_UID, false,
-                                 true);
+    return flushRoutes(interface);
 }
 
 int RouteController::addInterfaceToVpn(unsigned netId, const char* interface,
@@ -656,10 +656,10 @@ int RouteController::addInterfaceToVpn(unsigned netId, const char* interface,
 
 int RouteController::removeInterfaceFromVpn(unsigned netId, const char* interface,
                                             const UidRanges& uidRanges) {
-    if (int ret = flushRoutes(interface)) {
+    if (int ret = modifyVpnRules(netId, interface, uidRanges, false, true)) {
         return ret;
     }
-    return modifyVpnRules(netId, interface, uidRanges, false, true);
+    return flushRoutes(interface);
 }
 
 int RouteController::modifyNetworkPermission(unsigned netId, const char* interface,
