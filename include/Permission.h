@@ -24,17 +24,19 @@
 //
 // Permissions are flags that can be OR'ed together to represent combinations of permissions.
 //
-// NOTE: netd doesn't enforce any semantics for the permission values. E.g., while all apps with
-// CONNECTIVITY_INTERNAL may also implicitly or explicitly have CHANGE_NETWORK_STATE, netd doesn't
-// enforce it. It's the responsibility of the caller to set all permissions bits explicitly. I.e.,
-// if you set the PERMISSION_CONNECTIVITY_INTERNAL bit, you should probably also set the
-// PERMISSION_CHANGE_NETWORK_STATE bit.
+// PERMISSION_NONE is used for regular networks and apps, such as those that hold the
+// android.permission.INTERNET framework permission.
+//
+// PERMISSION_NETWORK is used for privileged networks and apps that can manipulate or access them,
+// such as those that hold the android.permission.CHANGE_NETWORK_STATE framework permission.
+//
+// PERMISSION_SYSTEM is used for system apps, such as those that are installed on the system
+// partition, those that hold the android.permission.CONNECTIVITY_INTERNAL framework permission and
+// those whose UID is less than FIRST_APPLICATION_UID.
 enum Permission {
-    PERMISSION_NONE                  = 0x0,
-    PERMISSION_CHANGE_NETWORK_STATE  = 0x1,
-    PERMISSION_CONNECTIVITY_INTERNAL = 0x2
+    PERMISSION_NONE    = 0x0,
+    PERMISSION_NETWORK = 0x1,
+    PERMISSION_SYSTEM  = 0x3,  // Includes PERMISSION_NETWORK.
 };
-
-Permission permissionFromString(const char* permission);
 
 #endif  // NETD_INCLUDE_PERMISSION_H

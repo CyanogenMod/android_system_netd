@@ -36,6 +36,7 @@
 #include "RouteController.h"
 #include "VirtualNetwork.h"
 
+#include "cutils/misc.h"
 #define LOG_TAG "Netd"
 #include "log/log.h"
 #include "resolv_netid.h"
@@ -247,31 +248,29 @@ int NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* in
 
 Permission NetworkController::getPermissionForUser(uid_t uid) const {
     android::RWLock::AutoRLock lock(mRWLock);
-    auto iter = mUsers.find(uid);
-    return iter == mUsers.end() ? PERMISSION_NONE : iter->second;
+    return getPermissionForUserLocked(uid);
 }
 
 void NetworkController::setPermissionForUsers(Permission permission,
                                               const std::vector<uid_t>& uids) {
     android::RWLock::AutoWLock lock(mRWLock);
     for (uid_t uid : uids) {
-        if (permission == PERMISSION_NONE) {
-            mUsers.erase(uid);
-        } else {
-            mUsers[uid] = permission;
-        }
+        mUsers[uid] = permission;
     }
 }
 
 // TODO: Handle VPNs.
 bool NetworkController::isUserPermittedOnNetwork(uid_t uid, unsigned netId) const {
+    if (uid == INVALID_UID || netId == NETID_UNSET) {
+        return false;
+    }
+
     android::RWLock::AutoRLock lock(mRWLock);
-    auto userIter = mUsers.find(uid);
-    Permission userPermission = (userIter == mUsers.end() ? PERMISSION_NONE : userIter->second);
     Network* network = getNetworkLocked(netId);
     if (!network || network->getType() != Network::PHYSICAL) {
         return false;
     }
+    Permission userPermission = getPermissionForUserLocked(uid);
     Permission networkPermission = static_cast<PhysicalNetwork*>(network)->getPermission();
     return (userPermission & networkPermission) == networkPermission;
 }
@@ -348,6 +347,14 @@ Network* NetworkController::getNetworkLocked(unsigned netId) const {
     return iter == mNetworks.end() ? NULL : iter->second;
 }
 
+Permission NetworkController::getPermissionForUserLocked(uid_t uid) const {
+    auto iter = mUsers.find(uid);
+    if (iter != mUsers.end()) {
+        return iter->second;
+    }
+    return uid < FIRST_APPLICATION_UID ? PERMISSION_SYSTEM : PERMISSION_NONE;
+}
+
 int NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,
                                    const char* nexthop, bool add, bool legacy, uid_t uid) {
     unsigned existingNetId = getNetworkId(interface);
@@ -358,7 +365,7 @@ int NetworkController::modifyRoute(unsigned netId, const char* interface, const 
 
     RouteController::TableType tableType;
     if (legacy) {
-        if (getPermissionForUser(uid) & PERMISSION_CONNECTIVITY_INTERNAL) {
+        if ((getPermissionForUser(uid) & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) {
             tableType = RouteController::PRIVILEGED_LEGACY;
         } else {
             tableType = RouteController::LEGACY;

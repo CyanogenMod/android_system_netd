@@ -117,8 +117,8 @@ int FwmarkServer::processClient(SocketClient* client, int* fd) {
             } else {
                 fwmark.explicitlySelected = true;
                 // If the socket already has the protectedFromVpn bit set, don't reset it, because
-                // non-CONNECTIVITY_INTERNAL apps (e.g.: VpnService) may also protect sockets.
-                if (permission & PERMISSION_CONNECTIVITY_INTERNAL) {
+                // non-system apps (e.g.: VpnService) may also protect sockets.
+                if ((permission & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) {
                     fwmark.protectedFromVpn = true;
                 }
                 if (!mNetworkController->isValidNetwork(command.netId)) {

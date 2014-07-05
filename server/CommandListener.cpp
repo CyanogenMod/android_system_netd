@@ -52,18 +52,14 @@
 
 namespace {
 
-// Parses string permissions in argv[*nextArg], argv[*nextArg + 1], etc. and converts them into a
-// Permission enum. On return, nextArg will point to one past the last valid permissions string.
-Permission parseMultiplePermissions(int argc, char** argv, int* nextArg) {
-    Permission permission = PERMISSION_NONE;
-    for (; *nextArg < argc; ++*nextArg) {
-        Permission p = permissionFromString(argv[*nextArg]);
-        if (p == PERMISSION_NONE) {
-            break;
-        }
-        permission = static_cast<Permission>(permission | p);
+Permission stringToPermission(const char* arg) {
+    if (!strcmp(arg, "android.permission.CHANGE_NETWORK_STATE")) {
+        return PERMISSION_NETWORK;
     }
-    return permission;
+    if (!strcmp(arg, "android.permission.CONNECTIVITY_INTERNAL")) {
+        return PERMISSION_SYSTEM;
+    }
+    return PERMISSION_NONE;
 }
 
 }  // namespace
@@ -1641,8 +1637,8 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return success(client);
     }
 
-    //    0      1       2          3
-    // network create <netId> [<permission> ...]
+    //    0      1       2         3
+    // network create <netId> [permission]
     //
     //    0      1       2     3
     // network create <netId> vpn
@@ -1656,11 +1652,15 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
             if (int ret = sNetCtrl->createVpn(netId)) {
                 return operationError(client, "createVpn() failed", ret);
             }
+        } else if (argc > 4) {
+            return syntaxError(client, "Unknown trailing argument(s)");
         } else {
-            int nextArg = 3;
-            Permission permission = parseMultiplePermissions(argc, argv, &nextArg);
-            if (nextArg != argc) {
-                return syntaxError(client, "Unknown trailing argument(s)");
+            Permission permission = PERMISSION_NONE;
+            if (argc == 4) {
+                permission = stringToPermission(argv[3]);
+                if (permission == PERMISSION_NONE) {
+                    return syntaxError(client, "Unknown permission");
+                }
             }
             if (int ret = sNetCtrl->createNetwork(netId, permission)) {
                 return operationError(client, "createNetwork() failed", ret);
@@ -1706,11 +1706,11 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return success(client);
     }
 
-    //    0        1         2      3         4
-    // network permission   user   set  [<permission> ...]  <uid>  ...
-    // network permission   user  clear     <uid>     ...
-    // network permission network  set  [<permission> ...] <netId> ...
-    // network permission network clear    <netId>    ...
+    //    0        1         2      3        4          5
+    // network permission   user   set  <permission>  <uid> ...
+    // network permission   user  clear    <uid> ...
+    // network permission network  set  <permission> <netId> ...
+    // network permission network clear   <netId> ...
     if (!strcmp(argv[1], "permission")) {
         if (argc < 5) {
             return syntaxError(client, "Missing argument");
@@ -1718,9 +1718,16 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         int nextArg = 4;
         Permission permission = PERMISSION_NONE;
         if (!strcmp(argv[3], "set")) {
-            permission = parseMultiplePermissions(argc, argv, &nextArg);
+            permission = stringToPermission(argv[4]);
+            if (permission == PERMISSION_NONE) {
+                return syntaxError(client, "Unknown permission");
+            }
+            nextArg = 5;
         } else if (strcmp(argv[3], "clear")) {
             return syntaxError(client, "Unknown argument");
+        }
+        if (nextArg == argc) {
+            return syntaxError(client, "Missing id");
         }
         std::vector<unsigned> ids;
         for (; nextArg < argc; ++nextArg) {
@@ -1730,9 +1737,6 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
                 return syntaxError(client, "Invalid id");
             }
             ids.push_back(id);
-        }
-        if (ids.empty()) {
-            return syntaxError(client, "Missing id");
         }
         if (!strcmp(argv[2], "user")) {
             sNetCtrl->setPermissionForUsers(permission, ids);

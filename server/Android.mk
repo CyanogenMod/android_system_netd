@@ -56,7 +56,6 @@ LOCAL_SRC_FILES := \
         NetlinkManager.cpp \
         Network.cpp \
         NetworkController.cpp \
-        Permission.cpp \
         PhysicalNetwork.cpp \
         PppController.cpp \
         ResolverController.cpp \

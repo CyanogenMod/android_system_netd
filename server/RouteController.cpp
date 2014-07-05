@@ -459,8 +459,8 @@ WARN_UNUSED_RESULT int modifyVpnRules(unsigned netId, const char* interface,
         fwmark.netId = netId;
         mask.netId = FWMARK_NET_ID_MASK;
 
-        fwmark.permission = PERMISSION_CONNECTIVITY_INTERNAL;
-        mask.permission = PERMISSION_CONNECTIVITY_INTERNAL;
+        fwmark.permission = PERMISSION_SYSTEM;
+        mask.permission = PERMISSION_SYSTEM;
 
         if (int ret = modifyIpRule(action, RULE_PRIORITY_SECURE_VPN, table, fwmark.intValue,
                                    mask.intValue, NULL, INVALID_UID, INVALID_UID)) {
@@ -613,9 +613,9 @@ int RouteController::Init() {
         return ret;
     }
 
-    // Add a rule to allow legacy routes from privileged apps to override VPNs.
-    fwmark.permission = PERMISSION_CONNECTIVITY_INTERNAL;
-    mask.permission = PERMISSION_CONNECTIVITY_INTERNAL;
+    // Add a rule to allow legacy routes from system apps to override VPNs.
+    fwmark.permission = PERMISSION_SYSTEM;
+    mask.permission = PERMISSION_SYSTEM;
 
     if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_VPN_OVERRIDES,
                                RouteController::ROUTE_TABLE_PRIVILEGED_LEGACY, fwmark.intValue,

@@ -83,6 +83,7 @@ public:
 
 private:
     Network* getNetworkLocked(unsigned netId) const;
+    Permission getPermissionForUserLocked(uid_t uid) const;
 
     int modifyRoute(unsigned netId, const char* interface, const char* destination,
                     const char* nexthop, bool add, bool legacy, uid_t uid) WARN_UNUSED_RESULT;
