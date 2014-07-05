@@ -91,15 +91,13 @@ int FwmarkServer::processClient(SocketClient* client, int* fd) {
         return -errno;
     }
 
-    fwmark.permission = mNetworkController->getPermissionForUser(client->getUid());
+    Permission permission = mNetworkController->getPermissionForUser(client->getUid());
 
     switch (command.cmdId) {
         case FwmarkCommand::ON_ACCEPT: {
-            // Called after a socket accept(). The kernel would've marked the netId into the socket
-            // already, so we just need to check permissions here.
-            if (!mNetworkController->isUserPermittedOnNetwork(client->getUid(), fwmark.netId)) {
-                return -EPERM;
-            }
+            // Called after a socket accept(). The kernel would've marked the netId and necessary
+            // permissions bits, so we just add the rest of the user's permissions here.
+            permission = static_cast<Permission>(permission | fwmark.permission);
             break;
         }
 
@@ -120,7 +118,7 @@ int FwmarkServer::processClient(SocketClient* client, int* fd) {
                 fwmark.explicitlySelected = true;
                 // If the socket already has the protectedFromVpn bit set, don't reset it, because
                 // non-CONNECTIVITY_INTERNAL apps (e.g.: VpnService) may also protect sockets.
-                if (fwmark.permission & PERMISSION_CONNECTIVITY_INTERNAL) {
+                if (permission & PERMISSION_CONNECTIVITY_INTERNAL) {
                     fwmark.protectedFromVpn = true;
                 }
                 if (!mNetworkController->isValidNetwork(command.netId)) {
@@ -145,6 +143,8 @@ int FwmarkServer::processClient(SocketClient* client, int* fd) {
             return -EPROTO;
         }
     }
+
+    fwmark.permission = permission;
 
     if (setsockopt(*fd, SOL_SOCKET, SO_MARK, &fwmark.intValue, sizeof(fwmark.intValue)) == -1) {
         return -errno;
