@@ -20,7 +20,13 @@
 
 #include <stdlib.h>
 
-const std::vector<std::pair<uid_t, uid_t>>& UidRanges::getRanges() const {
+bool UidRanges::hasUid(uid_t uid) const {
+    auto iter = std::lower_bound(mRanges.begin(), mRanges.end(), Range(uid, uid));
+    return (iter != mRanges.end() && iter->first == uid) ||
+           (iter != mRanges.begin() && (--iter)->second >= uid);
+}
+
+const std::vector<UidRanges::Range>& UidRanges::getRanges() const {
     return mRanges;
 }
 
@@ -59,7 +65,7 @@ bool UidRanges::parseFrom(int argc, char* argv[]) {
             // Invalid UIDs.
             return false;
         }
-        mRanges.push_back(std::pair<uid_t, uid_t>(uidStart, uidEnd));
+        mRanges.push_back(Range(uidStart, uidEnd));
     }
     std::sort(mRanges.begin(), mRanges.end());
     return true;

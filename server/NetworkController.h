@@ -30,6 +30,7 @@
 
 class Network;
 class UidRanges;
+class VirtualNetwork;
 
 /*
  * Keeps track of default, per-pid, and per-uid-range network selection, as
@@ -44,19 +45,15 @@ public:
     unsigned getDefaultNetwork() const;
     int setDefaultNetwork(unsigned netId) WARN_UNUSED_RESULT;
 
-    bool setNetworkForUidRange(uid_t uidStart, uid_t uidEnd, unsigned netId, bool forwardDns);
-    bool clearNetworkForUidRange(uid_t uidStart, uid_t uidEnd, unsigned netId);
-
     // Order of preference: UID-specific, requestedNetId, default.
     // Specify NETID_UNSET for requestedNetId if the default network is preferred.
     // forDns indicates if we're querying the netId for a DNS request. This avoids sending DNS
     // requests to VPNs without DNS servers.
-    unsigned getNetwork(uid_t uid, unsigned requestedNetId, bool forDns) const;
-    unsigned getNetworkId(const char* interface) const;
-    bool isValidNetwork(unsigned netId) const;
+    unsigned getNetworkForUser(uid_t uid, unsigned requestedNetId, bool forDns) const;
+    unsigned getNetworkForInterface(const char* interface) const;
 
-    int createNetwork(unsigned netId, Permission permission) WARN_UNUSED_RESULT;
-    int createVpn(unsigned netId) WARN_UNUSED_RESULT;
+    int createPhysicalNetwork(unsigned netId, Permission permission) WARN_UNUSED_RESULT;
+    int createVirtualNetwork(unsigned netId, bool hasDns) WARN_UNUSED_RESULT;
     int destroyNetwork(unsigned netId) WARN_UNUSED_RESULT;
 
     int addInterfaceToNetwork(unsigned netId, const char* interface) WARN_UNUSED_RESULT;
@@ -64,7 +61,7 @@ public:
 
     Permission getPermissionForUser(uid_t uid) const;
     void setPermissionForUsers(Permission permission, const std::vector<uid_t>& uids);
-    bool isUserPermittedOnNetwork(uid_t uid, unsigned netId) const;
+    bool canUserSelectNetwork(uid_t uid, unsigned netId) const;
     int setPermissionForNetworks(Permission permission,
                                  const std::vector<unsigned>& netIds) WARN_UNUSED_RESULT;
 
@@ -78,29 +75,21 @@ public:
     int removeRoute(unsigned netId, const char* interface, const char* destination,
                     const char* nexthop, bool legacy, uid_t uid) WARN_UNUSED_RESULT;
 
+    bool canProtect(uid_t uid) const;
     void allowProtect(const std::vector<uid_t>& uids);
     void denyProtect(const std::vector<uid_t>& uids);
 
 private:
+    bool isValidNetwork(unsigned netId) const;
     Network* getNetworkLocked(unsigned netId) const;
+    VirtualNetwork* getVirtualNetworkForUserLocked(uid_t uid) const;
     Permission getPermissionForUserLocked(uid_t uid) const;
 
     int modifyRoute(unsigned netId, const char* interface, const char* destination,
                     const char* nexthop, bool add, bool legacy, uid_t uid) WARN_UNUSED_RESULT;
 
-    struct UidEntry {
-        const uid_t uidStart;
-        const uid_t uidEnd;
-        const unsigned netId;
-        bool forwardDns;
-
-        UidEntry(uid_t uidStart, uid_t uidEnd, unsigned netId, bool forwardDns);
-    };
-
-    // mRWLock guards all accesses to mUidMap, mDefaultNetId, mNetworks, mUsers and
-    // mProtectableUsers.
+    // mRWLock guards all accesses to mDefaultNetId, mNetworks, mUsers and mProtectableUsers.
     mutable android::RWLock mRWLock;
-    std::list<UidEntry> mUidMap;
     unsigned mDefaultNetId;
     std::map<unsigned, Network*> mNetworks;  // Map keys are NetIds.
     std::map<uid_t, Permission> mUsers;

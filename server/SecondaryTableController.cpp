@@ -89,7 +89,8 @@ int SecondaryTableController::setupIptablesHooks() {
 
 int SecondaryTableController::addRoute(SocketClient *cli, char *iface, char *dest, int prefix,
         char *gateway) {
-    return modifyRoute(cli, ADD, iface, dest, prefix, gateway, mNetCtrl->getNetworkId(iface));
+    return modifyRoute(cli, ADD, iface, dest, prefix, gateway,
+                       mNetCtrl->getNetworkForInterface(iface));
 }
 
 int SecondaryTableController::modifyRoute(SocketClient *cli, const char *action, char *iface,
@@ -175,7 +176,8 @@ IptablesTarget SecondaryTableController::getIptablesTarget(const char *addr) {
 
 int SecondaryTableController::removeRoute(SocketClient *cli, char *iface, char *dest, int prefix,
         char *gateway) {
-    return modifyRoute(cli, DEL, iface, dest, prefix, gateway, mNetCtrl->getNetworkId(iface));
+    return modifyRoute(cli, DEL, iface, dest, prefix, gateway,
+                       mNetCtrl->getNetworkForInterface(iface));
 }
 
 int SecondaryTableController::modifyFromRule(unsigned netId, const char *action,
@@ -234,7 +236,7 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
         return -1;
     }
 
-    unsigned netId = mNetCtrl->getNetworkId(iface);
+    unsigned netId = mNetCtrl->getNetworkForInterface(iface);
 
     // Fail fast if any rules already exist for this interface
     if (mNetIdRuleCount.count(netId) > 0) {
@@ -396,7 +398,7 @@ int SecondaryTableController::setFwmarkRoute(const char* iface, const char *dest
         return -1;
     }
 
-    unsigned netId = mNetCtrl->getNetworkId(iface);
+    unsigned netId = mNetCtrl->getNetworkForInterface(iface);
     char mark_str[11] = {0};
     char dest_str[44]; // enough to store an IPv6 address + 3 character bitmask
 
@@ -417,50 +419,6 @@ int SecondaryTableController::setFwmarkRoute(const char* iface, const char *dest
         mark_str
     };
     return runCmd(ARRAY_SIZE(rule_cmd), rule_cmd);
-}
-
-int SecondaryTableController::addUidRule(const char *iface, int uid_start, int uid_end,
-        bool forward_dns) {
-    return setUidRule(iface, uid_start, uid_end, true, forward_dns);
-}
-
-int SecondaryTableController::removeUidRule(const char *iface, int uid_start, int uid_end) {
-    return setUidRule(iface, uid_start, uid_end, false, false);
-}
-
-int SecondaryTableController::setUidRule(const char *iface, int uid_start, int uid_end, bool add,
-        bool forward_dns) {
-    unsigned netId = mNetCtrl->getNetworkId(iface);
-    if (add) {
-        if (!mNetCtrl->setNetworkForUidRange(uid_start, uid_end, netId, forward_dns)) {
-            // errno is set by setNetworkForUidRange.
-            return -1;
-        }
-    } else {
-        if (!mNetCtrl->clearNetworkForUidRange(uid_start, uid_end, netId)) {
-            // errno is set by clearNetworkForUidRange.
-            return -1;
-        }
-    }
-
-    char uid_str[24] = {0};
-    snprintf(uid_str, sizeof(uid_str), "%d-%d", uid_start, uid_end);
-    char mark_str[11] = {0};
-    snprintf(mark_str, sizeof(mark_str), "%u", netId + BASE_TABLE_NUMBER);
-    return execIptables(V4V6,
-            "-t",
-            "mangle",
-            add ? "-A" : "-D",
-            LOCAL_MANGLE_OUTPUT,
-            "-m",
-            "owner",
-            "--uid-owner",
-            uid_str,
-            "-j",
-            "MARK",
-            "--set-mark",
-            mark_str,
-            NULL);
 }
 
 int SecondaryTableController::addHostExemption(const char *host) {
@@ -488,7 +446,7 @@ int SecondaryTableController::setHostExemption(const char *host, bool add) {
 }
 
 void SecondaryTableController::getUidMark(SocketClient *cli, int uid) {
-    unsigned netId = mNetCtrl->getNetwork(uid, NETID_UNSET, false);
+    unsigned netId = mNetCtrl->getNetworkForUser(uid, NETID_UNSET, false);
     char mark_str[11];
     snprintf(mark_str, sizeof(mark_str), "%u", netId + BASE_TABLE_NUMBER);
     cli->sendMsg(ResponseCode::GetMarkResult, mark_str, false);

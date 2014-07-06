@@ -17,7 +17,7 @@
 #ifndef NETD_SERVER_FWMARK_SERVER_H
 #define NETD_SERVER_FWMARK_SERVER_H
 
-#include <sysutils/SocketListener.h>
+#include "sysutils/SocketListener.h"
 
 class NetworkController;
 
@@ -30,7 +30,7 @@ private:
     bool onDataAvailable(SocketClient* client);
 
     // Returns 0 on success or a negative errno value on failure.
-    int processClient(SocketClient* client, int* fd);
+    int processClient(SocketClient* client, int* socketFd);
 
     NetworkController* const mNetworkController;
 };

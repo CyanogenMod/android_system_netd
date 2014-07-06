@@ -21,10 +21,46 @@
 #define LOG_TAG "Netd"
 #include "log/log.h"
 
-VirtualNetwork::VirtualNetwork(unsigned netId): Network(netId) {
+VirtualNetwork::VirtualNetwork(unsigned netId, bool hasDns): Network(netId), mHasDns(hasDns) {
 }
 
 VirtualNetwork::~VirtualNetwork() {
+}
+
+bool VirtualNetwork::getHasDns() const {
+    return mHasDns;
+}
+
+bool VirtualNetwork::appliesToUser(uid_t uid) const {
+    return mUidRanges.hasUid(uid);
+}
+
+int VirtualNetwork::addUsers(const UidRanges& uidRanges) {
+    for (const std::string& interface : mInterfaces) {
+        if (int ret = RouteController::addUsersToVirtualNetwork(mNetId, interface.c_str(),
+                                                                uidRanges)) {
+            ALOGE("failed to add users on interface %s of netId %u", interface.c_str(), mNetId);
+            return ret;
+        }
+    }
+    mUidRanges.add(uidRanges);
+    return 0;
+}
+
+int VirtualNetwork::removeUsers(const UidRanges& uidRanges) {
+    for (const std::string& interface : mInterfaces) {
+        if (int ret = RouteController::removeUsersFromVirtualNetwork(mNetId, interface.c_str(),
+                                                                     uidRanges)) {
+            ALOGE("failed to remove users on interface %s of netId %u", interface.c_str(), mNetId);
+            return ret;
+        }
+    }
+    mUidRanges.remove(uidRanges);
+    return 0;
+}
+
+Network::Type VirtualNetwork::getType() const {
+    return VIRTUAL;
 }
 
 int VirtualNetwork::addInterface(const std::string& interface) {
@@ -50,33 +86,5 @@ int VirtualNetwork::removeInterface(const std::string& interface) {
         return ret;
     }
     mInterfaces.erase(interface);
-    return 0;
-}
-
-Network::Type VirtualNetwork::getType() const {
-    return VIRTUAL;
-}
-
-int VirtualNetwork::addUsers(const UidRanges& uidRanges) {
-    for (const std::string& interface : mInterfaces) {
-        if (int ret = RouteController::addUsersToVirtualNetwork(mNetId, interface.c_str(),
-                                                                uidRanges)) {
-            ALOGE("failed to add users on interface %s of netId %u", interface.c_str(), mNetId);
-            return ret;
-        }
-    }
-    mUidRanges.add(uidRanges);
-    return 0;
-}
-
-int VirtualNetwork::removeUsers(const UidRanges& uidRanges) {
-    for (const std::string& interface : mInterfaces) {
-        if (int ret = RouteController::removeUsersFromVirtualNetwork(mNetId, interface.c_str(),
-                                                                     uidRanges)) {
-            ALOGE("failed to remove users on interface %s of netId %u", interface.c_str(), mNetId);
-            return ret;
-        }
-    }
-    mUidRanges.remove(uidRanges);
     return 0;
 }

@@ -90,57 +90,17 @@ int NetworkController::setDefaultNetwork(unsigned netId) {
     return 0;
 }
 
-bool NetworkController::setNetworkForUidRange(uid_t uidStart, uid_t uidEnd, unsigned netId,
-                                              bool forwardDns) {
-    if (uidStart > uidEnd || !isValidNetwork(netId)) {
-        errno = EINVAL;
-        return false;
-    }
-
-    android::RWLock::AutoWLock lock(mRWLock);
-    for (UidEntry& entry : mUidMap) {
-        if (entry.uidStart == uidStart && entry.uidEnd == uidEnd && entry.netId == netId) {
-            entry.forwardDns = forwardDns;
-            return true;
-        }
-    }
-
-    mUidMap.push_front(UidEntry(uidStart, uidEnd, netId, forwardDns));
-    return true;
-}
-
-bool NetworkController::clearNetworkForUidRange(uid_t uidStart, uid_t uidEnd, unsigned netId) {
-    if (uidStart > uidEnd || !isValidNetwork(netId)) {
-        errno = EINVAL;
-        return false;
-    }
-
-    android::RWLock::AutoWLock lock(mRWLock);
-    for (auto iter = mUidMap.begin(); iter != mUidMap.end(); ++iter) {
-        if (iter->uidStart == uidStart && iter->uidEnd == uidEnd && iter->netId == netId) {
-            mUidMap.erase(iter);
-            return true;
-        }
-    }
-
-    errno = ENOENT;
-    return false;
-}
-
-unsigned NetworkController::getNetwork(uid_t uid, unsigned requestedNetId, bool forDns) const {
+unsigned NetworkController::getNetworkForUser(uid_t uid, unsigned requestedNetId,
+                                              bool forDns) const {
     android::RWLock::AutoRLock lock(mRWLock);
-    for (const UidEntry& entry : mUidMap) {
-        if (entry.uidStart <= uid && uid <= entry.uidEnd) {
-            if (forDns && !entry.forwardDns) {
-                break;
-            }
-            return entry.netId;
-        }
+    VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
+    if (virtualNetwork && (!forDns || virtualNetwork->getHasDns())) {
+        return virtualNetwork->getNetId();
     }
     return getNetworkLocked(requestedNetId) ? requestedNetId : mDefaultNetId;
 }
 
-unsigned NetworkController::getNetworkId(const char* interface) const {
+unsigned NetworkController::getNetworkForInterface(const char* interface) const {
     android::RWLock::AutoRLock lock(mRWLock);
     for (const auto& entry : mNetworks) {
         if (entry.second->hasInterface(interface)) {
@@ -150,12 +110,7 @@ unsigned NetworkController::getNetworkId(const char* interface) const {
     return NETID_UNSET;
 }
 
-bool NetworkController::isValidNetwork(unsigned netId) const {
-    android::RWLock::AutoRLock lock(mRWLock);
-    return getNetworkLocked(netId);
-}
-
-int NetworkController::createNetwork(unsigned netId, Permission permission) {
+int NetworkController::createPhysicalNetwork(unsigned netId, Permission permission) {
     if (netId < MIN_NET_ID || netId > MAX_NET_ID) {
         ALOGE("invalid netId %u", netId);
         return -EINVAL;
@@ -178,7 +133,7 @@ int NetworkController::createNetwork(unsigned netId, Permission permission) {
     return 0;
 }
 
-int NetworkController::createVpn(unsigned netId) {
+int NetworkController::createVirtualNetwork(unsigned netId, bool hasDns) {
     if (netId < MIN_NET_ID || netId > MAX_NET_ID) {
         ALOGE("invalid netId %u", netId);
         return -EINVAL;
@@ -190,7 +145,7 @@ int NetworkController::createVpn(unsigned netId) {
     }
 
     android::RWLock::AutoWLock lock(mRWLock);
-    mNetworks[netId] = new VirtualNetwork(netId);
+    mNetworks[netId] = new VirtualNetwork(netId, hasDns);
     return 0;
 }
 
@@ -226,7 +181,7 @@ int NetworkController::addInterfaceToNetwork(unsigned netId, const char* interfa
         return -EINVAL;
     }
 
-    unsigned existingNetId = getNetworkId(interface);
+    unsigned existingNetId = getNetworkForInterface(interface);
     if (existingNetId != NETID_UNSET && existingNetId != netId) {
         ALOGE("interface %s already assigned to netId %u", interface, existingNetId);
         return -EBUSY;
@@ -259,18 +214,23 @@ void NetworkController::setPermissionForUsers(Permission permission,
     }
 }
 
-// TODO: Handle VPNs.
-bool NetworkController::isUserPermittedOnNetwork(uid_t uid, unsigned netId) const {
-    if (uid == INVALID_UID || netId == NETID_UNSET) {
-        return false;
-    }
-
+bool NetworkController::canUserSelectNetwork(uid_t uid, unsigned netId) const {
     android::RWLock::AutoRLock lock(mRWLock);
     Network* network = getNetworkLocked(netId);
-    if (!network || network->getType() != Network::PHYSICAL) {
+    if (!network || uid == INVALID_UID) {
         return false;
     }
     Permission userPermission = getPermissionForUserLocked(uid);
+    if ((userPermission & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) {
+        return true;
+    }
+    if (network->getType() == Network::VIRTUAL) {
+        return static_cast<VirtualNetwork*>(network)->appliesToUser(uid);
+    }
+    VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
+    if (virtualNetwork && mProtectableUsers.find(uid) == mProtectableUsers.end()) {
+        return false;
+    }
     Permission networkPermission = static_cast<PhysicalNetwork*>(network)->getPermission();
     return (userPermission & networkPermission) == networkPermission;
 }
@@ -330,6 +290,12 @@ int NetworkController::removeRoute(unsigned netId, const char* interface, const 
     return modifyRoute(netId, interface, destination, nexthop, false, legacy, uid);
 }
 
+bool NetworkController::canProtect(uid_t uid) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+    return ((getPermissionForUserLocked(uid) & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) ||
+           mProtectableUsers.find(uid) != mProtectableUsers.end();
+}
+
 void NetworkController::allowProtect(const std::vector<uid_t>& uids) {
     android::RWLock::AutoWLock lock(mRWLock);
     mProtectableUsers.insert(uids.begin(), uids.end());
@@ -342,9 +308,26 @@ void NetworkController::denyProtect(const std::vector<uid_t>& uids) {
     }
 }
 
+bool NetworkController::isValidNetwork(unsigned netId) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+    return getNetworkLocked(netId);
+}
+
 Network* NetworkController::getNetworkLocked(unsigned netId) const {
     auto iter = mNetworks.find(netId);
     return iter == mNetworks.end() ? NULL : iter->second;
+}
+
+VirtualNetwork* NetworkController::getVirtualNetworkForUserLocked(uid_t uid) const {
+    for (const auto& entry : mNetworks) {
+        if (entry.second->getType() == Network::VIRTUAL) {
+            VirtualNetwork* virtualNetwork = static_cast<VirtualNetwork*>(entry.second);
+            if (virtualNetwork->appliesToUser(uid)) {
+                return virtualNetwork;
+            }
+        }
+    }
+    return NULL;
 }
 
 Permission NetworkController::getPermissionForUserLocked(uid_t uid) const {
@@ -357,7 +340,7 @@ Permission NetworkController::getPermissionForUserLocked(uid_t uid) const {
 
 int NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,
                                    const char* nexthop, bool add, bool legacy, uid_t uid) {
-    unsigned existingNetId = getNetworkId(interface);
+    unsigned existingNetId = getNetworkForInterface(interface);
     if (netId == NETID_UNSET || existingNetId != netId) {
         ALOGE("interface %s assigned to netId %u, not %u", interface, existingNetId, netId);
         return -ENOENT;
@@ -376,9 +359,4 @@ int NetworkController::modifyRoute(unsigned netId, const char* interface, const 
 
     return add ? RouteController::addRoute(interface, destination, nexthop, tableType) :
                  RouteController::removeRoute(interface, destination, nexthop, tableType);
-}
-
-NetworkController::UidEntry::UidEntry(uid_t uidStart, uid_t uidEnd, unsigned netId,
-                                      bool forwardDns) :
-        uidStart(uidStart), uidEnd(uidEnd), netId(netId), forwardDns(forwardDns) {
 }

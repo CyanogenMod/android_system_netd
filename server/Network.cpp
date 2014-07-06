@@ -25,6 +25,10 @@ Network::~Network() {
     }
 }
 
+unsigned Network::getNetId() const {
+    return mNetId;
+}
+
 bool Network::hasInterface(const std::string& interface) const {
     return mInterfaces.find(interface) != mInterfaces.end();
 }

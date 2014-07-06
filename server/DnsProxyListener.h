@@ -126,7 +126,7 @@ private:
     };
 
     // Calculate the socket mark to use for a DNS resolution.
-    uint32_t calcMark(SocketClient *c, unsigned netId) const;
+    uint32_t calcMark(unsigned netId) const;
 };
 
 #endif

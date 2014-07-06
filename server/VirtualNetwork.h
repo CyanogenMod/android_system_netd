@@ -22,18 +22,21 @@
 
 class VirtualNetwork : public Network {
 public:
-    explicit VirtualNetwork(unsigned netId);
+    VirtualNetwork(unsigned netId, bool hasDns);
     virtual ~VirtualNetwork();
+
+    bool getHasDns() const;
+    bool appliesToUser(uid_t uid) const;
 
     int addUsers(const UidRanges& uidRanges) WARN_UNUSED_RESULT;
     int removeUsers(const UidRanges& uidRanges) WARN_UNUSED_RESULT;
 
-    Type getType() const override;
-
 private:
+    Type getType() const override;
     int addInterface(const std::string& interface) override WARN_UNUSED_RESULT;
     int removeInterface(const std::string& interface) override WARN_UNUSED_RESULT;
 
+    const bool mHasDns;
     UidRanges mUidRanges;
 };
 

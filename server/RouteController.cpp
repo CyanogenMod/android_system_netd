@@ -524,7 +524,7 @@ WARN_UNUSED_RESULT int modifyVirtualNetwork(unsigned netId, const char* interfac
         return -ESRCH;
     }
 
-    for (const std::pair<uid_t, uid_t>& range : uidRanges.getRanges()) {
+    for (const UidRanges::Range& range : uidRanges.getRanges()) {
         if (int ret = modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, range.first,
                                                 range.second, add)) {
             return ret;

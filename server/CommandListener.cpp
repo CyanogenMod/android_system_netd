@@ -299,7 +299,6 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
         // interface route add/remove iface default/secondary dest    prefix gateway
         // interface fwmark  rule  add/remove    iface
         // interface fwmark  route add/remove    iface        dest    prefix
-        // interface fwmark  uid   add/remove    iface      uid_start uid_end forward_dns
         // interface fwmark exempt add/remove    dest
         // interface fwmark  get     protect
         // interface fwmark  get     mark        uid
@@ -355,33 +354,6 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 } else {
                     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark route cmd",
                             false);
-                }
-                return 0;
-
-            } else if (!strcmp(argv[2], "uid")) {
-                if (argc < 8) {
-                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-                    return 0;
-                }
-                if (!strcmp(argv[3], "add")) {
-                    if (!sSecondaryTableCtrl->addUidRule(argv[4], atoi(argv[5]), atoi(argv[6]),
-                            atoi(argv[7]))) {
-                        cli->sendMsg(ResponseCode::CommandOkay, "uid rule successfully added",
-                                false);
-                    } else {
-                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to add uid rule", true);
-                    }
-                } else if (!strcmp(argv[3], "remove")) {
-                    if (!sSecondaryTableCtrl->removeUidRule(argv[4],
-                                atoi(argv[5]), atoi(argv[6]))) {
-                        cli->sendMsg(ResponseCode::CommandOkay, "uid rule successfully removed",
-                                false);
-                    } else {
-                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to remove uid rule",
-                                true);
-                    }
-                } else {
-                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown uid cmd", false);
                 }
                 return 0;
             } else if (!strcmp(argv[2], "exempt")) {
@@ -1640,17 +1612,18 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     //    0      1       2         3
     // network create <netId> [permission]
     //
-    //    0      1       2     3
-    // network create <netId> vpn
+    //    0      1       2     3     4
+    // network create <netId> vpn <hasDns>
     if (!strcmp(argv[1], "create")) {
         if (argc < 3) {
             return syntaxError(client, "Missing argument");
         }
         // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
         unsigned netId = strtoul(argv[2], NULL, 0);
-        if (argc == 4 && !strcmp(argv[3], "vpn")) {
-            if (int ret = sNetCtrl->createVpn(netId)) {
-                return operationError(client, "createVpn() failed", ret);
+        if (argc == 5 && !strcmp(argv[3], "vpn")) {
+            bool hasDns = atoi(argv[4]);
+            if (int ret = sNetCtrl->createVirtualNetwork(netId, hasDns)) {
+                return operationError(client, "createVirtualNetwork() failed", ret);
             }
         } else if (argc > 4) {
             return syntaxError(client, "Unknown trailing argument(s)");
@@ -1662,8 +1635,8 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
                     return syntaxError(client, "Unknown permission");
                 }
             }
-            if (int ret = sNetCtrl->createNetwork(netId, permission)) {
-                return operationError(client, "createNetwork() failed", ret);
+            if (int ret = sNetCtrl->createPhysicalNetwork(netId, permission)) {
+                return operationError(client, "createPhysicalNetwork() failed", ret);
             }
         }
         return success(client);

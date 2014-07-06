@@ -57,7 +57,7 @@ int ClatdController::startClatd(char *interface) {
 
     if (!pid) {
         // Pass in the interface, a netid to use for DNS lookups, and a fwmark for outgoing packets.
-        unsigned netId = mNetCtrl->getNetworkId(interface);
+        unsigned netId = mNetCtrl->getNetworkForInterface(interface);
         char netIdString[UINT32_STRLEN];
         snprintf(netIdString, sizeof(netIdString), "%u", netId);
 

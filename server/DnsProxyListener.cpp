@@ -48,13 +48,11 @@ DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl) :
     registerCmd(new GetHostByNameCmd(this));
 }
 
-uint32_t DnsProxyListener::calcMark(SocketClient *c, unsigned netId) const {
+uint32_t DnsProxyListener::calcMark(unsigned netId) const {
     Fwmark fwmark;
     fwmark.netId = netId;
-    // If netd's UID is forced into a VPN that isn't the intended network,
-    // use VPN protect bit to force it into the desired network.
-    fwmark.protectedFromVpn = mNetCtrl->getNetwork(getuid(), netId, true) != netId;
-    fwmark.permission = mNetCtrl->getPermissionForUser(c->getUid());
+    fwmark.protectedFromVpn = true;
+    fwmark.permission = PERMISSION_SYSTEM;
     return fwmark.intValue;
 }
 
@@ -204,8 +202,8 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     unsigned netId = strtoul(argv[7], NULL, 10);
     uid_t uid = cli->getUid();
 
-    netId = mDnsProxyListener->mNetCtrl->getNetwork(uid, netId, true);
-    uint32_t mark = mDnsProxyListener->calcMark(cli, netId);
+    netId = mDnsProxyListener->mNetCtrl->getNetworkForUser(uid, netId, true);
+    uint32_t mark = mDnsProxyListener->calcMark(netId);
 
     if (ai_flags != -1 || ai_family != -1 ||
         ai_socktype != -1 || ai_protocol != -1) {
@@ -273,8 +271,8 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
         name = strdup(name);
     }
 
-    netId = mDnsProxyListener->mNetCtrl->getNetwork(uid, netId, true);
-    uint32_t mark = mDnsProxyListener->calcMark(cli, netId);
+    netId = mDnsProxyListener->mNetCtrl->getNetworkForUser(uid, netId, true);
+    uint32_t mark = mDnsProxyListener->calcMark(netId);
 
     cli->incRef();
     DnsProxyListener::GetHostByNameHandler* handler =
@@ -389,8 +387,8 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
         return -1;
     }
 
-    netId = mDnsProxyListener->mNetCtrl->getNetwork(uid, netId, true);
-    uint32_t mark = mDnsProxyListener->calcMark(cli, netId);
+    netId = mDnsProxyListener->mNetCtrl->getNetworkForUser(uid, netId, true);
+    uint32_t mark = mDnsProxyListener->calcMark(netId);
 
     cli->incRef();
     DnsProxyListener::GetHostByAddrHandler* handler =

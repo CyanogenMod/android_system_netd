@@ -36,6 +36,7 @@ public:
     virtual ~Network();
 
     virtual Type getType() const = 0;
+    unsigned getNetId() const;
 
     bool hasInterface(const std::string& interface) const;
 

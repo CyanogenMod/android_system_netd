@@ -135,7 +135,7 @@ int NatController::setDefaults() {
 }
 
 int NatController::routesOp(bool add, const char *intIface, const char *extIface, char **argv, int addrCount) {
-    unsigned netId = mNetCtrl->getNetworkId(extIface);
+    unsigned netId = mNetCtrl->getNetworkForInterface(extIface);
     int ret = 0;
 
     for (int i = 0; i < addrCount; i++) {

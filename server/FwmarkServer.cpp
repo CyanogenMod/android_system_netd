@@ -29,10 +29,10 @@ FwmarkServer::FwmarkServer(NetworkController* networkController) :
 }
 
 bool FwmarkServer::onDataAvailable(SocketClient* client) {
-    int fd = -1;
-    int error = processClient(client, &fd);
-    if (fd >= 0) {
-        close(fd);
+    int socketFd = -1;
+    int error = processClient(client, &socketFd);
+    if (socketFd >= 0) {
+        close(socketFd);
     }
 
     // Always send a response even if there were connection errors or read errors, so that we don't
@@ -45,7 +45,7 @@ bool FwmarkServer::onDataAvailable(SocketClient* client) {
     return false;
 }
 
-int FwmarkServer::processClient(SocketClient* client, int* fd) {
+int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
     FwmarkCommand command;
 
     iovec iov;
@@ -59,7 +59,7 @@ int FwmarkServer::processClient(SocketClient* client, int* fd) {
 
     union {
         cmsghdr cmh;
-        char cmsg[CMSG_SPACE(sizeof(*fd))];
+        char cmsg[CMSG_SPACE(sizeof(*socketFd))];
     } cmsgu;
 
     memset(cmsgu.cmsg, 0, sizeof(cmsgu.cmsg));
@@ -77,17 +77,17 @@ int FwmarkServer::processClient(SocketClient* client, int* fd) {
 
     cmsghdr* const cmsgh = CMSG_FIRSTHDR(&message);
     if (cmsgh && cmsgh->cmsg_level == SOL_SOCKET && cmsgh->cmsg_type == SCM_RIGHTS &&
-        cmsgh->cmsg_len == CMSG_LEN(sizeof(*fd))) {
-        memcpy(fd, CMSG_DATA(cmsgh), sizeof(*fd));
+        cmsgh->cmsg_len == CMSG_LEN(sizeof(*socketFd))) {
+        memcpy(socketFd, CMSG_DATA(cmsgh), sizeof(*socketFd));
     }
 
-    if (*fd < 0) {
+    if (*socketFd < 0) {
         return -EBADF;
     }
 
     Fwmark fwmark;
     socklen_t fwmarkLen = sizeof(fwmark.intValue);
-    if (getsockopt(*fd, SOL_SOCKET, SO_MARK, &fwmark.intValue, &fwmarkLen) == -1) {
+    if (getsockopt(*socketFd, SOL_SOCKET, SO_MARK, &fwmark.intValue, &fwmarkLen) == -1) {
         return -errno;
     }
 
@@ -114,27 +114,23 @@ int FwmarkServer::processClient(SocketClient* client, int* fd) {
             fwmark.netId = command.netId;
             if (command.netId == NETID_UNSET) {
                 fwmark.explicitlySelected = false;
-            } else {
+                fwmark.protectedFromVpn = false;
+                permission = PERMISSION_NONE;
+            } else if (mNetworkController->canUserSelectNetwork(client->getUid(), command.netId)) {
                 fwmark.explicitlySelected = true;
-                // If the socket already has the protectedFromVpn bit set, don't reset it, because
-                // non-system apps (e.g.: VpnService) may also protect sockets.
-                if ((permission & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) {
-                    fwmark.protectedFromVpn = true;
-                }
-                if (!mNetworkController->isValidNetwork(command.netId)) {
-                    return -ENONET;
-                }
-                if (!mNetworkController->isUserPermittedOnNetwork(client->getUid(),
-                                                                  command.netId)) {
-                    return -EPERM;
-                }
+                fwmark.protectedFromVpn = mNetworkController->canProtect(client->getUid());
+            } else {
+                return -EPERM;
             }
             break;
         }
 
         case FwmarkCommand::PROTECT_FROM_VPN: {
-            // set vpn protect
-            // TODO
+            if (!mNetworkController->canProtect(client->getUid())) {
+                return -EPERM;
+            }
+            fwmark.protectedFromVpn = true;
+            permission = static_cast<Permission>(permission | fwmark.permission);
             break;
         }
 
@@ -146,7 +142,8 @@ int FwmarkServer::processClient(SocketClient* client, int* fd) {
 
     fwmark.permission = permission;
 
-    if (setsockopt(*fd, SOL_SOCKET, SO_MARK, &fwmark.intValue, sizeof(fwmark.intValue)) == -1) {
+    if (setsockopt(*socketFd, SOL_SOCKET, SO_MARK, &fwmark.intValue,
+                   sizeof(fwmark.intValue)) == -1) {
         return -errno;
     }
 

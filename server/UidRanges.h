@@ -23,7 +23,10 @@
 
 class UidRanges {
 public:
-    const std::vector<std::pair<uid_t, uid_t>>& getRanges() const;
+    typedef std::pair<uid_t, uid_t> Range;
+
+    bool hasUid(uid_t uid) const;
+    const std::vector<Range>& getRanges() const;
 
     bool parseFrom(int argc, char* argv[]);
 
@@ -31,7 +34,7 @@ public:
     void remove(const UidRanges& other);
 
 private:
-    std::vector<std::pair<uid_t, uid_t>> mRanges;
+    std::vector<Range> mRanges;
 };
 
 #endif  // NETD_SERVER_UID_RANGES_H
