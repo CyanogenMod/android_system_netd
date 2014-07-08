@@ -33,8 +33,6 @@ public:
         LEGACY_SYSTEM,   // A fixed table, only modifiable by system apps; overrides VPNs too.
     };
 
-    static const int ROUTE_TABLE_LEGACY_NETWORK    =   98;
-    static const int ROUTE_TABLE_LEGACY_SYSTEM     =   99;
     static const int ROUTE_TABLE_OFFSET_FROM_INDEX = 1000;
 
     static int Init() WARN_UNUSED_RESULT;

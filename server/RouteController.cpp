@@ -25,9 +25,11 @@
 #include "resolv_netid.h"
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <linux/fib_rules.h>
 #include <map>
 #include <net/if.h>
+#include <sys/stat.h>
 
 namespace {
 
@@ -48,6 +50,12 @@ const uint32_t RULE_PRIORITY_IMPLICIT_NETWORK    = 19000;
 const uint32_t RULE_PRIORITY_DEFAULT_NETWORK     = 22000;
 const uint32_t RULE_PRIORITY_DIRECTLY_CONNECTED  = 23000;
 const uint32_t RULE_PRIORITY_UNREACHABLE         = 24000;
+
+const uint32_t ROUTE_TABLE_LEGACY_NETWORK = 98;
+const uint32_t ROUTE_TABLE_LEGACY_SYSTEM  = 99;
+
+const char* const ROUTE_TABLE_NAME_LEGACY_NETWORK = "legacy_network";
+const char* const ROUTE_TABLE_NAME_LEGACY_SYSTEM  = "legacy_system";
 
 // TODO: These values aren't defined by the Linux kernel, because our UID routing changes are not
 // upstream (yet?), so we can't just pick them up from kernel headers. When (if?) the changes make
@@ -74,6 +82,8 @@ const bool ACTION_ADD = true;
 const bool ACTION_DEL = false;
 const bool MODIFY_NON_UID_BASED_RULES = true;
 
+const char* const RT_TABLES_PATH = "/data/misc/net/rt_tables";
+
 // Avoids "non-constant-expression cannot be narrowed from type 'unsigned int' to 'unsigned short'"
 // warnings when using RTA_LENGTH(x) inside static initializers (even when x is already uint16_t).
 constexpr uint16_t U16_RTA_LENGTH(uint16_t x) {
@@ -96,23 +106,60 @@ uint8_t PADDING_BUFFER[RTA_ALIGNTO] = {0, 0, 0, 0};
 
 // END CONSTANTS ----------------------------------------------------------------------------------
 
-std::map<std::string, uint32_t> interfaceToIndex;
+// No locks needed because RouteController is accessed only from one thread (in CommandListener).
+std::map<std::string, uint32_t> interfaceToTable;
 
 uint32_t getRouteTableForInterface(const char* interface) {
     uint32_t index = if_nametoindex(interface);
     if (index) {
-        interfaceToIndex[interface] = index;
-    } else {
-        // If the interface goes away if_nametoindex() will return 0 but we still need to know
-        // the index so we can remove the rules and routes.
-        auto iter = interfaceToIndex.find(interface);
-        if (iter == interfaceToIndex.end()) {
-            ALOGE("cannot find interface %s", interface);
-            return RT_TABLE_UNSPEC;
-        }
-        index = iter->second;
+        index += RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX;
+        interfaceToTable[interface] = index;
+        return index;
     }
-    return index + RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX;
+    // If the interface goes away if_nametoindex() will return 0 but we still need to know
+    // the index so we can remove the rules and routes.
+    auto iter = interfaceToTable.find(interface);
+    if (iter == interfaceToTable.end()) {
+        ALOGE("cannot find interface %s", interface);
+        return RT_TABLE_UNSPEC;
+    }
+    return iter->second;
+}
+
+void addTableName(uint32_t table, const std::string& name, std::string* contents) {
+    char tableString[UINT32_STRLEN];
+    snprintf(tableString, sizeof(tableString), "%u", table);
+    *contents += tableString;
+    *contents += " ";
+    *contents += name;
+    *contents += "\n";
+}
+
+// Doesn't return success/failure as the file is optional; it's okay if we fail to update it.
+void updateTableNamesFile() {
+    std::string contents;
+    addTableName(ROUTE_TABLE_LEGACY_NETWORK, ROUTE_TABLE_NAME_LEGACY_NETWORK, &contents);
+    addTableName(ROUTE_TABLE_LEGACY_SYSTEM,  ROUTE_TABLE_NAME_LEGACY_SYSTEM,  &contents);
+    for (const auto& entry : interfaceToTable) {
+        addTableName(entry.second, entry.first, &contents);
+    }
+
+    mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;  // mode 0644, rw-r--r--
+    int fd = open(RT_TABLES_PATH, O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW | O_CLOEXEC, mode);
+    if (fd == -1) {
+        ALOGE("failed to create %s (%s)", RT_TABLES_PATH, strerror(errno));
+        return;
+    }
+    // File creation is affected by umask, so make sure the right mode bits are set.
+    if (fchmod(fd, mode) == -1) {
+        ALOGE("failed to chmod %s to mode 0%o (%s)", RT_TABLES_PATH, mode, strerror(errno));
+    }
+    ssize_t bytesWritten = write(fd, contents.data(), contents.size());
+    if (bytesWritten != static_cast<ssize_t>(contents.size())) {
+        ALOGE("failed to write to %s (%zd vs %zu bytes) (%s)", RT_TABLES_PATH, bytesWritten,
+              contents.size(), strerror(errno));
+    }
+    close(fd);
 }
 
 // Sends a netlink request and expects an ack.
@@ -322,13 +369,13 @@ WARN_UNUSED_RESULT int AddLegacyRouteRules() {
     mask.explicitlySelected = true;
 
     // Rules to allow legacy routes to override the default network.
-    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LEGACY_SYSTEM,
-                               RouteController::ROUTE_TABLE_LEGACY_SYSTEM, fwmark.intValue,
-                               mask.intValue, OIF_NONE, INVALID_UID, INVALID_UID)) {
+    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LEGACY_SYSTEM, ROUTE_TABLE_LEGACY_SYSTEM,
+                               fwmark.intValue, mask.intValue, OIF_NONE, INVALID_UID,
+                               INVALID_UID)) {
         return ret;
     }
     if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LEGACY_NETWORK,
-                               RouteController::ROUTE_TABLE_LEGACY_NETWORK, fwmark.intValue,
+                               ROUTE_TABLE_LEGACY_NETWORK, fwmark.intValue,
                                mask.intValue, OIF_NONE, INVALID_UID, INVALID_UID)) {
         return ret;
     }
@@ -337,9 +384,8 @@ WARN_UNUSED_RESULT int AddLegacyRouteRules() {
     mask.permission = PERMISSION_SYSTEM;
 
     // A rule to allow legacy routes from system apps to override VPNs.
-    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_VPN_OVERRIDE_SYSTEM,
-                        RouteController::ROUTE_TABLE_LEGACY_SYSTEM, fwmark.intValue, mask.intValue,
-                        OIF_NONE, INVALID_UID, INVALID_UID);
+    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_VPN_OVERRIDE_SYSTEM, ROUTE_TABLE_LEGACY_SYSTEM,
+                        fwmark.intValue, mask.intValue, OIF_NONE, INVALID_UID, INVALID_UID);
 }
 
 // Add a new rule to look up the 'main' table, with the same selectors as the "default network"
@@ -587,11 +633,11 @@ WARN_UNUSED_RESULT int modifyRoute(uint16_t action, const char* interface, const
             break;
         }
         case RouteController::LEGACY_NETWORK: {
-            table = RouteController::ROUTE_TABLE_LEGACY_NETWORK;
+            table = ROUTE_TABLE_LEGACY_NETWORK;
             break;
         }
         case RouteController::LEGACY_SYSTEM: {
-            table = RouteController::ROUTE_TABLE_LEGACY_SYSTEM;
+            table = ROUTE_TABLE_LEGACY_SYSTEM;
             break;
         }
     }
@@ -644,7 +690,7 @@ WARN_UNUSED_RESULT int flushRoutes(const char* interface) {
         }
     }
 
-    interfaceToIndex.erase(interface);
+    interfaceToTable.erase(interface);
     return 0;
 }
 
@@ -654,20 +700,26 @@ int RouteController::Init() {
     if (int ret = AddDirectlyConnectedRule()) {
         return ret;
     }
-
     if (int ret = AddLegacyRouteRules()) {
         return ret;
     }
     // TODO: Enable once we are sure everything works.
     if (false) {
-        return AddUnreachableRule();
+        if (int ret = AddUnreachableRule()) {
+            return ret;
+        }
     }
+    updateTableNamesFile();
     return 0;
 }
 
 int RouteController::addInterfaceToPhysicalNetwork(unsigned netId, const char* interface,
                                                    Permission permission) {
-    return modifyPhysicalNetwork(netId, interface, permission, ACTION_ADD);
+    if (int ret = modifyPhysicalNetwork(netId, interface, permission, ACTION_ADD)) {
+        return ret;
+    }
+    updateTableNamesFile();
+    return 0;
 }
 
 int RouteController::removeInterfaceFromPhysicalNetwork(unsigned netId, const char* interface,
@@ -675,13 +727,21 @@ int RouteController::removeInterfaceFromPhysicalNetwork(unsigned netId, const ch
     if (int ret = modifyPhysicalNetwork(netId, interface, permission, ACTION_DEL)) {
         return ret;
     }
-    return flushRoutes(interface);
+    if (int ret = flushRoutes(interface)) {
+        return ret;
+    }
+    updateTableNamesFile();
+    return 0;
 }
 
 int RouteController::addInterfaceToVirtualNetwork(unsigned netId, const char* interface,
                                                   const UidRanges& uidRanges) {
-    return modifyVirtualNetwork(netId, interface, uidRanges, ACTION_ADD,
-                                MODIFY_NON_UID_BASED_RULES);
+    if (int ret = modifyVirtualNetwork(netId, interface, uidRanges, ACTION_ADD,
+                                       MODIFY_NON_UID_BASED_RULES)) {
+        return ret;
+    }
+    updateTableNamesFile();
+    return 0;
 }
 
 int RouteController::removeInterfaceFromVirtualNetwork(unsigned netId, const char* interface,
@@ -690,7 +750,11 @@ int RouteController::removeInterfaceFromVirtualNetwork(unsigned netId, const cha
                                        MODIFY_NON_UID_BASED_RULES)) {
         return ret;
     }
-    return flushRoutes(interface);
+    if (int ret = flushRoutes(interface)) {
+        return ret;
+    }
+    updateTableNamesFile();
+    return 0;
 }
 
 int RouteController::modifyPhysicalNetworkPermission(unsigned netId, const char* interface,
