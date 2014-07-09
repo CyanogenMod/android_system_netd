@@ -83,6 +83,8 @@ const bool ACTION_DEL = false;
 const bool MODIFY_NON_UID_BASED_RULES = true;
 
 const char* const RT_TABLES_PATH = "/data/misc/net/rt_tables";
+const int RT_TABLES_FLAGS = O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW | O_CLOEXEC;
+const mode_t RT_TABLES_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;  // mode 0644, rw-r--r--
 
 // Avoids "non-constant-expression cannot be narrowed from type 'unsigned int' to 'unsigned short'"
 // warnings when using RTA_LENGTH(x) inside static initializers (even when x is already uint16_t).
@@ -144,15 +146,14 @@ void updateTableNamesFile() {
         addTableName(entry.second, entry.first, &contents);
     }
 
-    mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;  // mode 0644, rw-r--r--
-    int fd = open(RT_TABLES_PATH, O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW | O_CLOEXEC, mode);
+    int fd = open(RT_TABLES_PATH, RT_TABLES_FLAGS, RT_TABLES_MODE);
     if (fd == -1) {
         ALOGE("failed to create %s (%s)", RT_TABLES_PATH, strerror(errno));
         return;
     }
     // File creation is affected by umask, so make sure the right mode bits are set.
-    if (fchmod(fd, mode) == -1) {
-        ALOGE("failed to chmod %s to mode 0%o (%s)", RT_TABLES_PATH, mode, strerror(errno));
+    if (fchmod(fd, RT_TABLES_MODE) == -1) {
+        ALOGE("failed to set mode 0%o on %s (%s)", RT_TABLES_MODE, RT_TABLES_PATH, strerror(errno));
     }
     ssize_t bytesWritten = write(fd, contents.data(), contents.size());
     if (bytesWritten != static_cast<ssize_t>(contents.size())) {
