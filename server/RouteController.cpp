@@ -57,6 +57,9 @@ const uint32_t ROUTE_TABLE_LEGACY_SYSTEM  = 99;
 const char* const ROUTE_TABLE_NAME_LEGACY_NETWORK = "legacy_network";
 const char* const ROUTE_TABLE_NAME_LEGACY_SYSTEM  = "legacy_system";
 
+const char* const ROUTE_TABLE_NAME_LOCAL = "local";
+const char* const ROUTE_TABLE_NAME_MAIN  = "main";
+
 // TODO: These values aren't defined by the Linux kernel, because our UID routing changes are not
 // upstream (yet?), so we can't just pick them up from kernel headers. When (if?) the changes make
 // it upstream, we'll remove this and rely on the kernel header values. For now, add a static assert
@@ -140,8 +143,13 @@ void addTableName(uint32_t table, const std::string& name, std::string* contents
 // Doesn't return success/failure as the file is optional; it's okay if we fail to update it.
 void updateTableNamesFile() {
     std::string contents;
+
+    addTableName(RT_TABLE_LOCAL, ROUTE_TABLE_NAME_LOCAL, &contents);
+    addTableName(RT_TABLE_MAIN,  ROUTE_TABLE_NAME_MAIN,  &contents);
+
     addTableName(ROUTE_TABLE_LEGACY_NETWORK, ROUTE_TABLE_NAME_LEGACY_NETWORK, &contents);
     addTableName(ROUTE_TABLE_LEGACY_SYSTEM,  ROUTE_TABLE_NAME_LEGACY_SYSTEM,  &contents);
+
     for (const auto& entry : interfaceToTable) {
         addTableName(entry.second, entry.first, &contents);
     }
