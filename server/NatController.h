@@ -22,12 +22,11 @@
 #include <string>
 
 class NetworkController;
-class SecondaryTableController;
 
 class NatController {
 
 public:
-    NatController(SecondaryTableController *table_ctrl, NetworkController* net_ctrl);
+    explicit NatController(NetworkController* net_ctrl);
     virtual ~NatController();
 
     int enableNat(const int argc, char **argv);
@@ -43,7 +42,6 @@ public:
 
 private:
     int natCount;
-    SecondaryTableController *mSecondaryTableCtrl;
     NetworkController *mNetCtrl;
 
     bool checkTetherCountingRuleExist(const char *pair_name);
@@ -52,7 +50,7 @@ private:
     int runCmd(int argc, const char **argv);
     int setForwardRules(bool set, const char *intIface, const char *extIface);
     int setTetherCountingRules(bool add, const char *intIface, const char *extIface);
-    int routesOp(bool add, const char *intIface, const char *extIface, char **argv, int addrCount);
+    int routesOp(bool add, const char *intIface, char **argv, int addrCount);
 };
 
 #endif

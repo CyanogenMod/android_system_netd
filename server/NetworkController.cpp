@@ -32,6 +32,7 @@
 
 #include "NetworkController.h"
 
+#include "LocalNetwork.h"
 #include "PhysicalNetwork.h"
 #include "RouteController.h"
 #include "VirtualNetwork.h"
@@ -108,6 +109,29 @@ unsigned NetworkController::getNetworkForInterface(const char* interface) const 
         }
     }
     return NETID_UNSET;
+}
+
+unsigned NetworkController::getNetIdForLocalNetwork() const {
+    return MIN_NET_ID - 1;
+}
+
+int NetworkController::createLocalNetwork(unsigned netId) {
+    // TODO: Enable this check after removing the getNetIdForLocalNetwork() hack.
+    if (false) {
+        if (netId < MIN_NET_ID || netId > MAX_NET_ID) {
+            ALOGE("invalid netId %u", netId);
+            return -EINVAL;
+        }
+    }
+
+    if (isValidNetwork(netId)) {
+        ALOGE("duplicate netId %u", netId);
+        return -EEXIST;
+    }
+
+    android::RWLock::AutoWLock lock(mRWLock);
+    mNetworks[netId] = new LocalNetwork(netId);
+    return 0;
 }
 
 int NetworkController::createPhysicalNetwork(unsigned netId, Permission permission) {

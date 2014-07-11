@@ -174,9 +174,9 @@ CommandListener::CommandListener() :
     if (!sSecondaryTableCtrl)
         sSecondaryTableCtrl = new SecondaryTableController(sNetCtrl);
     if (!sTetherCtrl)
-        sTetherCtrl = new TetherController();
+        sTetherCtrl = new TetherController(sNetCtrl);
     if (!sNatCtrl)
-        sNatCtrl = new NatController(sSecondaryTableCtrl, sNetCtrl);
+        sNatCtrl = new NatController(sNetCtrl);
     if (!sPppCtrl)
         sPppCtrl = new PppController();
     if (!sSoftapCtrl)

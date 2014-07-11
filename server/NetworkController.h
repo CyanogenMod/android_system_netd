@@ -52,6 +52,10 @@ public:
     unsigned getNetworkForUser(uid_t uid, unsigned requestedNetId, bool forDns) const;
     unsigned getNetworkForInterface(const char* interface) const;
 
+    // TODO: Remove this hack.
+    unsigned getNetIdForLocalNetwork() const;
+
+    int createLocalNetwork(unsigned netId) WARN_UNUSED_RESULT;
     int createPhysicalNetwork(unsigned netId, Permission permission) WARN_UNUSED_RESULT;
     int createVirtualNetwork(unsigned netId, bool hasDns) WARN_UNUSED_RESULT;
     int destroyNetwork(unsigned netId) WARN_UNUSED_RESULT;

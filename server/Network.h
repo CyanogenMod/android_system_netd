@@ -26,6 +26,7 @@
 class Network {
 public:
     enum Type {
+        LOCAL,
         PHYSICAL,
         VIRTUAL,
     };

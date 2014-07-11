@@ -24,14 +24,17 @@
 typedef android::netd::List<char *> InterfaceCollection;
 typedef android::netd::List<struct in_addr> NetAddressCollection;
 
+class NetworkController;
+
 class TetherController {
     InterfaceCollection  *mInterfaces;
     NetAddressCollection *mDnsForwarders;
     pid_t                 mDaemonPid;
     int                   mDaemonFd;
+    NetworkController* const mNetworkController;
 
 public:
-    TetherController();
+    explicit TetherController(NetworkController* networkController);
     virtual ~TetherController();
 
     int setIpFwdEnabled(bool enable);

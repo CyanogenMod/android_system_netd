@@ -33,8 +33,10 @@
 
 #include "NetdConstants.h"
 #include "TetherController.h"
+#include "NetworkController.h"
 
-TetherController::TetherController() {
+TetherController::TetherController(NetworkController* networkController) :
+        mNetworkController(networkController) {
     mInterfaces = new InterfaceCollection();
     mDnsForwarders = new NetAddressCollection();
     mDaemonFd = -1;
@@ -170,6 +172,17 @@ int TetherController::startTethering(int num_addrs, struct in_addr* addrs) {
         ALOGD("Tethering services running");
     }
 
+    unsigned netId = mNetworkController->getNetIdForLocalNetwork();
+    if (int ret = mNetworkController->createLocalNetwork(netId)) {
+        return ret;
+    }
+    // If any interfaces have already been configured, add them to the local network now.
+    for (InterfaceCollection::iterator it = mInterfaces->begin(); it != mInterfaces->end(); ++it) {
+        if (int ret = mNetworkController->addInterfaceToNetwork(netId, *it)) {
+            return ret;
+        }
+    }
+
     return 0;
 }
 
@@ -181,6 +194,9 @@ int TetherController::stopTethering() {
     }
 
     ALOGD("Stopping tethering services");
+
+    // Ignore any error.
+    (void) mNetworkController->destroyNetwork(mNetworkController->getNetIdForLocalNetwork());
 
     kill(mDaemonPid, SIGTERM);
     waitpid(mDaemonPid, NULL, 0);
@@ -291,6 +307,10 @@ int TetherController::tetherInterface(const char *interface) {
         }
         return -1;
     } else {
+        if (isTetheringStarted()) {
+            unsigned netId = mNetworkController->getNetIdForLocalNetwork();
+            return mNetworkController->addInterfaceToNetwork(netId, interface);
+        }
         return 0;
     }
 }
@@ -299,6 +319,12 @@ int TetherController::untetherInterface(const char *interface) {
     InterfaceCollection::iterator it;
 
     ALOGD("untetherInterface(%s)", interface);
+
+    if (isTetheringStarted()) {
+        unsigned netId = mNetworkController->getNetIdForLocalNetwork();
+        // Ignore any error.
+        (void) mNetworkController->removeInterfaceFromNetwork(netId, interface);
+    }
 
     for (it = mInterfaces->begin(); it != mInterfaces->end(); ++it) {
         if (!strcmp(interface, *it)) {

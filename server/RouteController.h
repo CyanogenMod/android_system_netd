@@ -37,6 +37,10 @@ public:
 
     static int Init() WARN_UNUSED_RESULT;
 
+    static int addInterfaceToLocalNetwork(unsigned netId, const char* interface) WARN_UNUSED_RESULT;
+    static int removeInterfaceFromLocalNetwork(unsigned netId,
+                                               const char* interface) WARN_UNUSED_RESULT;
+
     static int addInterfaceToPhysicalNetwork(unsigned netId, const char* interface,
                                              Permission permission) WARN_UNUSED_RESULT;
     static int removeInterfaceFromPhysicalNetwork(unsigned netId, const char* interface,

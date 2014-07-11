@@ -48,6 +48,7 @@ LOCAL_SRC_FILES := \
         FwmarkServer.cpp \
         IdletimerController.cpp \
         InterfaceController.cpp \
+        LocalNetwork.cpp \
         MDnsSdListener.cpp \
         NatController.cpp \
         NetdCommand.cpp \

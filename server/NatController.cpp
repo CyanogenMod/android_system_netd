@@ -33,15 +33,13 @@
 
 #include "NatController.h"
 #include "NetworkController.h"
-#include "SecondaryTableController.h"
 #include "NetdConstants.h"
 
 const char* NatController::LOCAL_FORWARD = "natctrl_FORWARD";
 const char* NatController::LOCAL_NAT_POSTROUTING = "natctrl_nat_POSTROUTING";
 const char* NatController::LOCAL_TETHER_COUNTERS_CHAIN = "natctrl_tether_counters";
 
-NatController::NatController(SecondaryTableController *table_ctrl, NetworkController* net_ctrl) :
-        mSecondaryTableCtrl(table_ctrl), mNetCtrl(net_ctrl) {
+NatController::NatController(NetworkController* net_ctrl) : mNetCtrl(net_ctrl) {
 }
 
 NatController::~NatController() {
@@ -114,12 +112,6 @@ int NatController::setDefaults() {
         {{IPTABLES_PATH, "-F", LOCAL_FORWARD,}, 1},
         {{IPTABLES_PATH, "-A", LOCAL_FORWARD, "-j", "DROP"}, 1},
         {{IPTABLES_PATH, "-t", "nat", "-F", LOCAL_NAT_POSTROUTING}, 1},
-        {{IP_PATH, "rule", "flush"}, 0},
-        {{IP_PATH, "-6", "rule", "flush"}, 0},
-        {{IP_PATH, "rule", "add", "from", "all", "lookup", "default", "prio", "32767"}, 0},
-        {{IP_PATH, "rule", "add", "from", "all", "lookup", "main", "prio", "32766"}, 0},
-        {{IP_PATH, "-6", "rule", "add", "from", "all", "lookup", "default", "prio", "32767"}, 0},
-        {{IP_PATH, "-6", "rule", "add", "from", "all", "lookup", "main", "prio", "32766"}, 0},
         {{IP_PATH, "route", "flush", "cache"}, 0},
     };
     for (unsigned int cmdNum = 0; cmdNum < ARRAY_SIZE(defaultCommands); cmdNum++) {
@@ -134,17 +126,15 @@ int NatController::setDefaults() {
     return 0;
 }
 
-int NatController::routesOp(bool add, const char *intIface, const char *extIface, char **argv, int addrCount) {
-    unsigned netId = mNetCtrl->getNetworkForInterface(extIface);
+int NatController::routesOp(bool add, const char *intIface, char **argv, int addrCount) {
+    unsigned netId = mNetCtrl->getNetworkForInterface(intIface);
     int ret = 0;
 
     for (int i = 0; i < addrCount; i++) {
         if (add) {
-            ret |= mSecondaryTableCtrl->modifyFromRule(netId, ADD, argv[5+i]);
-            ret |= mSecondaryTableCtrl->modifyLocalRoute(netId, ADD, intIface, argv[5+i]);
+            ret |= mNetCtrl->addRoute(netId, intIface, argv[5+i], NULL, false, INVALID_UID);
         } else {
-            ret |= mSecondaryTableCtrl->modifyLocalRoute(netId, DEL, intIface, argv[5+i]);
-            ret |= mSecondaryTableCtrl->modifyFromRule(netId, DEL, argv[5+i]);
+            ret |= mNetCtrl->addRoute(netId, intIface, argv[5+i], NULL, false, INVALID_UID);
         }
     }
     const char *cmd[] = {
@@ -183,9 +173,9 @@ int NatController::enableNat(const int argc, char **argv) {
         errno = EINVAL;
         return -1;
     }
-    if (routesOp(true, intIface, extIface, argv, addrCount)) {
+    if (routesOp(true, intIface, argv, addrCount)) {
         ALOGE("Error setting route rules");
-        routesOp(false, intIface, extIface, argv, addrCount);
+        routesOp(false, intIface, argv, addrCount);
         errno = ENODEV;
         return -1;
     }
@@ -206,7 +196,7 @@ int NatController::enableNat(const int argc, char **argv) {
         if (runCmd(ARRAY_SIZE(cmd), cmd)) {
             ALOGE("Error seting postroute rule: iface=%s", extIface);
             // unwind what's been done, but don't care about success - what more could we do?
-            routesOp(false, intIface, extIface, argv, addrCount);
+            routesOp(false, intIface, argv, addrCount);
             setDefaults();
             return -1;
         }
@@ -215,7 +205,7 @@ int NatController::enableNat(const int argc, char **argv) {
 
     if (setForwardRules(true, intIface, extIface) != 0) {
         ALOGE("Error setting forward rules");
-        routesOp(false, intIface, extIface, argv, addrCount);
+        routesOp(false, intIface, argv, addrCount);
         if (natCount == 0) {
             setDefaults();
         }
@@ -415,7 +405,7 @@ int NatController::disableNat(const int argc, char **argv) {
     }
 
     setForwardRules(false, intIface, extIface);
-    routesOp(false, intIface, extIface, argv, addrCount);
+    routesOp(false, intIface, argv, addrCount);
     if (--natCount <= 0) {
         // handle decrement to 0 case (do reset to defaults) and erroneous dec below 0
         setDefaults();

@@ -42,7 +42,7 @@ const uint32_t RULE_PRIORITY_EXPLICIT_NETWORK    = 13000;
 const uint32_t RULE_PRIORITY_OUTPUT_INTERFACE    = 14000;
 const uint32_t RULE_PRIORITY_LEGACY_SYSTEM       = 15000;
 const uint32_t RULE_PRIORITY_LEGACY_NETWORK      = 16000;
-// const uint32_t RULE_PRIORITY_LOCAL_NETWORK       = 17000;
+const uint32_t RULE_PRIORITY_LOCAL_NETWORK       = 17000;
 // const uint32_t RULE_PRIORITY_TETHERING           = 18000;
 const uint32_t RULE_PRIORITY_IMPLICIT_NETWORK    = 19000;
 // const uint32_t RULE_PRIORITY_BYPASSABLE_VPN      = 20000;
@@ -542,6 +542,38 @@ WARN_UNUSED_RESULT int modifyVpnSystemPermissionRule(unsigned netId, uint32_t ta
                         fwmark.intValue, mask.intValue, OIF_NONE, INVALID_UID, INVALID_UID);
 }
 
+// A rule to allow local network routes to override the default network.
+WARN_UNUSED_RESULT int modifyLocalOverrideRule(uint32_t table, bool add) {
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
+
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_LOCAL_NETWORK, table,
+                        fwmark.intValue, mask.intValue, OIF_NONE, INVALID_UID, INVALID_UID);
+}
+
+WARN_UNUSED_RESULT int modifyLocalNetwork(unsigned netId, const char* interface, bool add) {
+    uint32_t table = getRouteTableForInterface(interface);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
+    if (int ret = modifyIncomingPacketMark(netId, interface, PERMISSION_NONE, add)) {
+        return ret;
+    }
+    if (int ret = modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, INVALID_UID, INVALID_UID,
+                                            add)) {
+        return ret;
+    }
+    if (int ret = modifyOutputInterfaceRule(interface, table, PERMISSION_NONE, INVALID_UID,
+                                            INVALID_UID, add)) {
+        return ret;
+    }
+    return modifyLocalOverrideRule(table, add);
+}
+
 WARN_UNUSED_RESULT int modifyPhysicalNetwork(unsigned netId, const char* interface,
                                              Permission permission, bool add) {
     uint32_t table = getRouteTableForInterface(interface);
@@ -709,6 +741,25 @@ int RouteController::Init() {
         if (int ret = AddUnreachableRule()) {
             return ret;
         }
+    }
+    updateTableNamesFile();
+    return 0;
+}
+
+int RouteController::addInterfaceToLocalNetwork(unsigned netId, const char* interface) {
+    if (int ret = modifyLocalNetwork(netId, interface, ACTION_ADD)) {
+        return ret;
+    }
+    updateTableNamesFile();
+    return 0;
+}
+
+int RouteController::removeInterfaceFromLocalNetwork(unsigned netId, const char* interface) {
+    if (int ret = modifyLocalNetwork(netId, interface, ACTION_DEL)) {
+        return ret;
+    }
+    if (int ret = flushRoutes(interface)) {
+        return ret;
     }
     updateTableNamesFile();
     return 0;
