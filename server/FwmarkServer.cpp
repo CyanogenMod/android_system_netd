@@ -134,6 +134,15 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
             break;
         }
 
+        case FwmarkCommand::SELECT_FOR_USER: {
+            if ((permission & PERMISSION_SYSTEM) != PERMISSION_SYSTEM) {
+                return -EPERM;
+            }
+            fwmark.netId = mNetworkController->getNetworkForUser(command.uid, NETID_UNSET, false);
+            fwmark.protectedFromVpn = true;
+            break;
+        }
+
         default: {
             // unknown command
             return -EPROTO;

@@ -62,7 +62,7 @@ int netdClientAccept4(int sockfd, sockaddr* addr, socklen_t* addrlen, int flags)
         }
     }
     if (FwmarkClient::shouldSetFwmark(family)) {
-        FwmarkCommand command = {FwmarkCommand::ON_ACCEPT, 0};
+        FwmarkCommand command = {FwmarkCommand::ON_ACCEPT, 0, 0};
         if (int error = FwmarkClient().send(&command, sizeof(command), acceptedSocket)) {
             return closeFdAndSetErrno(acceptedSocket, error);
         }
@@ -72,7 +72,7 @@ int netdClientAccept4(int sockfd, sockaddr* addr, socklen_t* addrlen, int flags)
 
 int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
     if (sockfd >= 0 && addr && FwmarkClient::shouldSetFwmark(addr->sa_family)) {
-        FwmarkCommand command = {FwmarkCommand::ON_CONNECT, 0};
+        FwmarkCommand command = {FwmarkCommand::ON_CONNECT, 0, 0};
         if (int error = FwmarkClient().send(&command, sizeof(command), sockfd)) {
             errno = -error;
             return -1;
@@ -182,7 +182,7 @@ extern "C" int setNetworkForSocket(unsigned netId, int socketFd) {
     if (socketFd < 0) {
         return -EBADF;
     }
-    FwmarkCommand command = {FwmarkCommand::SELECT_NETWORK, netId};
+    FwmarkCommand command = {FwmarkCommand::SELECT_NETWORK, netId, 0};
     return FwmarkClient().send(&command, sizeof(command), socketFd);
 }
 
@@ -198,6 +198,14 @@ extern "C" int protectFromVpn(int socketFd) {
     if (socketFd < 0) {
         return -EBADF;
     }
-    FwmarkCommand command = {FwmarkCommand::PROTECT_FROM_VPN, 0};
+    FwmarkCommand command = {FwmarkCommand::PROTECT_FROM_VPN, 0, 0};
+    return FwmarkClient().send(&command, sizeof(command), socketFd);
+}
+
+extern "C" int setNetworkForUser(uid_t uid, int socketFd) {
+    if (socketFd < 0) {
+        return -EBADF;
+    }
+    FwmarkCommand command = {FwmarkCommand::SELECT_FOR_USER, 0, uid};
     return FwmarkClient().send(&command, sizeof(command), socketFd);
 }

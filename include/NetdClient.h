@@ -19,6 +19,7 @@
 
 #include <stdbool.h>
 #include <sys/cdefs.h>
+#include <sys/types.h>
 
 __BEGIN_DECLS
 
@@ -33,6 +34,8 @@ int setNetworkForProcess(unsigned netId);
 int setNetworkForResolv(unsigned netId);
 
 int protectFromVpn(int socketFd);
+
+int setNetworkForUser(uid_t uid, int socketFd);
 
 __END_DECLS
 
