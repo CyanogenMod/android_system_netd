@@ -61,7 +61,13 @@ int ClatdController::startClatd(char *interface) {
         char netIdString[UINT32_STRLEN];
         snprintf(netIdString, sizeof(netIdString), "%u", netId);
 
-        Fwmark fwmark = {netId, true, true, PERMISSION_SYSTEM};
+        Fwmark fwmark;
+
+        fwmark.netId = netId;
+        fwmark.explicitlySelected = true;
+        fwmark.protectedFromVpn = true;
+        fwmark.permission = PERMISSION_SYSTEM;
+
         char fwmarkString[UINT32_HEX_STRLEN];
         snprintf(fwmarkString, sizeof(fwmarkString), "0x%x", fwmark.intValue);
 
