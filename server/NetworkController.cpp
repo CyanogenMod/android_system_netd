@@ -111,6 +111,12 @@ unsigned NetworkController::getNetworkForInterface(const char* interface) const 
     return NETID_UNSET;
 }
 
+bool NetworkController::isVirtualNetwork(unsigned netId) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+    Network* network = getNetworkLocked(netId);
+    return network && network->getType() == Network::VIRTUAL;
+}
+
 unsigned NetworkController::getNetIdForLocalNetwork() const {
     return MIN_NET_ID - 1;
 }

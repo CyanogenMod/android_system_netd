@@ -95,16 +95,23 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
 
     switch (command.cmdId) {
         case FwmarkCommand::ON_ACCEPT: {
-            // Called after a socket accept(). The kernel would've marked the netId and necessary
+            // Called after a socket accept(). The kernel would've marked the NetId and necessary
             // permissions bits, so we just add the rest of the user's permissions here.
             permission = static_cast<Permission>(permission | fwmark.permission);
             break;
         }
 
         case FwmarkCommand::ON_CONNECT: {
-            // Set the netId (of the default network) into the fwmark, if it has not already been
-            // set explicitly. Called before a socket connect() happens.
-            if (!fwmark.explicitlySelected) {
+            // Called before a socket connect() happens. Set the default network's NetId into the
+            // fwmark so that the socket routes consistently over that network. Do this even if the
+            // socket already has a NetId, so that calling connect() multiple times still works.
+            //
+            // But respect the existing NetId if it had been explicitly preferred, indicated by:
+            // + The explicit bit having been set.
+            // + Or, the NetId being that of a VPN, which indicates a proxy acting on behalf of a
+            //   user who is subject to the VPN. The explicit bit is not set so that it works even
+            //   if the VPN is a split tunnel, but it's an explicit network preference nonetheless.
+            if (!fwmark.explicitlySelected && !mNetworkController->isVirtualNetwork(fwmark.netId)) {
                 fwmark.netId = mNetworkController->getDefaultNetwork();
             }
             break;

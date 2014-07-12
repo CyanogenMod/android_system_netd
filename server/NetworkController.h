@@ -51,6 +51,7 @@ public:
     // requests to VPNs without DNS servers.
     unsigned getNetworkForUser(uid_t uid, unsigned requestedNetId, bool forDns) const;
     unsigned getNetworkForInterface(const char* interface) const;
+    bool isVirtualNetwork(unsigned netId) const;
 
     // TODO: Remove this hack.
     unsigned getNetIdForLocalNetwork() const;
