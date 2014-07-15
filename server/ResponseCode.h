@@ -46,6 +46,7 @@ public:
     static const int TetheringStatsResult      = 221;
     static const int DnsProxyQueryResult       = 222;
     static const int ClatdStatusResult         = 223;
+    static const int V6RtrAdvResult            = 227;
 
     // 400 series - The command was accepted but the requested action
     // did not take place.

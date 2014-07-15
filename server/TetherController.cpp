@@ -23,11 +23,15 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <linux/capability.h>
 
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
 #define LOG_TAG "TetherController"
+#define LOG_NDEBUG 0
+#define LOG_NDDEBUG 0
+#define LOG_NIDEBUG 0
 #include <cutils/log.h>
 #include <cutils/properties.h>
 
@@ -36,9 +40,20 @@
 #include "Permission.h"
 #include "TetherController.h"
 
+#include <private/android_filesystem_config.h>
+#include <unistd.h>
+
+#define RTRADVDAEMON "/system/bin/radish"
+#define IP4_CFG_IP_FORWARD          "/proc/sys/net/ipv4/ip_forward"
+#define IP6_CFG_ALL_PROXY_NDP       "/proc/sys/net/ipv6/conf/all/proxy_ndp"
+#define IP6_CFG_ALL_FORWARDING      "/proc/sys/net/ipv6/conf/all/forwarding"
+#define IP6_IFACE_CFG_ACCEPT_RA     "/proc/sys/net/ipv6/conf/%s/accept_ra"
+#define PROC_PATH_SIZE              255
+
+
 TetherController::TetherController() {
     mInterfaces = new InterfaceCollection();
-    mDnsNetId = 0;
+    mUpstreamInterfaces = new InterfaceCollection();
     mDnsForwarders = new NetAddressCollection();
     mDaemonFd = -1;
     mDaemonPid = 0;
@@ -52,7 +67,30 @@ TetherController::~TetherController() {
     }
     mInterfaces->clear();
 
+    for (it = mUpstreamInterfaces->begin(); it != mUpstreamInterfaces->end(); ++it) {
+        free(*it);
+    }
+    mUpstreamInterfaces->clear();
+
     mDnsForwarders->clear();
+}
+
+static int config_write_setting(const char *path, const char *value)
+{
+    int fd = open(path, O_WRONLY);
+
+    ALOGD("config_write_setting(%s, %s)", path, value);
+    if (fd < 0) {
+        ALOGE("Failed to open %s (%s)", path, strerror(errno));
+        return -1;
+    }
+    if (write(fd, value, strlen(value)) != (int)strlen(value)) {
+        ALOGE("Failed to write to %s (%s)", path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    close(fd);
+    return 0;
 }
 
 int TetherController::setIpFwdEnabled(bool enable) {
@@ -78,6 +116,17 @@ int TetherController::setIpFwdEnabled(bool enable) {
         return -1;
     }
     close(fd);
+    if (config_write_setting(
+            IP6_CFG_ALL_PROXY_NDP, enable ? "2" : "0")) {
+        ALOGE("Failed to write proxy_ndp (%s)", strerror(errno));
+        return -1;
+    }
+    if (config_write_setting(
+            IP6_CFG_ALL_FORWARDING, enable ? "2" : "0")) {
+        ALOGE("Failed to write ip6 forwarding (%s)", strerror(errno));
+        return -1;
+    }
+
     return 0;
 }
 
@@ -198,6 +247,107 @@ bool TetherController::isTetheringStarted() {
     return (mDaemonPid == 0 ? false : true);
 }
 
+int TetherController::startV6RtrAdv(int num_ifaces, char **ifaces) {
+    int pid;
+    int num_processed_args = 1;
+    gid_t groups [] = { AID_NET_ADMIN, AID_NET_RAW, AID_INET };
+
+    if (num_ifaces < 2) {
+        ALOGD("Need atleast two interfaces to start Router advertisement daemon");
+        return 0;
+    }
+
+    if ((pid = fork()) < 0) {
+        ALOGE("%s: fork failed (%s)", __func__, strerror(errno));
+        return -1;
+    }
+    if (!pid) {
+        char **args;
+        const char *cmd = RTRADVDAEMON;
+
+        args = (char **)calloc(num_ifaces * 3 + 2, sizeof(char *));
+
+        args[0] = strdup(RTRADVDAEMON);
+        for (int i=0; i < num_ifaces; i++) {
+            int aidx = 3 * i + num_processed_args;
+            args[aidx] = (char *)"-i";
+            args[aidx + 1] = ifaces[i];
+            args[aidx + 2] = (char *)"-x";
+        }
+
+
+        setgroups(sizeof(groups)/sizeof(groups[0]), groups);
+        setresgid(AID_RADIO, AID_RADIO, AID_RADIO);
+        setresuid(AID_RADIO, AID_RADIO, AID_RADIO);
+
+        if (execv(cmd, args)) {
+            ALOGE("Unable to exec %s: (%s)" , cmd, strerror(errno));
+        }
+        free(args[0]);
+        free(args);
+        exit(0);
+    } else {
+        mRtrAdvPid = pid;
+        ALOGD("Router advertisement daemon running");
+    }
+    return 0;
+}
+
+int TetherController::stopV6RtrAdv() {
+    if (!mRtrAdvPid) {
+        ALOGD("Router advertisement daemon already stopped");
+        return 0;
+    }
+
+    kill(mRtrAdvPid, SIGTERM);
+    waitpid(mRtrAdvPid, NULL, 0);
+    mRtrAdvPid = 0;
+    ALOGD("Router advertisement daemon stopped");
+    return 0;
+}
+
+int TetherController::addV6RtrAdvIface(const char *iface) {
+    char **args;
+    int i;
+    int len;
+    InterfaceCollection::iterator it;
+    /* For now, just stop and start the daemon with the new interface list */
+
+    len = mInterfaces->size() + mUpstreamInterfaces->size();
+    ALOGD("addV6RtrAdvIface: len = %d. Iface: %s\n", len, iface);
+    args = (char **)calloc(len, sizeof(char *));
+
+    if (!args) {
+        errno = ENOMEM;
+        return -1;
+    }
+
+    for (i = 0, it = mInterfaces->begin(); it != mInterfaces->end(); it++, i++) {
+        args[i] = *it;
+    }
+
+    for (it = mUpstreamInterfaces->begin(); i < len && it != mUpstreamInterfaces->end(); it++, i++) {
+        args[i] = *it;
+    }
+
+    stopV6RtrAdv();
+    startV6RtrAdv(i, args);
+
+    free(args);
+
+    return 0;
+}
+
+int TetherController::removeV6RtrAdvIface(const char *iface) {
+    /* For now, just call addV6RtrAdvIface, since that will stop and
+     * start the daemon with the updated interfaces
+     */
+    return addV6RtrAdvIface(iface);
+}
+bool TetherController::isV6RtrAdvStarted() {
+    return (mRtrAdvPid == 0 ? false : true);
+}
+
 #define MAX_CMD_SIZE 1024
 
 int TetherController::setDnsForwarders(unsigned netId, char **servers, int numServers) {
@@ -252,6 +402,48 @@ unsigned TetherController::getDnsNetId() {
     return mDnsNetId;
 }
 
+int TetherController::addUpstreamInterface(char *iface)
+{
+    InterfaceCollection::iterator it;
+
+    ALOGD("addUpstreamInterface(%s)\n", iface);
+
+    if (!iface) {
+        ALOGE("addUpstreamInterface: received null interface");
+        return 0;
+    }
+    for (it = mUpstreamInterfaces->begin(); it != mUpstreamInterfaces->end(); ++it) {
+        ALOGD(".");
+        if (*it && !strcmp(iface, *it)) {
+            ALOGD("addUpstreamInterface: interface %s already present", iface);
+            return 0;
+        }
+    }
+    mUpstreamInterfaces->push_back(strdup(iface));
+
+    return addV6RtrAdvIface(iface);
+}
+
+int TetherController::removeUpstreamInterface(char *iface)
+{
+    InterfaceCollection::iterator it;
+
+    if (!iface) {
+        ALOGE("removeUpstreamInterface: Null interface name received");
+        return 0;
+    }
+    for (it = mUpstreamInterfaces->begin(); it != mUpstreamInterfaces->end(); ++it) {
+        if (*it && !strcmp(iface, *it)) {
+            free(*it);
+            mUpstreamInterfaces->erase(it);
+            return removeV6RtrAdvIface(iface);
+        }
+    }
+
+    ALOGW("Couldn't find interface %s to remove", iface);
+    return 0;
+}
+
 NetAddressCollection *TetherController::getDnsForwarders() {
     return mDnsForwarders;
 }
@@ -294,6 +486,8 @@ int TetherController::tetherInterface(const char *interface) {
     }
     mInterfaces->push_back(strdup(interface));
 
+    addV6RtrAdvIface(interface);
+
     if (applyDnsInterfaces()) {
         InterfaceCollection::iterator it;
         for (it = mInterfaces->begin(); it != mInterfaces->end(); ++it) {
@@ -318,7 +512,7 @@ int TetherController::untetherInterface(const char *interface) {
         if (!strcmp(interface, *it)) {
             free(*it);
             mInterfaces->erase(it);
-
+            removeV6RtrAdvIface(NULL);
             return applyDnsInterfaces();
         }
     }
