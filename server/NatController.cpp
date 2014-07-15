@@ -32,14 +32,14 @@
 #include <logwrap/logwrap.h>
 
 #include "NatController.h"
-#include "NetworkController.h"
 #include "NetdConstants.h"
+#include "RouteController.h"
 
 const char* NatController::LOCAL_FORWARD = "natctrl_FORWARD";
 const char* NatController::LOCAL_NAT_POSTROUTING = "natctrl_nat_POSTROUTING";
 const char* NatController::LOCAL_TETHER_COUNTERS_CHAIN = "natctrl_tether_counters";
 
-NatController::NatController(NetworkController* net_ctrl) : mNetCtrl(net_ctrl) {
+NatController::NatController() {
 }
 
 NatController::~NatController() {
@@ -112,7 +112,6 @@ int NatController::setDefaults() {
         {{IPTABLES_PATH, "-F", LOCAL_FORWARD,}, 1},
         {{IPTABLES_PATH, "-A", LOCAL_FORWARD, "-j", "DROP"}, 1},
         {{IPTABLES_PATH, "-t", "nat", "-F", LOCAL_NAT_POSTROUTING}, 1},
-        {{IP_PATH, "route", "flush", "cache"}, 0},
     };
     for (unsigned int cmdNum = 0; cmdNum < ARRAY_SIZE(defaultCommands); cmdNum++) {
         if (runCmd(ARRAY_SIZE(defaultCommands[cmdNum].cmd), defaultCommands[cmdNum].cmd) &&
@@ -126,34 +125,7 @@ int NatController::setDefaults() {
     return 0;
 }
 
-int NatController::routesOp(bool add, const char *intIface, char **argv, int addrCount) {
-    unsigned netId = mNetCtrl->getNetworkForInterface(intIface);
-    int ret = 0;
-
-    for (int i = 0; i < addrCount; i++) {
-        if (add) {
-            ret |= mNetCtrl->addRoute(netId, intIface, argv[5+i], NULL, false, INVALID_UID);
-        } else {
-            ret |= mNetCtrl->addRoute(netId, intIface, argv[5+i], NULL, false, INVALID_UID);
-        }
-    }
-    const char *cmd[] = {
-            IP_PATH,
-            "route",
-            "flush",
-            "cache"
-    };
-    runCmd(ARRAY_SIZE(cmd), cmd);
-    return ret;
-}
-
-//  0    1       2       3       4            5
-// nat enable intface extface addrcnt nated-ipaddr/prelength
-int NatController::enableNat(const int argc, char **argv) {
-    int addrCount = atoi(argv[4]);
-    const char *intIface = argv[2];
-    const char *extIface = argv[3];
-
+int NatController::enableNat(const char* intIface, const char* extIface) {
     ALOGV("enableNat(intIface=<%s>, extIface=<%s>)",intIface, extIface);
 
     if (!isIfaceName(intIface) || !isIfaceName(extIface)) {
@@ -165,18 +137,6 @@ int NatController::enableNat(const int argc, char **argv) {
     if (!strcmp(intIface, extIface)) {
         ALOGE("Duplicate interface specified: %s %s", intIface, extIface);
         errno = EINVAL;
-        return -1;
-    }
-
-    if (argc < 5 + addrCount) {
-        ALOGE("Missing Argument");
-        errno = EINVAL;
-        return -1;
-    }
-    if (routesOp(true, intIface, argv, addrCount)) {
-        ALOGE("Error setting route rules");
-        routesOp(false, intIface, argv, addrCount);
-        errno = ENODEV;
         return -1;
     }
 
@@ -194,18 +154,15 @@ int NatController::enableNat(const int argc, char **argv) {
                 "MASQUERADE"
         };
         if (runCmd(ARRAY_SIZE(cmd), cmd)) {
-            ALOGE("Error seting postroute rule: iface=%s", extIface);
+            ALOGE("Error setting postroute rule: iface=%s", extIface);
             // unwind what's been done, but don't care about success - what more could we do?
-            routesOp(false, intIface, argv, addrCount);
             setDefaults();
             return -1;
         }
     }
 
-
     if (setForwardRules(true, intIface, extIface) != 0) {
         ALOGE("Error setting forward rules");
-        routesOp(false, intIface, argv, addrCount);
         if (natCount == 0) {
             setDefaults();
         }
@@ -230,6 +187,12 @@ int NatController::enableNat(const int argc, char **argv) {
             "DROP"
     };
     runCmd(ARRAY_SIZE(cmd2), cmd2);
+
+    if (int ret = RouteController::enableTethering(intIface, extIface)) {
+        ALOGE("failed to add tethering rule for iif=%s oif=%s", intIface, extIface);
+        errno = -ret;
+        return -1;
+    }
 
     natCount++;
     return 0;
@@ -385,27 +348,19 @@ err_invalid_drop:
     return rc;
 }
 
-// nat disable intface extface
-//  0    1       2       3       4            5
-// nat enable intface extface addrcnt nated-ipaddr/prelength
-int NatController::disableNat(const int argc, char **argv) {
-    int addrCount = atoi(argv[4]);
-    const char *intIface = argv[2];
-    const char *extIface = argv[3];
-
+int NatController::disableNat(const char* intIface, const char* extIface) {
     if (!isIfaceName(intIface) || !isIfaceName(extIface)) {
         errno = ENODEV;
         return -1;
     }
 
-    if (argc < 5 + addrCount) {
-        ALOGE("Missing Argument");
-        errno = EINVAL;
+    if (int ret = RouteController::disableTethering(intIface, extIface)) {
+        ALOGE("failed to remove tethering rule for iif=%s oif=%s", intIface, extIface);
+        errno = -ret;
         return -1;
     }
 
     setForwardRules(false, intIface, extIface);
-    routesOp(false, intIface, argv, addrCount);
     if (--natCount <= 0) {
         // handle decrement to 0 case (do reset to defaults) and erroneous dec below 0
         setDefaults();

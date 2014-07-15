@@ -40,6 +40,8 @@ class VirtualNetwork;
  */
 class NetworkController {
 public:
+    static const int LOCAL_NET_ID = 9;
+
     NetworkController();
 
     unsigned getDefaultNetwork() const;
@@ -53,10 +55,6 @@ public:
     unsigned getNetworkForInterface(const char* interface) const;
     bool isVirtualNetwork(unsigned netId) const;
 
-    // TODO: Remove this hack.
-    unsigned getNetIdForLocalNetwork() const;
-
-    int createLocalNetwork(unsigned netId) WARN_UNUSED_RESULT;
     int createPhysicalNetwork(unsigned netId, Permission permission) WARN_UNUSED_RESULT;
     int createVirtualNetwork(unsigned netId, bool hasDns) WARN_UNUSED_RESULT;
     int destroyNetwork(unsigned netId) WARN_UNUSED_RESULT;
