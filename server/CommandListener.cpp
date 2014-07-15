@@ -62,6 +62,14 @@ Permission stringToPermission(const char* arg) {
     return PERMISSION_NONE;
 }
 
+unsigned stringToNetId(const char* arg) {
+    if (!strcmp(arg, "local")) {
+        return NetworkController::LOCAL_NET_ID;
+    }
+    // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
+    return strtoul(arg, NULL, 0);
+}
+
 }  // namespace
 
 NetworkController *CommandListener::sNetCtrl = NULL;
@@ -174,9 +182,9 @@ CommandListener::CommandListener() :
     if (!sSecondaryTableCtrl)
         sSecondaryTableCtrl = new SecondaryTableController(sNetCtrl);
     if (!sTetherCtrl)
-        sTetherCtrl = new TetherController(sNetCtrl);
+        sTetherCtrl = new TetherController();
     if (!sNatCtrl)
-        sNatCtrl = new NatController(sNetCtrl);
+        sNatCtrl = new NatController();
     if (!sPppCtrl)
         sPppCtrl = new PppController();
     if (!sSoftapCtrl)
@@ -237,7 +245,7 @@ CommandListener::CommandListener() :
 
     sSecondaryTableCtrl->setupIptablesHooks();
 
-    if (int ret = RouteController::Init()) {
+    if (int ret = RouteController::Init(NetworkController::LOCAL_NET_ID)) {
         ALOGE("failed to initialize RouteController (%s)", strerror(-ret));
     }
 }
@@ -813,16 +821,19 @@ int CommandListener::NatCmd::runCommand(SocketClient *cli,
         return 0;
     }
 
-    if (!strcmp(argv[1], "enable")) {
-        rc = sNatCtrl->enableNat(argc, argv);
+    //  0     1       2        3
+    // nat  enable intiface extiface
+    // nat disable intiface extiface
+    if (!strcmp(argv[1], "enable") && argc >= 4) {
+        rc = sNatCtrl->enableNat(argv[2], argv[3]);
         if(!rc) {
             /* Ignore ifaces for now. */
             rc = sBandwidthCtrl->setGlobalAlertInForwardChain();
         }
-    } else if (!strcmp(argv[1], "disable")) {
+    } else if (!strcmp(argv[1], "disable") && argc >= 4) {
         /* Ignore ifaces for now. */
         rc = sBandwidthCtrl->removeGlobalAlertInForwardChain();
-        rc |= sNatCtrl->disableNat(argc, argv);
+        rc |= sNatCtrl->disableNat(argv[2], argv[3]);
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown nat cmd", false);
         return 0;
@@ -1569,8 +1580,7 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         }
         ++nextArg;
 
-        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
-        unsigned netId = strtoul(argv[nextArg++], NULL, 0);
+        unsigned netId = stringToNetId(argv[nextArg++]);
         const char* interface = argv[nextArg++];
         const char* destination = argv[nextArg++];
         const char* nexthop = argc > nextArg ? argv[nextArg] : NULL;
@@ -1588,23 +1598,24 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return success(client);
     }
 
-    //    0         1         2         3
-    // network   addiface  <netId> <interface>
-    // network removeiface <netId> <interface>
-    if (!strcmp(argv[1], "addiface") || !strcmp(argv[1], "removeiface")) {
-        if (argc != 4) {
+    //    0        1       2       3         4
+    // network interface  add   <netId> <interface>
+    // network interface remove <netId> <interface>
+    if (!strcmp(argv[1], "interface")) {
+        if (argc != 5) {
             return syntaxError(client, "Missing argument");
         }
-        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
-        unsigned netId = strtoul(argv[2], NULL, 0);
-        if (!strcmp(argv[1], "addiface")) {
-            if (int ret = sNetCtrl->addInterfaceToNetwork(netId, argv[3])) {
+        unsigned netId = stringToNetId(argv[3]);
+        if (!strcmp(argv[2], "add")) {
+            if (int ret = sNetCtrl->addInterfaceToNetwork(netId, argv[4])) {
                 return operationError(client, "addInterfaceToNetwork() failed", ret);
             }
-        } else {
-            if (int ret = sNetCtrl->removeInterfaceFromNetwork(netId, argv[3])) {
+        } else if (!strcmp(argv[2], "remove")) {
+            if (int ret = sNetCtrl->removeInterfaceFromNetwork(netId, argv[4])) {
                 return operationError(client, "removeInterfaceFromNetwork() failed", ret);
             }
+        } else {
+            return syntaxError(client, "Unknown argument");
         }
         return success(client);
     }
@@ -1618,8 +1629,7 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         if (argc < 3) {
             return syntaxError(client, "Missing argument");
         }
-        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
-        unsigned netId = strtoul(argv[2], NULL, 0);
+        unsigned netId = stringToNetId(argv[2]);
         if (argc == 5 && !strcmp(argv[3], "vpn")) {
             bool hasDns = atoi(argv[4]);
             if (int ret = sNetCtrl->createVirtualNetwork(netId, hasDns)) {
@@ -1648,8 +1658,7 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         if (argc != 3) {
             return syntaxError(client, "Incorrect number of arguments");
         }
-        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
-        unsigned netId = strtoul(argv[2], NULL, 0);
+        unsigned netId = stringToNetId(argv[2]);
         if (int ret = sNetCtrl->destroyNetwork(netId)) {
             return operationError(client, "destroyNetwork() failed", ret);
         }
@@ -1668,8 +1677,7 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
             if (argc < 4) {
                 return syntaxError(client, "Missing netId");
             }
-            // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
-            netId = strtoul(argv[3], NULL, 0);
+            netId = stringToNetId(argv[3]);
         } else if (strcmp(argv[2], "clear")) {
             return syntaxError(client, "Unknown argument");
         }
@@ -1730,8 +1738,7 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         if (argc < 4) {
             return syntaxError(client, "Missing argument");
         }
-        // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
-        unsigned netId = strtoul(argv[3], NULL, 0);
+        unsigned netId = stringToNetId(argv[3]);
         UidRanges uidRanges;
         if (!uidRanges.parseFrom(argc - 4, argv + 4)) {
             return syntaxError(client, "Invalid UIDs");
@@ -1770,10 +1777,6 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         }
         return success(client);
     }
-
-    // TODO:
-    //   o tethering
-    //   o p2p
 
     return syntaxError(client, "Unknown argument");
 }
