@@ -381,9 +381,9 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
         "table",
         mark_str
     };
-    ret = runCmd(ARRAY_SIZE(route6_cmd), route6_cmd);
-    // The command might fail during delete if the iface is gone
-    if (add && ret) return ret;
+    // Best effort. If the MTU of iface is too low, this will fail, since v6 requires a min MTU of
+    // 1280. This must mean that the iface will only be used for v4, so don't fail on a v6 error.
+    runCmd(ARRAY_SIZE(route6_cmd), route6_cmd);
 
     /* Best effort, because some kernels might not have the needed TCPMSS */
     execIptables(V4V6,
