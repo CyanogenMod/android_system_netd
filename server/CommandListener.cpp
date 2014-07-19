@@ -50,6 +50,10 @@
 #include "UidRanges.h"
 #include "QcRouteController.h"
 
+#ifdef QSAP_WLAN
+#include "qsap_api.h"
+#endif
+
 #include <string>
 #include <vector>
 
@@ -222,7 +226,11 @@ CommandListener::CommandListener() :
     registerCmd(new NatCmd());
     registerCmd(new ListTtysCmd());
     registerCmd(new PppdCmd());
+#ifdef QSAP_WLAN
+    registerCmd(new QsoftapCmd());
+#else
     registerCmd(new SoftapCmd());
+#endif
     registerCmd(new BandwidthControlCmd());
     registerCmd(new IdletimerControlCmd());
     registerCmd(new ResolverCmd());

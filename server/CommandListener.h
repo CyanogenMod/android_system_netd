@@ -64,6 +64,15 @@ private:
         int runCommand(SocketClient *c, int argc, char ** argv);
     };
 
+#ifdef QSAP_WLAN
+    class QsoftapCmd : public SoftapCmd {
+    public:
+        QsoftapCmd();
+    virtual ~QsoftapCmd() {}
+    int runCommand(SocketClient *c, int argc, char ** argv);
+    };
+#endif
+
     class InterfaceCmd : public NetdCommand {
     public:
         InterfaceCmd();
