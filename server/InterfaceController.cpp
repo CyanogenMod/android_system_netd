@@ -14,43 +14,19 @@
  * limitations under the License.
  */
 
-#include <stdlib.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <string.h>
 #include <dirent.h>
-
-#include <dlfcn.h>
-
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
 #define LOG_TAG "InterfaceController"
 #include <cutils/log.h>
-#include <netutils/ifc.h>
-#include <private/android_filesystem_config.h>
-
-#include "NetdConstants.h"
 
 #include "InterfaceController.h"
 #include "RouteController.h"
-
-char if_cmd_lib_file_name[] = "libnetcmdiface.so";
-char set_cmd_func_name[] = "net_iface_send_command";
-char set_cmd_init_func_name[] = "net_iface_send_command_init";
-char set_cmd_fini_func_name[] = "net_iface_send_command_fini";
 
 const char ipv6_proc_path[] = "/proc/sys/net/ipv6/conf";
 
 const char sys_net_path[] = "/sys/class/net";
 
-InterfaceController::InterfaceController()
-	: sendCommand_(NULL) {
+InterfaceController::InterfaceController() {
 	// Initial IPv6 settings.
 	// By default, accept_ra is set to 1 (accept RAs unless forwarding is on) on all interfaces.
 	// This causes RAs to work or not work based on whether forwarding is on, and causes routes
@@ -58,64 +34,10 @@ InterfaceController::InterfaceController()
 	// by always setting accept_ra to 2.
 	setAcceptRA("2");
 
-	libh_ = dlopen(if_cmd_lib_file_name, RTLD_NOW | RTLD_LOCAL);
-	if (libh_ == NULL) {
-		const char *err_str = dlerror();
-		ALOGV("Warning (%s) while opening the net interface command library", err_str ? err_str : "unknown");
-	} else {
-		sendCommandInit_ = (int (*)(void))dlsym(libh_, set_cmd_init_func_name);
-		if (sendCommandInit_ == NULL) {
-			const char *err_str = dlerror();
-			ALOGW("Error (%s) while searching for the interface command init function", err_str ? err_str : "unknown");
-		} else if (sendCommandInit_()) {
-			ALOGE("Can't init the interface command API");
-			return;
-		}
-		sendCommandFini_ = (int (*)(void))dlsym(libh_, set_cmd_fini_func_name);
-		if (sendCommandFini_ == NULL) {
-			const char *err_str = dlerror();
-			ALOGW("Error (%s) while searching for the interface command fini function", err_str ? err_str : "unknown");
-		}
-		sendCommand_ = (int (*)(int, char **, char **))dlsym(libh_, set_cmd_func_name);
-		if (sendCommand_ == NULL) {
-			const char *err_str = dlerror();
-			ALOGE("Error (%s) while searching for the interface command function", err_str ? err_str : "unknown");
-			return;
-		}
-	}
-
 	setAcceptRARouteTable(-RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX);
 }
 
 InterfaceController::~InterfaceController() {
-	if (sendCommandFini_) {
-		if (sendCommandFini_()) {
-			ALOGE("Can't shutdown the interface command API");
-		}
-	}
-	if (libh_) {
-		int err = dlclose(libh_);
-		if (err) {
-			const char *err_str = dlerror();
-			ALOGE("Error (%s) while closing the net interface command library", err_str ? err_str : "unknown");
-		}
-	}
-}
-
-/*
- * Arguments:
- *	  argv[2] - wlan interface
- *	  argv[3] - command
- *	  argv[4] - argument
- *	  rbuf	- returned buffer
- */
-int InterfaceController::interfaceCommand(int argc, char *argv[], char **rbuf) {
-	int ret = -ENOSYS;
-	if (!isIfaceName(argv[2])) return -ENOENT;
-	if (sendCommand_)
-		ret = sendCommand_(argc, argv, rbuf);
-
-	return ret;
 }
 
 int InterfaceController::writeIPv6ProcPath(const char *interface, const char *setting, const char *value) {
@@ -185,23 +107,6 @@ void InterfaceController::setAcceptRARouteTable(int tableOrOffset) {
 	asprintf(&value, "%d", tableOrOffset);
 	setOnAllInterfaces("accept_ra_rt_table", value);
 	free(value);
-}
-
-int InterfaceController::getMtu(const char *interface, int *mtu)
-{
-	char buf[16];
-	int size = sizeof(buf);
-	char *path;
-	if (!isIfaceName(interface)) {
-		errno = ENOENT;
-		return -1;
-	}
-	asprintf(&path, "%s/%s/mtu", sys_net_path, interface);
-	int success = readFile(path, buf, &size);
-	if (!success && mtu)
-		*mtu = atoi(buf);
-	free(path);
-	return success;
 }
 
 int InterfaceController::setMtu(const char *interface, const char *mtu)

@@ -17,34 +17,16 @@
 #ifndef _INTERFACE_CONTROLLER_H
 #define _INTERFACE_CONTROLLER_H
 
-#include <linux/in.h>
-#include <net/if.h>
-
-typedef struct android_wifi_priv_cmd {
-	char *buf;
-	int used_len;
-	int total_len;
-} android_wifi_priv_cmd;
-
-#define INTERFACE_MAX_BUFFER_SIZE	256
-
 class InterfaceController {
  public:
 	InterfaceController();
 	virtual ~InterfaceController();
-	int interfaceCommand(int argc, char *argv[], char **rbuf);
 	int setEnableIPv6(const char *interface, const int on);
 	int setIPv6PrivacyExtensions(const char *interface, const int on);
-	int getMtu(const char *interface, int *mtu);
 	int setMtu(const char *interface, const char *mtu);
 
  private:
-	void *libh_;
-	int (*sendCommand_)(int argc, char *argv[], char **rbuf);
-	int (*sendCommandInit_)(void);
-	int (*sendCommandFini_)(void);
-	int writeIPv6ProcPath(const char *interface, const char *setting,
-			      const char *value);
+	int writeIPv6ProcPath(const char *interface, const char *setting, const char *value);
 	int isInterfaceName(const char *name);
 	void setOnAllInterfaces(const char* filename, const char* value);
 	void setAcceptRA(const char* value);

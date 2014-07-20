@@ -61,7 +61,6 @@ LOCAL_SRC_FILES := \
         PppController.cpp \
         ResolverController.cpp \
         RouteController.cpp \
-        SecondaryTableController.cpp \
         SoftapController.cpp \
         TetherController.cpp \
         UidRanges.cpp \

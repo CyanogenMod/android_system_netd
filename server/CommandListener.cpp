@@ -40,7 +40,6 @@
 #include "ResponseCode.h"
 #include "BandwidthController.h"
 #include "IdletimerController.h"
-#include "SecondaryTableController.h"
 #include "oem_iptables_hook.h"
 #include "NetdConstants.h"
 #include "FirewallController.h"
@@ -81,7 +80,6 @@ BandwidthController * CommandListener::sBandwidthCtrl = NULL;
 IdletimerController * CommandListener::sIdletimerCtrl = NULL;
 InterfaceController *CommandListener::sInterfaceCtrl = NULL;
 ResolverController *CommandListener::sResolverCtrl = NULL;
-SecondaryTableController *CommandListener::sSecondaryTableCtrl = NULL;
 FirewallController *CommandListener::sFirewallCtrl = NULL;
 ClatdController *CommandListener::sClatdCtrl = NULL;
 
@@ -121,12 +119,6 @@ static const char* RAW_PREROUTING[] = {
 static const char* MANGLE_POSTROUTING[] = {
         BandwidthController::LOCAL_MANGLE_POSTROUTING,
         IdletimerController::LOCAL_MANGLE_POSTROUTING,
-        SecondaryTableController::LOCAL_MANGLE_POSTROUTING,
-        NULL,
-};
-
-static const char* MANGLE_OUTPUT[] = {
-        SecondaryTableController::LOCAL_MANGLE_OUTPUT,
         NULL,
 };
 
@@ -137,7 +129,6 @@ static const char* NAT_PREROUTING[] = {
 
 static const char* NAT_POSTROUTING[] = {
         NatController::LOCAL_NAT_POSTROUTING,
-        SecondaryTableController::LOCAL_NAT_POSTROUTING,
         NULL,
 };
 
@@ -179,8 +170,6 @@ CommandListener::CommandListener() :
 
     if (!sNetCtrl)
         sNetCtrl = new NetworkController();
-    if (!sSecondaryTableCtrl)
-        sSecondaryTableCtrl = new SecondaryTableController(sNetCtrl);
     if (!sTetherCtrl)
         sTetherCtrl = new TetherController();
     if (!sNatCtrl)
@@ -218,7 +207,6 @@ CommandListener::CommandListener() :
     createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT);
     createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING);
     createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING);
-    createChildChains(V4V6, "mangle", "OUTPUT", MANGLE_OUTPUT);
     createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING);
     createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING);
 
@@ -242,8 +230,6 @@ CommandListener::CommandListener() :
     sIdletimerCtrl->setupIptablesHooks();
 
     sBandwidthCtrl->enableBandwidthControl(false);
-
-    sSecondaryTableCtrl->setupIptablesHooks();
 
     if (int ret = RouteController::Init(NetworkController::LOCAL_NET_ID)) {
         ALOGE("failed to initialize RouteController (%s)", strerror(-ret));
@@ -278,188 +264,12 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
         closedir(d);
         cli->sendMsg(ResponseCode::CommandOkay, "Interface list completed", false);
         return 0;
-    } else if (!strcmp(argv[1], "driver")) {
-        int rc;
-        char *rbuf;
-
-        if (argc < 4) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Usage: interface driver <interface> <cmd> <args>", false);
-            return 0;
-        }
-        rc = sInterfaceCtrl->interfaceCommand(argc, argv, &rbuf);
-        if (rc) {
-            cli->sendMsg(ResponseCode::OperationFailed, "Failed to execute command", true);
-        } else {
-            cli->sendMsg(ResponseCode::CommandOkay, rbuf, false);
-        }
-        return 0;
     } else {
         /*
          * These commands take a minimum of 3 arguments
          */
         if (argc < 3) {
             cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-            return 0;
-        }
-
-        //     0       1       2        3          4           5        6      7
-        // interface route add/remove iface default/secondary dest    prefix gateway
-        // interface fwmark  rule  add/remove    iface
-        // interface fwmark  route add/remove    iface        dest    prefix
-        // interface fwmark exempt add/remove    dest
-        // interface fwmark  get     protect
-        // interface fwmark  get     mark        uid
-        if (!strcmp(argv[1], "fwmark")) {
-            if (!strcmp(argv[2], "rule")) {
-                if (argc < 5) {
-                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-                    return 0;
-                }
-                if (!strcmp(argv[3], "add")) {
-                    if (!sSecondaryTableCtrl->addFwmarkRule(argv[4])) {
-                        cli->sendMsg(ResponseCode::CommandOkay,
-                                "Fwmark rule successfully added", false);
-                    } else {
-                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to add fwmark rule",
-                                true);
-                    }
-                } else if (!strcmp(argv[3], "remove")) {
-                    if (!sSecondaryTableCtrl->removeFwmarkRule(argv[4])) {
-                        cli->sendMsg(ResponseCode::CommandOkay,
-                                "Fwmark rule successfully removed", false);
-                    } else {
-                        cli->sendMsg(ResponseCode::OperationFailed,
-                                "Failed to remove fwmark rule", true);
-                    }
-                } else {
-                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark rule cmd",
-                            false);
-                }
-                return 0;
-            } else if (!strcmp(argv[2], "route")) {
-                if (argc < 7) {
-                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-                    return 0;
-                }
-                if (!strcmp(argv[3], "add")) {
-                    if (!sSecondaryTableCtrl->addFwmarkRoute(argv[4], argv[5], atoi(argv[6]))) {
-                        cli->sendMsg(ResponseCode::CommandOkay,
-                                "Fwmark route successfully added", false);
-                    } else {
-                        cli->sendMsg(ResponseCode::OperationFailed,
-                                "Failed to add fwmark route", true);
-                    }
-                } else if (!strcmp(argv[3], "remove")) {
-                    if (!sSecondaryTableCtrl->removeFwmarkRoute(argv[4], argv[5],
-                                atoi(argv[6]))) {
-                        cli->sendMsg(ResponseCode::CommandOkay,
-                                "Fwmark route successfully removed", false);
-                    } else {
-                        cli->sendMsg(ResponseCode::OperationFailed,
-                                "Failed to remove fwmark route", true);
-                    }
-                } else {
-                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark route cmd",
-                            false);
-                }
-                return 0;
-            } else if (!strcmp(argv[2], "exempt")) {
-                if (argc < 5) {
-                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-                    return 0;
-                }
-                if (!strcmp(argv[3], "add")) {
-                    if (!sSecondaryTableCtrl->addHostExemption(argv[4])) {
-                        cli->sendMsg(ResponseCode::CommandOkay, "exemption rule successfully added",
-                                false);
-                    } else {
-                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to add exemption rule",
-                                true);
-                    }
-                } else if (!strcmp(argv[3], "remove")) {
-                    if (!sSecondaryTableCtrl->removeHostExemption(argv[4])) {
-                        cli->sendMsg(ResponseCode::CommandOkay,
-                                "exemption rule successfully removed", false);
-                    } else {
-                        cli->sendMsg(ResponseCode::OperationFailed,
-                                "Failed to remove exemption rule", true);
-                    }
-                } else {
-                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown exemption cmd", false);
-                }
-                return 0;
-            } else if (!strcmp(argv[2], "get")) {
-                if (argc < 4) {
-                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-                    return 0;
-                }
-                if (!strcmp(argv[3], "protect")) {
-                    sSecondaryTableCtrl->getProtectMark(cli);
-                    return 0;
-                } else if (!strcmp(argv[3], "mark")) {
-                    if (argc < 5) {
-                        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-                        return 0;
-                    }
-                    sSecondaryTableCtrl->getUidMark(cli, atoi(argv[4]));
-                    return 0;
-                } else {
-                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark get cmd", false);
-                    return 0;
-                }
-            } else {
-                cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown fwmark cmd", false);
-                return 0;
-            }
-        }
-        if (!strcmp(argv[1], "route")) {
-            int prefix_length = 0;
-            if (argc < 8) {
-                cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-                return 0;
-            }
-            if (sscanf(argv[6], "%d", &prefix_length) != 1) {
-                cli->sendMsg(ResponseCode::CommandParameterError, "Invalid route prefix", false);
-                return 0;
-            }
-            if (!strcmp(argv[2], "add")) {
-                if (!strcmp(argv[4], "default")) {
-                    if (ifc_add_route(argv[3], argv[5], prefix_length, argv[7])) {
-                        cli->sendMsg(ResponseCode::OperationFailed,
-                                "Failed to add route to default table", true);
-                    } else {
-                        cli->sendMsg(ResponseCode::CommandOkay,
-                                "Route added to default table", false);
-                    }
-                } else if (!strcmp(argv[4], "secondary")) {
-                    return sSecondaryTableCtrl->addRoute(cli, argv[3], argv[5],
-                            prefix_length, argv[7]);
-                } else {
-                    cli->sendMsg(ResponseCode::CommandParameterError,
-                            "Invalid route type, expecting 'default' or 'secondary'", false);
-                    return 0;
-                }
-            } else if (!strcmp(argv[2], "remove")) {
-                if (!strcmp(argv[4], "default")) {
-                    if (ifc_remove_route(argv[3], argv[5], prefix_length, argv[7])) {
-                        cli->sendMsg(ResponseCode::OperationFailed,
-                                "Failed to remove route from default table", true);
-                    } else {
-                        cli->sendMsg(ResponseCode::CommandOkay,
-                                "Route removed from default table", false);
-                    }
-                } else if (!strcmp(argv[4], "secondary")) {
-                    return sSecondaryTableCtrl->removeRoute(cli, argv[3], argv[5],
-                            prefix_length, argv[7]);
-                } else {
-                    cli->sendMsg(ResponseCode::CommandParameterError,
-                            "Invalid route type, expecting 'default' or 'secondary'", false);
-                    return 0;
-                }
-            } else {
-                cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown interface cmd", false);
-            }
             return 0;
         }
 
@@ -616,18 +426,6 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
             } else {
                 cli->sendMsg(ResponseCode::OperationFailed,
                         "Failed to change IPv6 state", true);
-            }
-            return 0;
-        } else if (!strcmp(argv[1], "getmtu")) {
-            char *msg = NULL;
-            int mtu = 0;
-            if (sInterfaceCtrl->getMtu(argv[2], &mtu) == 0) {
-                asprintf(&msg, "MTU = %d", mtu);
-                cli->sendMsg(ResponseCode::InterfaceGetMtuResult, msg, false);
-                free(msg);
-            } else {
-                cli->sendMsg(ResponseCode::OperationFailed,
-                        "Failed to get MTU", true);
             }
             return 0;
         } else if (!strcmp(argv[1], "setmtu")) {
@@ -966,14 +764,6 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver setnetdns", false);
-            return 0;
-        }
-    } else if (!strcmp(argv[1], "flushnet")) { // "resolver flushnet <netId>"
-        if (argc == 3) {
-            rc = sResolverCtrl->flushDnsCache(strtoul(argv[2], NULL, 0));
-        } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver flushnet", false);
             return 0;
         }
     } else {
