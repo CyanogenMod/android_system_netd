@@ -21,16 +21,13 @@
 #include <list>
 #include <string>
 
-class NetworkController;
-
 class NatController {
-
 public:
-    explicit NatController(NetworkController* net_ctrl);
+    NatController();
     virtual ~NatController();
 
-    int enableNat(const int argc, char **argv);
-    int disableNat(const int argc, char **argv);
+    int enableNat(const char* intIface, const char* extIface);
+    int disableNat(const char* intIface, const char* extIface);
     int setupIptablesHooks();
 
     static const char* LOCAL_FORWARD;
@@ -42,7 +39,6 @@ public:
 
 private:
     int natCount;
-    NetworkController *mNetCtrl;
 
     bool checkTetherCountingRuleExist(const char *pair_name);
 
@@ -50,7 +46,6 @@ private:
     int runCmd(int argc, const char **argv);
     int setForwardRules(bool set, const char *intIface, const char *extIface);
     int setTetherCountingRules(bool add, const char *intIface, const char *extIface);
-    int routesOp(bool add, const char *intIface, char **argv, int addrCount);
 };
 
 #endif

@@ -51,6 +51,7 @@ const unsigned MAX_NET_ID = 65535;
 }  // namespace
 
 NetworkController::NetworkController() : mDefaultNetId(NETID_UNSET) {
+    mNetworks[LOCAL_NET_ID] = new LocalNetwork(LOCAL_NET_ID);
 }
 
 unsigned NetworkController::getDefaultNetwork() const {
@@ -117,29 +118,6 @@ bool NetworkController::isVirtualNetwork(unsigned netId) const {
     return network && network->getType() == Network::VIRTUAL;
 }
 
-unsigned NetworkController::getNetIdForLocalNetwork() const {
-    return MIN_NET_ID - 1;
-}
-
-int NetworkController::createLocalNetwork(unsigned netId) {
-    // TODO: Enable this check after removing the getNetIdForLocalNetwork() hack.
-    if (false) {
-        if (netId < MIN_NET_ID || netId > MAX_NET_ID) {
-            ALOGE("invalid netId %u", netId);
-            return -EINVAL;
-        }
-    }
-
-    if (isValidNetwork(netId)) {
-        ALOGE("duplicate netId %u", netId);
-        return -EEXIST;
-    }
-
-    android::RWLock::AutoWLock lock(mRWLock);
-    mNetworks[netId] = new LocalNetwork(netId);
-    return 0;
-}
-
 int NetworkController::createPhysicalNetwork(unsigned netId, Permission permission) {
     if (netId < MIN_NET_ID || netId > MAX_NET_ID) {
         ALOGE("invalid netId %u", netId);
@@ -180,7 +158,7 @@ int NetworkController::createVirtualNetwork(unsigned netId, bool hasDns) {
 }
 
 int NetworkController::destroyNetwork(unsigned netId) {
-    if (!isValidNetwork(netId)) {
+    if (netId == LOCAL_NET_ID || !isValidNetwork(netId)) {
         ALOGE("invalid netId %u", netId);
         return -EINVAL;
     }
@@ -377,7 +355,9 @@ int NetworkController::modifyRoute(unsigned netId, const char* interface, const 
     }
 
     RouteController::TableType tableType;
-    if (legacy) {
+    if (netId == LOCAL_NET_ID) {
+        tableType = RouteController::LOCAL_NETWORK;
+    } else if (legacy) {
         if ((getPermissionForUser(uid) & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) {
             tableType = RouteController::LEGACY_SYSTEM;
         } else {

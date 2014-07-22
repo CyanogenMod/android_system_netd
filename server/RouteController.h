@@ -29,13 +29,14 @@ public:
     // How the routing table number is determined for route modification requests.
     enum TableType {
         INTERFACE,       // Compute the table number based on the interface index.
+        LOCAL_NETWORK,   // A fixed table used for routes to directly-connected clients/peers.
         LEGACY_NETWORK,  // Use a fixed table that's used to override the default network.
         LEGACY_SYSTEM,   // A fixed table, only modifiable by system apps; overrides VPNs too.
     };
 
     static const int ROUTE_TABLE_OFFSET_FROM_INDEX = 1000;
 
-    static int Init() WARN_UNUSED_RESULT;
+    static int Init(unsigned localNetId) WARN_UNUSED_RESULT;
 
     static int addInterfaceToLocalNetwork(unsigned netId, const char* interface) WARN_UNUSED_RESULT;
     static int removeInterfaceFromLocalNetwork(unsigned netId,
@@ -69,6 +70,11 @@ public:
                         TableType tableType) WARN_UNUSED_RESULT;
     static int removeRoute(const char* interface, const char* destination, const char* nexthop,
                            TableType tableType) WARN_UNUSED_RESULT;
+
+    static int enableTethering(const char* inputInterface,
+                               const char* outputInterface) WARN_UNUSED_RESULT;
+    static int disableTethering(const char* inputInterface,
+                                const char* outputInterface) WARN_UNUSED_RESULT;
 };
 
 #endif  // NETD_SERVER_ROUTE_CONTROLLER_H
