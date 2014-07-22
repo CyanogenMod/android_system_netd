@@ -687,6 +687,23 @@ WARN_UNUSED_RESULT int modifyDefaultNetwork(uint16_t action, const char* interfa
                         mask.intValue);
 }
 
+// Returns 0 on success or negative errno on failure.
+WARN_UNUSED_RESULT int flushRules() {
+    for (size_t i = 0; i < ARRAY_SIZE(IP_VERSIONS); ++i) {
+        const char* argv[] = {
+            IP_PATH,
+            IP_VERSIONS[i],
+            "rule",
+            "flush",
+        };
+        if (android_fork_execvp(ARRAY_SIZE(argv), const_cast<char**>(argv), NULL, false, false)) {
+            ALOGE("failed to flush rules");
+            return -EREMOTEIO;
+        }
+    }
+    return 0;
+}
+
 // Adds or removes an IPv4 or IPv6 route to the specified table and, if it's a directly-connected
 // route, to the main table as well.
 // Returns 0 on success or negative errno on failure.
@@ -771,22 +788,23 @@ WARN_UNUSED_RESULT int flushRoutes(const char* interface) {
 }  // namespace
 
 int RouteController::Init(unsigned localNetId) {
+    if (int ret = flushRules()) {
+        return ret;
+    }
+
     if (int ret = addDirectlyConnectedRule()) {
         return ret;
     }
     if (int ret = addLegacyRouteRules()) {
         return ret;
     }
-    // TODO: Enable once we are sure everything works.
-    if (false) {
-        if (int ret = addUnreachableRule()) {
-            return ret;
-        }
+    if (int ret = addUnreachableRule()) {
+        return ret;
     }
     if (int ret = addImplicitLocalNetworkRule()) {
         return ret;
     }
-    // Add a rule to lookup the local network it has been explicitly selected.
+    // Add a rule to lookup the local network if it has been explicitly selected.
     if (int ret = modifyExplicitNetworkRule(localNetId, ROUTE_TABLE_LOCAL_NETWORK, PERMISSION_NONE,
                                             INVALID_UID, INVALID_UID, ACTION_ADD)) {
         return ret;
