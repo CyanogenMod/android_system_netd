@@ -599,7 +599,7 @@ WARN_UNUSED_RESULT int modifyTetheringRule(uint16_t action, const char* inputInt
     }
 
     return modifyIpRule(action, RULE_PRIORITY_TETHERING, table, MARK_UNSET, MARK_UNSET,
-                        inputInterface, outputInterface, INVALID_UID, INVALID_UID);
+                        inputInterface, OIF_NONE, INVALID_UID, INVALID_UID);
 }
 
 WARN_UNUSED_RESULT int modifyLocalNetwork(unsigned netId, const char* interface, bool add) {
