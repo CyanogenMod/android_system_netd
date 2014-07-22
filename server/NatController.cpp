@@ -190,6 +190,9 @@ int NatController::enableNat(const char* intIface, const char* extIface) {
 
     if (int ret = RouteController::enableTethering(intIface, extIface)) {
         ALOGE("failed to add tethering rule for iif=%s oif=%s", intIface, extIface);
+        if (natCount == 0) {
+            setDefaults();
+        }
         errno = -ret;
         return -1;
     }
