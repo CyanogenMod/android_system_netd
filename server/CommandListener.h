@@ -29,7 +29,6 @@
 #include "IdletimerController.h"
 #include "InterfaceController.h"
 #include "ResolverController.h"
-#include "SecondaryTableController.h"
 #include "FirewallController.h"
 #include "ClatdController.h"
 
@@ -42,7 +41,6 @@ class CommandListener : public FrameworkListener {
     static IdletimerController *sIdletimerCtrl;
     static InterfaceController *sInterfaceCtrl;
     static ResolverController *sResolverCtrl;
-    static SecondaryTableController *sSecondaryTableCtrl;
     static FirewallController *sFirewallCtrl;
     static ClatdController *sClatdCtrl;
 

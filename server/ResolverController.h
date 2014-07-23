@@ -27,7 +27,6 @@ public:
 
     int setDnsServers(unsigned netid, const char * domains, const char** servers,
             int numservers);
-    int flushDnsCache(unsigned netid);
     // TODO: Add deleteDnsCache(unsigned netId)
 };
 
