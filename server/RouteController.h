@@ -47,18 +47,18 @@ public:
     static int removeInterfaceFromPhysicalNetwork(unsigned netId, const char* interface,
                                                   Permission permission) WARN_UNUSED_RESULT;
 
-    static int addInterfaceToVirtualNetwork(unsigned netId, const char* interface,
+    static int addInterfaceToVirtualNetwork(unsigned netId, const char* interface, bool secure,
                                             const UidRanges& uidRanges) WARN_UNUSED_RESULT;
-    static int removeInterfaceFromVirtualNetwork(unsigned netId, const char* interface,
+    static int removeInterfaceFromVirtualNetwork(unsigned netId, const char* interface, bool secure,
                                                  const UidRanges& uidRanges) WARN_UNUSED_RESULT;
 
     static int modifyPhysicalNetworkPermission(unsigned netId, const char* interface,
                                                Permission oldPermission,
                                                Permission newPermission) WARN_UNUSED_RESULT;
 
-    static int addUsersToVirtualNetwork(unsigned netId, const char* interface,
+    static int addUsersToVirtualNetwork(unsigned netId, const char* interface, bool secure,
                                         const UidRanges& uidRanges) WARN_UNUSED_RESULT;
-    static int removeUsersFromVirtualNetwork(unsigned netId, const char* interface,
+    static int removeUsersFromVirtualNetwork(unsigned netId, const char* interface, bool secure,
                                              const UidRanges& uidRanges) WARN_UNUSED_RESULT;
 
     static int addInterfaceToDefaultNetwork(const char* interface,

@@ -1413,16 +1413,17 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
     //    0      1       2         3
     // network create <netId> [permission]
     //
-    //    0      1       2     3     4
-    // network create <netId> vpn <hasDns>
+    //    0      1       2     3     4        5
+    // network create <netId> vpn <hasDns> <secure>
     if (!strcmp(argv[1], "create")) {
         if (argc < 3) {
             return syntaxError(client, "Missing argument");
         }
         unsigned netId = stringToNetId(argv[2]);
-        if (argc == 5 && !strcmp(argv[3], "vpn")) {
+        if (argc == 6 && !strcmp(argv[3], "vpn")) {
             bool hasDns = atoi(argv[4]);
-            if (int ret = sNetCtrl->createVirtualNetwork(netId, hasDns)) {
+            bool secure = atoi(argv[5]);
+            if (int ret = sNetCtrl->createVirtualNetwork(netId, hasDns, secure)) {
                 return operationError(client, "createVirtualNetwork() failed", ret);
             }
         } else if (argc > 4) {

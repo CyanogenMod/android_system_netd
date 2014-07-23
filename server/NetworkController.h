@@ -56,7 +56,7 @@ public:
     bool isVirtualNetwork(unsigned netId) const;
 
     int createPhysicalNetwork(unsigned netId, Permission permission) WARN_UNUSED_RESULT;
-    int createVirtualNetwork(unsigned netId, bool hasDns) WARN_UNUSED_RESULT;
+    int createVirtualNetwork(unsigned netId, bool hasDns, bool secure) WARN_UNUSED_RESULT;
     int destroyNetwork(unsigned netId) WARN_UNUSED_RESULT;
 
     int addInterfaceToNetwork(unsigned netId, const char* interface) WARN_UNUSED_RESULT;

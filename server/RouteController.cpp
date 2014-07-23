@@ -45,7 +45,7 @@ const uint32_t RULE_PRIORITY_LEGACY_NETWORK      = 16000;
 const uint32_t RULE_PRIORITY_LOCAL_NETWORK       = 17000;
 const uint32_t RULE_PRIORITY_TETHERING           = 18000;
 const uint32_t RULE_PRIORITY_IMPLICIT_NETWORK    = 19000;
-// const uint32_t RULE_PRIORITY_BYPASSABLE_VPN      = 20000;
+const uint32_t RULE_PRIORITY_BYPASSABLE_VPN      = 20000;
 // const uint32_t RULE_PRIORITY_VPN_FALLTHROUGH     = 21000;
 const uint32_t RULE_PRIORITY_DEFAULT_NETWORK     = 22000;
 const uint32_t RULE_PRIORITY_DIRECTLY_CONNECTED  = 23000;
@@ -444,15 +444,26 @@ WARN_UNUSED_RESULT int modifyVpnOutputToLocalRule(const char* vpnInterface, bool
 // have, if they are subject to this VPN, their traffic has to go through it. Allows the traffic to
 // bypass the VPN if the protectedFromVpn bit is set.
 WARN_UNUSED_RESULT int modifyVpnUidRangeRule(uint32_t table, uid_t uidStart, uid_t uidEnd,
-                                             bool add) {
+                                             bool secure, bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
     fwmark.protectedFromVpn = false;
     mask.protectedFromVpn = true;
 
-    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_SECURE_VPN, table,
-                        fwmark.intValue, mask.intValue, IIF_NONE, OIF_NONE, uidStart, uidEnd);
+    uint32_t priority;
+
+    if (secure) {
+        priority = RULE_PRIORITY_SECURE_VPN;
+    } else {
+        priority = RULE_PRIORITY_BYPASSABLE_VPN;
+
+        fwmark.explicitlySelected = false;
+        mask.explicitlySelected = true;
+    }
+
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, priority, table, fwmark.intValue,
+                        mask.intValue, IIF_NONE, OIF_NONE, uidStart, uidEnd);
 }
 
 // A rule to allow system apps to send traffic over this VPN even if they are not part of the target
@@ -460,7 +471,8 @@ WARN_UNUSED_RESULT int modifyVpnUidRangeRule(uint32_t table, uid_t uidStart, uid
 //
 // This is needed for DnsProxyListener to correctly resolve a request for a user who is in the
 // target set, but where the DnsProxyListener itself is not.
-WARN_UNUSED_RESULT int modifyVpnSystemPermissionRule(unsigned netId, uint32_t table, bool add) {
+WARN_UNUSED_RESULT int modifyVpnSystemPermissionRule(unsigned netId, uint32_t table, bool secure,
+                                                     bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
@@ -470,8 +482,10 @@ WARN_UNUSED_RESULT int modifyVpnSystemPermissionRule(unsigned netId, uint32_t ta
     fwmark.permission = PERMISSION_SYSTEM;
     mask.permission = PERMISSION_SYSTEM;
 
-    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_SECURE_VPN, table,
-                        fwmark.intValue, mask.intValue);
+    uint32_t priority = secure ? RULE_PRIORITY_SECURE_VPN : RULE_PRIORITY_BYPASSABLE_VPN;
+
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, priority, table, fwmark.intValue,
+                        mask.intValue);
 }
 
 // A rule to route traffic based on an explicitly chosen network.
@@ -636,7 +650,7 @@ WARN_UNUSED_RESULT int modifyPhysicalNetwork(unsigned netId, const char* interfa
 }
 
 WARN_UNUSED_RESULT int modifyVirtualNetwork(unsigned netId, const char* interface,
-                                            const UidRanges& uidRanges, bool add,
+                                            const UidRanges& uidRanges, bool secure, bool add,
                                             bool modifyNonUidBasedRules) {
     uint32_t table = getRouteTableForInterface(interface);
     if (table == RT_TABLE_UNSPEC) {
@@ -644,7 +658,7 @@ WARN_UNUSED_RESULT int modifyVirtualNetwork(unsigned netId, const char* interfac
     }
 
     for (const UidRanges::Range& range : uidRanges.getRanges()) {
-        if (int ret = modifyVpnUidRangeRule(table, range.first, range.second, add)) {
+        if (int ret = modifyVpnUidRangeRule(table, range.first, range.second, secure, add)) {
             return ret;
         }
         if (int ret = modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, range.first,
@@ -664,7 +678,7 @@ WARN_UNUSED_RESULT int modifyVirtualNetwork(unsigned netId, const char* interfac
         if (int ret = modifyVpnOutputToLocalRule(interface, add)) {
             return ret;
         }
-        if (int ret = modifyVpnSystemPermissionRule(netId, table, add)) {
+        if (int ret = modifyVpnSystemPermissionRule(netId, table, secure, add)) {
             return ret;
         }
         return modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, UID_ROOT, UID_ROOT, add);
@@ -854,8 +868,8 @@ int RouteController::removeInterfaceFromPhysicalNetwork(unsigned netId, const ch
 }
 
 int RouteController::addInterfaceToVirtualNetwork(unsigned netId, const char* interface,
-                                                  const UidRanges& uidRanges) {
-    if (int ret = modifyVirtualNetwork(netId, interface, uidRanges, ACTION_ADD,
+                                                  bool secure, const UidRanges& uidRanges) {
+    if (int ret = modifyVirtualNetwork(netId, interface, uidRanges, secure, ACTION_ADD,
                                        MODIFY_NON_UID_BASED_RULES)) {
         return ret;
     }
@@ -864,8 +878,8 @@ int RouteController::addInterfaceToVirtualNetwork(unsigned netId, const char* in
 }
 
 int RouteController::removeInterfaceFromVirtualNetwork(unsigned netId, const char* interface,
-                                                       const UidRanges& uidRanges) {
-    if (int ret = modifyVirtualNetwork(netId, interface, uidRanges, ACTION_DEL,
+                                                       bool secure, const UidRanges& uidRanges) {
+    if (int ret = modifyVirtualNetwork(netId, interface, uidRanges, secure, ACTION_DEL,
                                        MODIFY_NON_UID_BASED_RULES)) {
         return ret;
     }
@@ -886,15 +900,15 @@ int RouteController::modifyPhysicalNetworkPermission(unsigned netId, const char*
     return modifyPhysicalNetwork(netId, interface, oldPermission, ACTION_DEL);
 }
 
-int RouteController::addUsersToVirtualNetwork(unsigned netId, const char* interface,
+int RouteController::addUsersToVirtualNetwork(unsigned netId, const char* interface, bool secure,
                                               const UidRanges& uidRanges) {
-    return modifyVirtualNetwork(netId, interface, uidRanges, ACTION_ADD,
+    return modifyVirtualNetwork(netId, interface, uidRanges, secure, ACTION_ADD,
                                 !MODIFY_NON_UID_BASED_RULES);
 }
 
 int RouteController::removeUsersFromVirtualNetwork(unsigned netId, const char* interface,
-                                                   const UidRanges& uidRanges) {
-    return modifyVirtualNetwork(netId, interface, uidRanges, ACTION_DEL,
+                                                   bool secure, const UidRanges& uidRanges) {
+    return modifyVirtualNetwork(netId, interface, uidRanges, secure, ACTION_DEL,
                                 !MODIFY_NON_UID_BASED_RULES);
 }
 
