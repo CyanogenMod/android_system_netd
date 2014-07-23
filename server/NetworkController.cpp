@@ -50,7 +50,81 @@ const unsigned MAX_NET_ID = 65535;
 
 }  // namespace
 
-NetworkController::NetworkController() : mDefaultNetId(NETID_UNSET) {
+// All calls to methods here are made while holding a write lock on mRWLock.
+class NetworkController::DelegateImpl : public PhysicalNetwork::Delegate {
+public:
+    explicit DelegateImpl(NetworkController* networkController);
+    virtual ~DelegateImpl();
+
+    int modifyFallthrough(unsigned vpnNetId, const std::string& physicalInterface,
+                          Permission permission, bool add) WARN_UNUSED_RESULT;
+
+private:
+    int addFallthrough(const std::string& physicalInterface,
+                       Permission permission) override WARN_UNUSED_RESULT;
+    int removeFallthrough(const std::string& physicalInterface,
+                          Permission permission) override WARN_UNUSED_RESULT;
+
+    int modifyFallthrough(const std::string& physicalInterface, Permission permission,
+                          bool add) WARN_UNUSED_RESULT;
+
+    NetworkController* const mNetworkController;
+};
+
+NetworkController::DelegateImpl::DelegateImpl(NetworkController* networkController) :
+        mNetworkController(networkController) {
+}
+
+NetworkController::DelegateImpl::~DelegateImpl() {
+}
+
+int NetworkController::DelegateImpl::modifyFallthrough(unsigned vpnNetId,
+                                                       const std::string& physicalInterface,
+                                                       Permission permission, bool add) {
+    if (add) {
+        if (int ret = RouteController::addVirtualNetworkFallthrough(vpnNetId,
+                                                                    physicalInterface.c_str(),
+                                                                    permission)) {
+            ALOGE("failed to add fallthrough to %s for VPN netId %u", physicalInterface.c_str(),
+                  vpnNetId);
+            return ret;
+        }
+    } else {
+        if (int ret = RouteController::removeVirtualNetworkFallthrough(vpnNetId,
+                                                                       physicalInterface.c_str(),
+                                                                       permission)) {
+            ALOGE("failed to remove fallthrough to %s for VPN netId %u", physicalInterface.c_str(),
+                  vpnNetId);
+            return ret;
+        }
+    }
+    return 0;
+}
+
+int NetworkController::DelegateImpl::addFallthrough(const std::string& physicalInterface,
+                                                    Permission permission) {
+    return modifyFallthrough(physicalInterface, permission, true);
+}
+
+int NetworkController::DelegateImpl::removeFallthrough(const std::string& physicalInterface,
+                                                       Permission permission) {
+    return modifyFallthrough(physicalInterface, permission, false);
+}
+
+int NetworkController::DelegateImpl::modifyFallthrough(const std::string& physicalInterface,
+                                                       Permission permission, bool add) {
+    for (const auto& entry : mNetworkController->mNetworks) {
+        if (entry.second->getType() == Network::VIRTUAL) {
+            if (int ret = modifyFallthrough(entry.first, physicalInterface, permission, add)) {
+                return ret;
+            }
+        }
+    }
+    return 0;
+}
+
+NetworkController::NetworkController() :
+        mDelegateImpl(new NetworkController::DelegateImpl(this)), mDefaultNetId(NETID_UNSET) {
     mNetworks[LOCAL_NET_ID] = new LocalNetwork(LOCAL_NET_ID);
 }
 
@@ -129,7 +203,7 @@ int NetworkController::createPhysicalNetwork(unsigned netId, Permission permissi
         return -EEXIST;
     }
 
-    PhysicalNetwork* physicalNetwork = new PhysicalNetwork(netId);
+    PhysicalNetwork* physicalNetwork = new PhysicalNetwork(netId, mDelegateImpl);
     if (int ret = physicalNetwork->setPermission(permission)) {
         ALOGE("inconceivable! setPermission cannot fail on an empty network");
         delete physicalNetwork;
@@ -153,6 +227,9 @@ int NetworkController::createVirtualNetwork(unsigned netId, bool hasDns, bool se
     }
 
     android::RWLock::AutoWLock lock(mRWLock);
+    if (int ret = modifyFallthroughLocked(netId, true)) {
+        return ret;
+    }
     mNetworks[netId] = new VirtualNetwork(netId, hasDns, secure);
     return 0;
 }
@@ -176,6 +253,10 @@ int NetworkController::destroyNetwork(unsigned netId) {
             return ret;
         }
         mDefaultNetId = NETID_UNSET;
+    } else if (network->getType() == Network::VIRTUAL) {
+        if (int ret = modifyFallthroughLocked(netId, false)) {
+            return ret;
+        }
     }
     mNetworks.erase(netId);
     delete network;
@@ -370,4 +451,23 @@ int NetworkController::modifyRoute(unsigned netId, const char* interface, const 
 
     return add ? RouteController::addRoute(interface, destination, nexthop, tableType) :
                  RouteController::removeRoute(interface, destination, nexthop, tableType);
+}
+
+int NetworkController::modifyFallthroughLocked(unsigned vpnNetId, bool add) {
+    if (mDefaultNetId == NETID_UNSET) {
+        return 0;
+    }
+    Network* network = getNetworkLocked(mDefaultNetId);
+    if (!network || network->getType() != Network::PHYSICAL) {
+        ALOGE("cannot find previously set default network with netId %u", mDefaultNetId);
+        return -ESRCH;
+    }
+    Permission permission = static_cast<PhysicalNetwork*>(network)->getPermission();
+    for (const auto& physicalInterface : network->getInterfaces()) {
+        if (int ret = mDelegateImpl->modifyFallthrough(vpnNetId, physicalInterface, permission,
+                                                       add)) {
+            return ret;
+        }
+    }
+    return 0;
 }

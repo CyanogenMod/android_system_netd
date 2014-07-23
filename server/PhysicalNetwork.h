@@ -22,7 +22,17 @@
 
 class PhysicalNetwork : public Network {
 public:
-    explicit PhysicalNetwork(unsigned netId);
+    class Delegate {
+    public:
+        virtual ~Delegate();
+
+        virtual int addFallthrough(const std::string& physicalInterface,
+                                   Permission permission) WARN_UNUSED_RESULT = 0;
+        virtual int removeFallthrough(const std::string& physicalInterface,
+                                      Permission permission) WARN_UNUSED_RESULT = 0;
+    };
+
+    PhysicalNetwork(unsigned netId, Delegate* delegate);
     virtual ~PhysicalNetwork();
 
     // These refer to permissions that apps must have in order to use this network.
@@ -37,6 +47,7 @@ private:
     int addInterface(const std::string& interface) override WARN_UNUSED_RESULT;
     int removeInterface(const std::string& interface) override WARN_UNUSED_RESULT;
 
+    Delegate* const mDelegate;
     Permission mPermission;
     bool mIsDefault;
 };

@@ -75,6 +75,11 @@ public:
                                const char* outputInterface) WARN_UNUSED_RESULT;
     static int disableTethering(const char* inputInterface,
                                 const char* outputInterface) WARN_UNUSED_RESULT;
+
+    static int addVirtualNetworkFallthrough(unsigned vpnNetId, const char* physicalInterface,
+                                            Permission permission) WARN_UNUSED_RESULT;
+    static int removeVirtualNetworkFallthrough(unsigned vpnNetId, const char* physicalInterface,
+                                               Permission permission) WARN_UNUSED_RESULT;
 };
 
 #endif  // NETD_SERVER_ROUTE_CONTROLLER_H

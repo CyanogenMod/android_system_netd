@@ -33,6 +33,10 @@ bool Network::hasInterface(const std::string& interface) const {
     return mInterfaces.find(interface) != mInterfaces.end();
 }
 
+const std::set<std::string>& Network::getInterfaces() const {
+    return mInterfaces;
+}
+
 int Network::clearInterfaces() {
     while (!mInterfaces.empty()) {
         // Make a copy of the string, so removeInterface() doesn't lose its parameter when it

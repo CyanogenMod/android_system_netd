@@ -24,19 +24,26 @@
 namespace {
 
 WARN_UNUSED_RESULT int addToDefault(unsigned netId, const std::string& interface,
-                                    Permission permission) {
+                                    Permission permission, PhysicalNetwork::Delegate* delegate) {
     if (int ret = RouteController::addInterfaceToDefaultNetwork(interface.c_str(), permission)) {
         ALOGE("failed to add interface %s to default netId %u", interface.c_str(), netId);
+        return ret;
+    }
+    if (int ret = delegate->addFallthrough(interface, permission)) {
         return ret;
     }
     return 0;
 }
 
 WARN_UNUSED_RESULT int removeFromDefault(unsigned netId, const std::string& interface,
-                                         Permission permission) {
+                                         Permission permission,
+                                         PhysicalNetwork::Delegate* delegate) {
     if (int ret = RouteController::removeInterfaceFromDefaultNetwork(interface.c_str(),
                                                                      permission)) {
         ALOGE("failed to remove interface %s from default netId %u", interface.c_str(), netId);
+        return ret;
+    }
+    if (int ret = delegate->removeFallthrough(interface, permission)) {
         return ret;
     }
     return 0;
@@ -44,8 +51,11 @@ WARN_UNUSED_RESULT int removeFromDefault(unsigned netId, const std::string& inte
 
 }  // namespace
 
-PhysicalNetwork::PhysicalNetwork(unsigned netId) :
-        Network(netId), mPermission(PERMISSION_NONE), mIsDefault(false) {
+PhysicalNetwork::Delegate::~Delegate() {
+}
+
+PhysicalNetwork::PhysicalNetwork(unsigned netId, PhysicalNetwork::Delegate* delegate) :
+        Network(netId), mDelegate(delegate), mPermission(PERMISSION_NONE), mIsDefault(false) {
 }
 
 PhysicalNetwork::~PhysicalNetwork() {
@@ -69,10 +79,10 @@ int PhysicalNetwork::setPermission(Permission permission) {
     }
     if (mIsDefault) {
         for (const std::string& interface : mInterfaces) {
-            if (int ret = addToDefault(mNetId, interface, permission)) {
+            if (int ret = addToDefault(mNetId, interface, permission, mDelegate)) {
                 return ret;
             }
-            if (int ret = removeFromDefault(mNetId, interface, mPermission)) {
+            if (int ret = removeFromDefault(mNetId, interface, mPermission, mDelegate)) {
                 return ret;
             }
         }
@@ -86,7 +96,7 @@ int PhysicalNetwork::addAsDefault() {
         return 0;
     }
     for (const std::string& interface : mInterfaces) {
-        if (int ret = addToDefault(mNetId, interface, mPermission)) {
+        if (int ret = addToDefault(mNetId, interface, mPermission, mDelegate)) {
             return ret;
         }
     }
@@ -99,7 +109,7 @@ int PhysicalNetwork::removeAsDefault() {
         return 0;
     }
     for (const std::string& interface : mInterfaces) {
-        if (int ret = removeFromDefault(mNetId, interface, mPermission)) {
+        if (int ret = removeFromDefault(mNetId, interface, mPermission, mDelegate)) {
             return ret;
         }
     }
@@ -121,7 +131,7 @@ int PhysicalNetwork::addInterface(const std::string& interface) {
         return ret;
     }
     if (mIsDefault) {
-        if (int ret = addToDefault(mNetId, interface, mPermission)) {
+        if (int ret = addToDefault(mNetId, interface, mPermission, mDelegate)) {
             return ret;
         }
     }
@@ -139,7 +149,7 @@ int PhysicalNetwork::removeInterface(const std::string& interface) {
         return ret;
     }
     if (mIsDefault) {
-        if (int ret = removeFromDefault(mNetId, interface, mPermission)) {
+        if (int ret = removeFromDefault(mNetId, interface, mPermission, mDelegate)) {
             return ret;
         }
     }
