@@ -36,7 +36,7 @@ namespace {
 // BEGIN CONSTANTS --------------------------------------------------------------------------------
 
 const uint32_t RULE_PRIORITY_VPN_OVERRIDE_SYSTEM = 10000;
-// const uint32_t RULE_PRIORITY_VPN_OVERRIDE_LOCAL  = 11000;
+const uint32_t RULE_PRIORITY_VPN_OUTPUT_TO_LOCAL = 11000;
 const uint32_t RULE_PRIORITY_SECURE_VPN          = 12000;
 const uint32_t RULE_PRIORITY_EXPLICIT_NETWORK    = 13000;
 const uint32_t RULE_PRIORITY_OUTPUT_INTERFACE    = 14000;
@@ -428,6 +428,16 @@ WARN_UNUSED_RESULT int modifyIncomingPacketMark(unsigned netId, const char* inte
     return 0;
 }
 
+// A rule to route responses to the local network forwarded via the VPN.
+//
+// When a VPN is in effect, packets from the local network to upstream networks are forwarded into
+// the VPN's tunnel interface. When the VPN forwards the responses, they emerge out of the tunnel.
+WARN_UNUSED_RESULT int modifyVpnOutputToLocalRule(const char* vpnInterface, bool add) {
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_VPN_OUTPUT_TO_LOCAL,
+                        ROUTE_TABLE_LOCAL_NETWORK, MARK_UNSET, MARK_UNSET, vpnInterface, OIF_NONE,
+                        INVALID_UID, INVALID_UID);
+}
+
 // A rule to route all traffic from a given set of UIDs to go over the VPN.
 //
 // Notice that this rule doesn't use the netId. I.e., no matter what netId the user's socket may
@@ -649,6 +659,9 @@ WARN_UNUSED_RESULT int modifyVirtualNetwork(unsigned netId, const char* interfac
 
     if (modifyNonUidBasedRules) {
         if (int ret = modifyIncomingPacketMark(netId, interface, PERMISSION_NONE, add)) {
+            return ret;
+        }
+        if (int ret = modifyVpnOutputToLocalRule(interface, add)) {
             return ret;
         }
         if (int ret = modifyVpnSystemPermissionRule(netId, table, add)) {
