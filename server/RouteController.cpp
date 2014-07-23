@@ -400,67 +400,6 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
     return sendNetlinkRequest(action, flags, iov, ARRAY_SIZE(iov));
 }
 
-// Add rules to allow legacy routes added through the requestRouteToHost() API.
-WARN_UNUSED_RESULT int addLegacyRouteRules() {
-    Fwmark fwmark;
-    Fwmark mask;
-
-    fwmark.explicitlySelected = false;
-    mask.explicitlySelected = true;
-
-    // Rules to allow legacy routes to override the default network.
-    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LEGACY_SYSTEM, ROUTE_TABLE_LEGACY_SYSTEM,
-                               fwmark.intValue, mask.intValue)) {
-        return ret;
-    }
-    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LEGACY_NETWORK,
-                               ROUTE_TABLE_LEGACY_NETWORK, fwmark.intValue, mask.intValue)) {
-        return ret;
-    }
-
-    fwmark.permission = PERMISSION_SYSTEM;
-    mask.permission = PERMISSION_SYSTEM;
-
-    // A rule to allow legacy routes from system apps to override VPNs.
-    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_VPN_OVERRIDE_SYSTEM, ROUTE_TABLE_LEGACY_SYSTEM,
-                        fwmark.intValue, mask.intValue);
-}
-
-// Add a new rule to look up the 'main' table, with the same selectors as the "default network"
-// rule, but with a lower priority. Since the default network rule points to a table with a default
-// route, the rule we're adding will never be used for normal routing lookups. However, the kernel
-// may fall-through to it to find directly-connected routes when it validates that a nexthop (in a
-// route being added) is reachable.
-WARN_UNUSED_RESULT int addDirectlyConnectedRule() {
-    Fwmark fwmark;
-    Fwmark mask;
-
-    fwmark.netId = NETID_UNSET;
-    mask.netId = FWMARK_NET_ID_MASK;
-
-    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_DIRECTLY_CONNECTED, RT_TABLE_MAIN,
-                        fwmark.intValue, mask.intValue, IIF_NONE, OIF_NONE, UID_ROOT, UID_ROOT);
-}
-
-// Add a rule to preempt the pre-defined "from all lookup main" rule. Packets that reach this rule
-// will be null-routed, and won't fall-through to the main table.
-WARN_UNUSED_RESULT int addUnreachableRule() {
-    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_UNREACHABLE, RT_TABLE_UNSPEC, MARK_UNSET,
-                        MARK_UNSET);
-}
-
-// A rule to lookup the local network before looking up the default network.
-WARN_UNUSED_RESULT int addImplicitLocalNetworkRule() {
-    Fwmark fwmark;
-    Fwmark mask;
-
-    fwmark.explicitlySelected = false;
-    mask.explicitlySelected = true;
-
-    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LOCAL_NETWORK, ROUTE_TABLE_LOCAL_NETWORK,
-                        fwmark.intValue, mask.intValue);
-}
-
 // An iptables rule to mark incoming packets on a network with the netId of the network.
 //
 // This is so that the kernel can:
@@ -487,6 +426,42 @@ WARN_UNUSED_RESULT int modifyIncomingPacketMark(unsigned netId, const char* inte
     }
 
     return 0;
+}
+
+// A rule to route all traffic from a given set of UIDs to go over the VPN.
+//
+// Notice that this rule doesn't use the netId. I.e., no matter what netId the user's socket may
+// have, if they are subject to this VPN, their traffic has to go through it. Allows the traffic to
+// bypass the VPN if the protectedFromVpn bit is set.
+WARN_UNUSED_RESULT int modifyVpnUidRangeRule(uint32_t table, uid_t uidStart, uid_t uidEnd,
+                                             bool add) {
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.protectedFromVpn = false;
+    mask.protectedFromVpn = true;
+
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_SECURE_VPN, table,
+                        fwmark.intValue, mask.intValue, IIF_NONE, OIF_NONE, uidStart, uidEnd);
+}
+
+// A rule to allow system apps to send traffic over this VPN even if they are not part of the target
+// set of UIDs.
+//
+// This is needed for DnsProxyListener to correctly resolve a request for a user who is in the
+// target set, but where the DnsProxyListener itself is not.
+WARN_UNUSED_RESULT int modifyVpnSystemPermissionRule(unsigned netId, uint32_t table, bool add) {
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.netId = netId;
+    mask.netId = FWMARK_NET_ID_MASK;
+
+    fwmark.permission = PERMISSION_SYSTEM;
+    mask.permission = PERMISSION_SYSTEM;
+
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_SECURE_VPN, table,
+                        fwmark.intValue, mask.intValue);
 }
 
 // A rule to route traffic based on an explicitly chosen network.
@@ -555,51 +530,70 @@ WARN_UNUSED_RESULT int modifyImplicitNetworkRule(unsigned netId, uint32_t table,
                         fwmark.intValue, mask.intValue);
 }
 
-// A rule to route all traffic from a given set of UIDs to go over the VPN.
-//
-// Notice that this rule doesn't use the netId. I.e., no matter what netId the user's socket may
-// have, if they are subject to this VPN, their traffic has to go through it. Allows the traffic to
-// bypass the VPN if the protectedFromVpn bit is set.
-WARN_UNUSED_RESULT int modifyVpnUidRangeRule(uint32_t table, uid_t uidStart, uid_t uidEnd,
-                                             bool add) {
+// Add rules to allow legacy routes added through the requestRouteToHost() API.
+WARN_UNUSED_RESULT int addLegacyRouteRules() {
     Fwmark fwmark;
     Fwmark mask;
 
-    fwmark.protectedFromVpn = false;
-    mask.protectedFromVpn = true;
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
 
-    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_SECURE_VPN, table,
-                        fwmark.intValue, mask.intValue, IIF_NONE, OIF_NONE, uidStart, uidEnd);
-}
-
-// A rule to allow system apps to send traffic over this VPN even if they are not part of the target
-// set of UIDs.
-//
-// This is needed for DnsProxyListener to correctly resolve a request for a user who is in the
-// target set, but where the DnsProxyListener itself is not.
-WARN_UNUSED_RESULT int modifyVpnSystemPermissionRule(unsigned netId, uint32_t table, bool add) {
-    Fwmark fwmark;
-    Fwmark mask;
-
-    fwmark.netId = netId;
-    mask.netId = FWMARK_NET_ID_MASK;
+    // Rules to allow legacy routes to override the default network.
+    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LEGACY_SYSTEM, ROUTE_TABLE_LEGACY_SYSTEM,
+                               fwmark.intValue, mask.intValue)) {
+        return ret;
+    }
+    if (int ret = modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LEGACY_NETWORK,
+                               ROUTE_TABLE_LEGACY_NETWORK, fwmark.intValue, mask.intValue)) {
+        return ret;
+    }
 
     fwmark.permission = PERMISSION_SYSTEM;
     mask.permission = PERMISSION_SYSTEM;
 
-    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_SECURE_VPN, table,
+    // A rule to allow legacy routes from system apps to override VPNs.
+    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_VPN_OVERRIDE_SYSTEM, ROUTE_TABLE_LEGACY_SYSTEM,
                         fwmark.intValue, mask.intValue);
 }
 
-WARN_UNUSED_RESULT int modifyTetheringRule(uint16_t action, const char* inputInterface,
-                                           const char* outputInterface) {
-    uint32_t table = getRouteTableForInterface(outputInterface);
-    if (table == RT_TABLE_UNSPEC) {
-        return -ESRCH;
+// Add rules to lookup the local network when specified explicitly or otherwise.
+WARN_UNUSED_RESULT int addLocalNetworkRules(unsigned localNetId) {
+    if (int ret = modifyExplicitNetworkRule(localNetId, ROUTE_TABLE_LOCAL_NETWORK, PERMISSION_NONE,
+                                            INVALID_UID, INVALID_UID, ACTION_ADD)) {
+        return ret;
     }
 
-    return modifyIpRule(action, RULE_PRIORITY_TETHERING, table, MARK_UNSET, MARK_UNSET,
-                        inputInterface, OIF_NONE, INVALID_UID, INVALID_UID);
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
+
+    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_LOCAL_NETWORK, ROUTE_TABLE_LOCAL_NETWORK,
+                        fwmark.intValue, mask.intValue);
+}
+
+// Add a new rule to look up the 'main' table, with the same selectors as the "default network"
+// rule, but with a lower priority. Since the default network rule points to a table with a default
+// route, the rule we're adding will never be used for normal routing lookups. However, the kernel
+// may fall-through to it to find directly-connected routes when it validates that a nexthop (in a
+// route being added) is reachable.
+WARN_UNUSED_RESULT int addDirectlyConnectedRule() {
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.netId = NETID_UNSET;
+    mask.netId = FWMARK_NET_ID_MASK;
+
+    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_DIRECTLY_CONNECTED, RT_TABLE_MAIN,
+                        fwmark.intValue, mask.intValue, IIF_NONE, OIF_NONE, UID_ROOT, UID_ROOT);
+}
+
+// Add a rule to preempt the pre-defined "from all lookup main" rule. Packets that reach this rule
+// will be null-routed, and won't fall-through to the main table.
+WARN_UNUSED_RESULT int addUnreachableRule() {
+    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_UNREACHABLE, RT_TABLE_UNSPEC, MARK_UNSET,
+                        MARK_UNSET);
 }
 
 WARN_UNUSED_RESULT int modifyLocalNetwork(unsigned netId, const char* interface, bool add) {
@@ -640,6 +634,9 @@ WARN_UNUSED_RESULT int modifyVirtualNetwork(unsigned netId, const char* interfac
     }
 
     for (const UidRanges::Range& range : uidRanges.getRanges()) {
+        if (int ret = modifyVpnUidRangeRule(table, range.first, range.second, add)) {
+            return ret;
+        }
         if (int ret = modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, range.first,
                                                 range.second, add)) {
             return ret;
@@ -648,20 +645,16 @@ WARN_UNUSED_RESULT int modifyVirtualNetwork(unsigned netId, const char* interfac
                                                 range.second, add)) {
             return ret;
         }
-        if (int ret = modifyVpnUidRangeRule(table, range.first, range.second, add)) {
-            return ret;
-        }
     }
 
     if (modifyNonUidBasedRules) {
         if (int ret = modifyIncomingPacketMark(netId, interface, PERMISSION_NONE, add)) {
             return ret;
         }
-        if (int ret = modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, UID_ROOT, UID_ROOT,
-                                                add)) {
+        if (int ret = modifyVpnSystemPermissionRule(netId, table, add)) {
             return ret;
         }
-        return modifyVpnSystemPermissionRule(netId, table, add);
+        return modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, UID_ROOT, UID_ROOT, add);
     }
 
     return 0;
@@ -685,6 +678,17 @@ WARN_UNUSED_RESULT int modifyDefaultNetwork(uint16_t action, const char* interfa
 
     return modifyIpRule(action, RULE_PRIORITY_DEFAULT_NETWORK, table, fwmark.intValue,
                         mask.intValue);
+}
+
+WARN_UNUSED_RESULT int modifyTetheredNetwork(uint16_t action, const char* inputInterface,
+                                             const char* outputInterface) {
+    uint32_t table = getRouteTableForInterface(outputInterface);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
+    return modifyIpRule(action, RULE_PRIORITY_TETHERING, table, MARK_UNSET, MARK_UNSET,
+                        inputInterface, OIF_NONE, INVALID_UID, INVALID_UID);
 }
 
 // Returns 0 on success or negative errno on failure.
@@ -791,22 +795,16 @@ int RouteController::Init(unsigned localNetId) {
     if (int ret = flushRules()) {
         return ret;
     }
-
-    if (int ret = addDirectlyConnectedRule()) {
-        return ret;
-    }
     if (int ret = addLegacyRouteRules()) {
         return ret;
     }
+    if (int ret = addLocalNetworkRules(localNetId)) {
+        return ret;
+    }
+    if (int ret = addDirectlyConnectedRule()) {
+        return ret;
+    }
     if (int ret = addUnreachableRule()) {
-        return ret;
-    }
-    if (int ret = addImplicitLocalNetworkRule()) {
-        return ret;
-    }
-    // Add a rule to lookup the local network if it has been explicitly selected.
-    if (int ret = modifyExplicitNetworkRule(localNetId, ROUTE_TABLE_LOCAL_NETWORK, PERMISSION_NONE,
-                                            INVALID_UID, INVALID_UID, ACTION_ADD)) {
         return ret;
     }
     updateTableNamesFile();
@@ -907,9 +905,9 @@ int RouteController::removeRoute(const char* interface, const char* destination,
 }
 
 int RouteController::enableTethering(const char* inputInterface, const char* outputInterface) {
-    return modifyTetheringRule(RTM_NEWRULE, inputInterface, outputInterface);
+    return modifyTetheredNetwork(RTM_NEWRULE, inputInterface, outputInterface);
 }
 
 int RouteController::disableTethering(const char* inputInterface, const char* outputInterface) {
-    return modifyTetheringRule(RTM_DELRULE, inputInterface, outputInterface);
+    return modifyTetheredNetwork(RTM_DELRULE, inputInterface, outputInterface);
 }
