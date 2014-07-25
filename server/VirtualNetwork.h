@@ -20,12 +20,20 @@
 #include "Network.h"
 #include "UidRanges.h"
 
+// A VirtualNetwork may be "secure" or not.
+//
+// A secure VPN is the usual type of VPN that grabs the default route (and thus all user traffic).
+// Only a few privileged UIDs may skip the VPN and go directly to the underlying physical network.
+//
+// A non-secure VPN ("bypassable" VPN) also grabs all user traffic by default. But all apps are
+// permitted to skip it and pick any other network for their connections.
 class VirtualNetwork : public Network {
 public:
-    VirtualNetwork(unsigned netId, bool hasDns);
+    VirtualNetwork(unsigned netId, bool hasDns, bool secure);
     virtual ~VirtualNetwork();
 
     bool getHasDns() const;
+    bool isSecure() const;
     bool appliesToUser(uid_t uid) const;
 
     int addUsers(const UidRanges& uidRanges) WARN_UNUSED_RESULT;
@@ -37,6 +45,7 @@ private:
     int removeInterface(const std::string& interface) override WARN_UNUSED_RESULT;
 
     const bool mHasDns;
+    const bool mSecure;
     UidRanges mUidRanges;
 };
 

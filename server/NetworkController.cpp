@@ -141,7 +141,7 @@ int NetworkController::createPhysicalNetwork(unsigned netId, Permission permissi
     return 0;
 }
 
-int NetworkController::createVirtualNetwork(unsigned netId, bool hasDns) {
+int NetworkController::createVirtualNetwork(unsigned netId, bool hasDns, bool secure) {
     if (netId < MIN_NET_ID || netId > MAX_NET_ID) {
         ALOGE("invalid netId %u", netId);
         return -EINVAL;
@@ -153,7 +153,7 @@ int NetworkController::createVirtualNetwork(unsigned netId, bool hasDns) {
     }
 
     android::RWLock::AutoWLock lock(mRWLock);
-    mNetworks[netId] = new VirtualNetwork(netId, hasDns);
+    mNetworks[netId] = new VirtualNetwork(netId, hasDns, secure);
     return 0;
 }
 
@@ -236,7 +236,8 @@ bool NetworkController::canUserSelectNetwork(uid_t uid, unsigned netId) const {
         return static_cast<VirtualNetwork*>(network)->appliesToUser(uid);
     }
     VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
-    if (virtualNetwork && mProtectableUsers.find(uid) == mProtectableUsers.end()) {
+    if (virtualNetwork && virtualNetwork->isSecure() &&
+            mProtectableUsers.find(uid) == mProtectableUsers.end()) {
         return false;
     }
     Permission networkPermission = static_cast<PhysicalNetwork*>(network)->getPermission();
