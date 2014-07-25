@@ -124,9 +124,6 @@ private:
         unsigned mNetId;
         uint32_t mMark;
     };
-
-    // Calculate the socket mark to use for a DNS resolution.
-    uint32_t calcMark(unsigned netId) const;
 };
 
 #endif

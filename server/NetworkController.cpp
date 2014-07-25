@@ -32,6 +32,7 @@
 
 #include "NetworkController.h"
 
+#include "Fwmark.h"
 #include "LocalNetwork.h"
 #include "PhysicalNetwork.h"
 #include "RouteController.h"
@@ -92,14 +93,62 @@ int NetworkController::setDefaultNetwork(unsigned netId) {
     return 0;
 }
 
-unsigned NetworkController::getNetworkForUser(uid_t uid, unsigned requestedNetId,
-                                              bool forDns) const {
+uint32_t NetworkController::getNetworkForDns(unsigned* netId, uid_t uid) const {
     android::RWLock::AutoRLock lock(mRWLock);
-    VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
-    if (virtualNetwork && (!forDns || virtualNetwork->getHasDns())) {
+    Fwmark fwmark;
+    fwmark.protectedFromVpn = true;
+    fwmark.permission = PERMISSION_SYSTEM;
+    if (canUserSelectNetworkLocked(uid, *netId)) {
+        // If a non-zero NetId was explicitly specified, and the user has permission for that
+        // network, use that network's DNS servers. Do not fall through to the default network even
+        // if the explicitly selected network is a split tunnel VPN or a VPN without DNS servers.
+        fwmark.explicitlySelected = true;
+    } else {
+        // If the user is subject to a VPN and the VPN provides DNS servers, use those servers
+        // (possibly falling through to the default network if the VPN doesn't provide a route to
+        // them). Otherwise, use the default network's DNS servers.
+        VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
+        if (virtualNetwork && virtualNetwork->getHasDns()) {
+            *netId = virtualNetwork->getNetId();
+        } else {
+            *netId = mDefaultNetId;
+        }
+    }
+    fwmark.netId = *netId;
+    return fwmark.intValue;
+}
+
+// Returns the NetId that a given UID would use if no network is explicitly selected. Specifically,
+// the VPN that applies to the UID if any; otherwise, the default network.
+unsigned NetworkController::getNetworkForUser(uid_t uid) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+    if (VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid)) {
         return virtualNetwork->getNetId();
     }
-    return getNetworkLocked(requestedNetId) ? requestedNetId : mDefaultNetId;
+    return mDefaultNetId;
+}
+
+// Returns the NetId that will be set when a socket connect()s. This is the bypassable VPN that
+// applies to the user if any; otherwise, the default network.
+//
+// In general, we prefer to always set the default network's NetId in connect(), so that if the VPN
+// is a split-tunnel and disappears later, the socket continues working (since the default network's
+// NetId is still valid). Secure VPNs will correctly grab the socket's traffic since they have a
+// high-priority routing rule that doesn't care what NetId the socket has.
+//
+// But bypassable VPNs have a very low priority rule, so we need to mark the socket with the
+// bypassable VPN's NetId if we expect it to get any traffic at all. If the bypassable VPN is a
+// split-tunnel, that's okay, because we have fallthrough rules that will direct the fallthrough
+// traffic to the default network. But it does mean that if the bypassable VPN goes away (and thus
+// the fallthrough rules also go away), the socket that used to fallthrough to the default network
+// will stop working.
+unsigned NetworkController::getNetworkForConnect(uid_t uid) const {
+    android::RWLock::AutoRLock lock(mRWLock);
+    VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
+    if (virtualNetwork && !virtualNetwork->isSecure()) {
+        return virtualNetwork->getNetId();
+    }
+    return mDefaultNetId;
 }
 
 unsigned NetworkController::getNetworkForInterface(const char* interface) const {
@@ -224,24 +273,7 @@ void NetworkController::setPermissionForUsers(Permission permission,
 
 bool NetworkController::canUserSelectNetwork(uid_t uid, unsigned netId) const {
     android::RWLock::AutoRLock lock(mRWLock);
-    Network* network = getNetworkLocked(netId);
-    if (!network || uid == INVALID_UID) {
-        return false;
-    }
-    Permission userPermission = getPermissionForUserLocked(uid);
-    if ((userPermission & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) {
-        return true;
-    }
-    if (network->getType() == Network::VIRTUAL) {
-        return static_cast<VirtualNetwork*>(network)->appliesToUser(uid);
-    }
-    VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
-    if (virtualNetwork && virtualNetwork->isSecure() &&
-            mProtectableUsers.find(uid) == mProtectableUsers.end()) {
-        return false;
-    }
-    Permission networkPermission = static_cast<PhysicalNetwork*>(network)->getPermission();
-    return (userPermission & networkPermission) == networkPermission;
+    return canUserSelectNetworkLocked(uid, netId);
 }
 
 int NetworkController::setPermissionForNetworks(Permission permission,
@@ -345,6 +377,29 @@ Permission NetworkController::getPermissionForUserLocked(uid_t uid) const {
         return iter->second;
     }
     return uid < FIRST_APPLICATION_UID ? PERMISSION_SYSTEM : PERMISSION_NONE;
+}
+
+bool NetworkController::canUserSelectNetworkLocked(uid_t uid, unsigned netId) const {
+    Network* network = getNetworkLocked(netId);
+    // If uid is INVALID_UID, this likely means that we were unable to retrieve the UID of the peer
+    // (using SO_PEERCRED). Be safe and deny access to the network, even if it's valid.
+    if (!network || uid == INVALID_UID) {
+        return false;
+    }
+    Permission userPermission = getPermissionForUserLocked(uid);
+    if ((userPermission & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) {
+        return true;
+    }
+    if (network->getType() == Network::VIRTUAL) {
+        return static_cast<VirtualNetwork*>(network)->appliesToUser(uid);
+    }
+    VirtualNetwork* virtualNetwork = getVirtualNetworkForUserLocked(uid);
+    if (virtualNetwork && virtualNetwork->isSecure() &&
+            mProtectableUsers.find(uid) == mProtectableUsers.end()) {
+        return false;
+    }
+    Permission networkPermission = static_cast<PhysicalNetwork*>(network)->getPermission();
+    return (userPermission & networkPermission) == networkPermission;
 }
 
 int NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,
