@@ -40,6 +40,7 @@ public:
     unsigned getNetId() const;
 
     bool hasInterface(const std::string& interface) const;
+    const std::set<std::string>& getInterfaces() const;
 
     // These return 0 on success or negative errno on failure.
     virtual int addInterface(const std::string& interface) WARN_UNUSED_RESULT = 0;

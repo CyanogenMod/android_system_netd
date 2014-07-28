@@ -46,7 +46,7 @@ const uint32_t RULE_PRIORITY_LOCAL_NETWORK       = 17000;
 const uint32_t RULE_PRIORITY_TETHERING           = 18000;
 const uint32_t RULE_PRIORITY_IMPLICIT_NETWORK    = 19000;
 const uint32_t RULE_PRIORITY_BYPASSABLE_VPN      = 20000;
-// const uint32_t RULE_PRIORITY_VPN_FALLTHROUGH     = 21000;
+const uint32_t RULE_PRIORITY_VPN_FALLTHROUGH     = 21000;
 const uint32_t RULE_PRIORITY_DEFAULT_NETWORK     = 22000;
 const uint32_t RULE_PRIORITY_DIRECTLY_CONNECTED  = 23000;
 const uint32_t RULE_PRIORITY_UNREACHABLE         = 24000;
@@ -554,6 +554,35 @@ WARN_UNUSED_RESULT int modifyImplicitNetworkRule(unsigned netId, uint32_t table,
                         fwmark.intValue, mask.intValue);
 }
 
+// A rule to enable split tunnel VPNs.
+//
+// If a packet with a VPN's netId doesn't find a route in the VPN's routing table, it's allowed to
+// go over the default network, provided it wasn't explicitly restricted to the VPN and has the
+// permissions required by the default network.
+WARN_UNUSED_RESULT int modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId,
+                                                const char* physicalInterface,
+                                                Permission permission) {
+    uint32_t table = getRouteTableForInterface(physicalInterface);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.netId = vpnNetId;
+    mask.netId = FWMARK_NET_ID_MASK;
+
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
+
+    fwmark.permission = permission;
+    mask.permission = permission;
+
+    return modifyIpRule(action, RULE_PRIORITY_VPN_FALLTHROUGH, table, fwmark.intValue,
+                        mask.intValue);
+}
+
 // Add rules to allow legacy routes added through the requestRouteToHost() API.
 WARN_UNUSED_RESULT int addLegacyRouteRules() {
     Fwmark fwmark;
@@ -937,4 +966,15 @@ int RouteController::enableTethering(const char* inputInterface, const char* out
 
 int RouteController::disableTethering(const char* inputInterface, const char* outputInterface) {
     return modifyTetheredNetwork(RTM_DELRULE, inputInterface, outputInterface);
+}
+
+int RouteController::addVirtualNetworkFallthrough(unsigned vpnNetId, const char* physicalInterface,
+                                                  Permission permission) {
+    return modifyVpnFallthroughRule(RTM_NEWRULE, vpnNetId, physicalInterface, permission);
+}
+
+int RouteController::removeVirtualNetworkFallthrough(unsigned vpnNetId,
+                                                     const char* physicalInterface,
+                                                     Permission permission) {
+    return modifyVpnFallthroughRule(RTM_DELRULE, vpnNetId, physicalInterface, permission);
 }
