@@ -47,11 +47,12 @@ public:
     unsigned getDefaultNetwork() const;
     int setDefaultNetwork(unsigned netId) WARN_UNUSED_RESULT;
 
-    // Order of preference: UID-specific, requestedNetId, default.
-    // Specify NETID_UNSET for requestedNetId if the default network is preferred.
-    // forDns indicates if we're querying the netId for a DNS request. This avoids sending DNS
-    // requests to VPNs without DNS servers.
-    unsigned getNetworkForUser(uid_t uid, unsigned requestedNetId, bool forDns) const;
+    // Sets |*netId| to an appropriate NetId to use for DNS for the given user. Call with |*netId|
+    // set to a non-NETID_UNSET value if the user already has indicated a preference. Returns the
+    // fwmark value to set on the socket when performing the DNS request.
+    uint32_t getNetworkForDns(unsigned* netId, uid_t uid) const;
+    unsigned getNetworkForUser(uid_t uid) const;
+    unsigned getNetworkForConnect(uid_t uid) const;
     unsigned getNetworkForInterface(const char* interface) const;
     bool isVirtualNetwork(unsigned netId) const;
 
@@ -87,6 +88,7 @@ private:
     Network* getNetworkLocked(unsigned netId) const;
     VirtualNetwork* getVirtualNetworkForUserLocked(uid_t uid) const;
     Permission getPermissionForUserLocked(uid_t uid) const;
+    bool canUserSelectNetworkLocked(uid_t uid, unsigned netId) const;
 
     int modifyRoute(unsigned netId, const char* interface, const char* destination,
                     const char* nexthop, bool add, bool legacy, uid_t uid) WARN_UNUSED_RESULT;

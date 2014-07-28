@@ -102,17 +102,45 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
         }
 
         case FwmarkCommand::ON_CONNECT: {
-            // Called before a socket connect() happens. Set the default network's NetId into the
-            // fwmark so that the socket routes consistently over that network. Do this even if the
-            // socket already has a NetId, so that calling connect() multiple times still works.
+            // Called before a socket connect() happens. Set an appropriate NetId into the fwmark so
+            // that the socket routes consistently over that network. Do this even if the socket
+            // already has a NetId, so that calling connect() multiple times still works.
             //
-            // But respect the existing NetId if it had been explicitly preferred, indicated by:
-            // + The explicit bit having been set.
-            // + Or, the NetId being that of a VPN, which indicates a proxy acting on behalf of a
-            //   user who is subject to the VPN. The explicit bit is not set so that it works even
-            //   if the VPN is a split tunnel, but it's an explicit network preference nonetheless.
-            if (!fwmark.explicitlySelected && !mNetworkController->isVirtualNetwork(fwmark.netId)) {
-                fwmark.netId = mNetworkController->getDefaultNetwork();
+            // But if the explicit bit was set, the existing NetId was explicitly preferred (and not
+            // a case of connect() being called multiple times). Don't reset the NetId in that case.
+            //
+            // An "appropriate" NetId is the NetId of a bypassable VPN that applies to the user, or
+            // failing that, the default network. We'll never set the NetId of a secure VPN here.
+            // See the comments in the implementation of getNetworkForConnect() for more details.
+            //
+            // If the protect bit is set, this could be either a system proxy (e.g.: the dns proxy
+            // or the download manager) acting on behalf of another user, or a VPN provider. If it's
+            // a proxy, we shouldn't reset the NetId. If it's a VPN provider, we should set the
+            // default network's NetId.
+            //
+            // There's no easy way to tell the difference between a proxy and a VPN app. We can't
+            // use PERMISSION_SYSTEM to identify the proxy because a VPN app may also have those
+            // permissions. So we use the following heuristic:
+            //
+            // If it's a proxy, but the existing NetId is not a VPN, that means the user (that the
+            // proxy is acting on behalf of) is not subject to a VPN, so the proxy must have picked
+            // the default network's NetId. So, it's okay to replace that with the current default
+            // network's NetId (which in all likelihood is the same).
+            //
+            // Conversely, if it's a VPN provider, the existing NetId cannot be a VPN. The only time
+            // we set a VPN's NetId into a socket without setting the explicit bit is here, in
+            // ON_CONNECT, but we won't do that if the socket has the protect bit set. If the VPN
+            // provider connect()ed (and got the VPN NetId set) and then called protect(), we
+            // would've unset the NetId in PROTECT_FROM_VPN below.
+            //
+            // So, overall (when the explicit bit is not set but the protect bit is set), if the
+            // existing NetId is a VPN, don't reset it. Else, set the default network's NetId.
+            if (!fwmark.explicitlySelected) {
+                if (!fwmark.protectedFromVpn) {
+                    fwmark.netId = mNetworkController->getNetworkForConnect(client->getUid());
+                } else if (!mNetworkController->isVirtualNetwork(fwmark.netId)) {
+                    fwmark.netId = mNetworkController->getDefaultNetwork();
+                }
             }
             break;
         }
@@ -136,6 +164,15 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
             if (!mNetworkController->canProtect(client->getUid())) {
                 return -EPERM;
             }
+            // If a bypassable VPN's provider app calls connect() and then protect(), it will end up
+            // with a socket that looks like that of a system proxy but is not (see comments for
+            // ON_CONNECT above). So, reset the NetId.
+            //
+            // In any case, it's appropriate that if the socket has an implicit VPN NetId mark, the
+            // PROTECT_FROM_VPN command should unset it.
+            if (!fwmark.explicitlySelected && mNetworkController->isVirtualNetwork(fwmark.netId)) {
+                fwmark.netId = mNetworkController->getDefaultNetwork();
+            }
             fwmark.protectedFromVpn = true;
             permission = static_cast<Permission>(permission | fwmark.permission);
             break;
@@ -145,7 +182,7 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
             if ((permission & PERMISSION_SYSTEM) != PERMISSION_SYSTEM) {
                 return -EPERM;
             }
-            fwmark.netId = mNetworkController->getNetworkForUser(command.uid, NETID_UNSET, false);
+            fwmark.netId = mNetworkController->getNetworkForUser(command.uid);
             fwmark.protectedFromVpn = true;
             break;
         }
