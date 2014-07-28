@@ -1345,9 +1345,9 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return syntaxError(client, "Missing argument");
     }
 
-    //    0      1      2      3      4       5         6            7           8
-    // network route [legacy <uid>]  add   <netId> <interface> <destination> [nexthop]
-    // network route [legacy <uid>] remove <netId> <interface> <destination> [nexthop]
+    //    0      1      2      3      4       5         6            7               8
+    // network route [legacy <uid>]  add   <netId> <interface> <destination> [nexthop|"unreachable"]
+    // network route [legacy <uid>] remove <netId> <interface> <destination> [nexthop|"unreachable"]
     if (!strcmp(argv[1], "route")) {
         if (argc < 6 || argc > 9) {
             return syntaxError(client, "Incorrect number of arguments");
@@ -1369,6 +1369,10 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
             return syntaxError(client, "Unknown argument");
         }
         ++nextArg;
+
+        if (argc < nextArg + 3 || argc > nextArg + 4) {
+            return syntaxError(client, "Incorrect number of arguments");
+        }
 
         unsigned netId = stringToNetId(argv[nextArg++]);
         const char* interface = argv[nextArg++];
