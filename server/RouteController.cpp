@@ -354,27 +354,38 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
         return -ENOBUFS;  // Cannot happen; parsePrefix only supports IPv4 and IPv6.
     }
 
-    // If an interface was specified, find the ifindex.
+    uint8_t type = RTN_UNICAST;
     uint32_t ifindex;
-    if (interface != OIF_NONE) {
-        ifindex = if_nametoindex(interface);
-        if (!ifindex) {
-            ALOGE("cannot find interface %s", interface);
-            return -ENODEV;
-        }
-    }
-
-    // If a nexthop was specified, parse it as the same family as the prefix.
     uint8_t rawNexthop[sizeof(in6_addr)];
-    if (nexthop && inet_pton(family, nexthop, rawNexthop) <= 0) {
-        ALOGE("inet_pton failed for nexthop %s", nexthop);
-        return -EINVAL;
+
+    if (nexthop && !strcmp(nexthop, "unreachable")) {
+        type = RTN_UNREACHABLE;
+        // 'interface' is likely non-NULL, as the caller (modifyRoute()) likely used it to lookup
+        // the table number. But it's an error to specify an interface ("dev ...") or a nexthop for
+        // unreachable routes, so nuke them. (IPv6 allows them to be specified; IPv4 doesn't.)
+        interface = OIF_NONE;
+        nexthop = NULL;
+    } else {
+        // If an interface was specified, find the ifindex.
+        if (interface != OIF_NONE) {
+            ifindex = if_nametoindex(interface);
+            if (!ifindex) {
+                ALOGE("cannot find interface %s", interface);
+                return -ENODEV;
+            }
+        }
+
+        // If a nexthop was specified, parse it as the same family as the prefix.
+        if (nexthop && inet_pton(family, nexthop, rawNexthop) <= 0) {
+            ALOGE("inet_pton failed for nexthop %s", nexthop);
+            return -EINVAL;
+        }
     }
 
     // Assemble a rtmsg and put it in an array of iovec structures.
     rtmsg route = {
         .rtm_protocol = RTPROT_STATIC,
-        .rtm_type = RTN_UNICAST,
+        .rtm_type = type,
         .rtm_family = family,
         .rtm_dst_len = prefixLength,
     };
