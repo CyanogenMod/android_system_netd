@@ -48,8 +48,7 @@ const uint32_t RULE_PRIORITY_IMPLICIT_NETWORK    = 19000;
 const uint32_t RULE_PRIORITY_BYPASSABLE_VPN      = 20000;
 const uint32_t RULE_PRIORITY_VPN_FALLTHROUGH     = 21000;
 const uint32_t RULE_PRIORITY_DEFAULT_NETWORK     = 22000;
-const uint32_t RULE_PRIORITY_DIRECTLY_CONNECTED  = 23000;
-const uint32_t RULE_PRIORITY_UNREACHABLE         = 24000;
+const uint32_t RULE_PRIORITY_UNREACHABLE         = 32000;
 
 const uint32_t ROUTE_TABLE_LOCAL_NETWORK  = 97;
 const uint32_t ROUTE_TABLE_LEGACY_NETWORK = 98;
@@ -638,24 +637,10 @@ WARN_UNUSED_RESULT int addLocalNetworkRules(unsigned localNetId) {
                         fwmark.intValue, mask.intValue);
 }
 
-// Add a new rule to look up the 'main' table, with the same selectors as the "default network"
-// rule, but with a lower priority. Since the default network rule points to a table with a default
-// route, the rule we're adding will never be used for normal routing lookups. However, the kernel
-// may fall-through to it to find directly-connected routes when it validates that a nexthop (in a
-// route being added) is reachable.
-WARN_UNUSED_RESULT int addDirectlyConnectedRule() {
-    Fwmark fwmark;
-    Fwmark mask;
-
-    fwmark.netId = NETID_UNSET;
-    mask.netId = FWMARK_NET_ID_MASK;
-
-    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_DIRECTLY_CONNECTED, RT_TABLE_MAIN,
-                        fwmark.intValue, mask.intValue, IIF_NONE, OIF_NONE, UID_ROOT, UID_ROOT);
-}
-
-// Add a rule to preempt the pre-defined "from all lookup main" rule. Packets that reach this rule
-// will be null-routed, and won't fall-through to the main table.
+// Add an explicit unreachable rule close to the end of the prioriy list to make it clear that
+// relying on the kernel-default "from all lookup main" rule at priority 32766 is not intended
+// behaviour, and that no routes should be in the main table. We do flush the kernel-default rules
+// at startup, but having an explicit unreachable rule will hopefully make things even clearer.
 WARN_UNUSED_RESULT int addUnreachableRule() {
     return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_UNREACHABLE, RT_TABLE_UNSPEC, MARK_UNSET,
                         MARK_UNSET);
@@ -813,18 +798,6 @@ WARN_UNUSED_RESULT int modifyRoute(uint16_t action, const char* interface, const
         return ret;
     }
 
-    // If there's no nexthop, this is a directly connected route. Add it to the main table also, to
-    // let the kernel find it when validating nexthops when global routes are added.
-    if (!nexthop) {
-        ret = modifyIpRoute(action, RT_TABLE_MAIN, interface, destination, NULL);
-        // A failure with action == ADD && errno == EEXIST means that the route already exists in
-        // the main table, perhaps because the kernel added it automatically as part of adding the
-        // IP address to the interface. Ignore this, but complain about everything else.
-        if (ret && !(action == RTM_NEWROUTE && ret == -EEXIST)) {
-            return ret;
-        }
-    }
-
     return 0;
 }
 
@@ -867,9 +840,6 @@ int RouteController::Init(unsigned localNetId) {
         return ret;
     }
     if (int ret = addLocalNetworkRules(localNetId)) {
-        return ret;
-    }
-    if (int ret = addDirectlyConnectedRule()) {
         return ret;
     }
     if (int ret = addUnreachableRule()) {
