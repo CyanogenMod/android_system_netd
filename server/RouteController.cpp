@@ -388,6 +388,7 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
         .rtm_type = type,
         .rtm_family = family,
         .rtm_dst_len = prefixLength,
+        .rtm_scope = static_cast<uint8_t>(nexthop ? RT_SCOPE_UNIVERSE : RT_SCOPE_LINK),
     };
 
     rtattr rtaDst     = { U16_RTA_LENGTH(rawLength), RTA_DST };
