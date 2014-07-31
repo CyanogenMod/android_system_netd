@@ -143,8 +143,12 @@ int NetworkController::setDefaultNetwork(unsigned netId) {
 
     if (netId != NETID_UNSET) {
         Network* network = getNetworkLocked(netId);
-        if (!network || network->getType() != Network::PHYSICAL) {
-            ALOGE("invalid netId %u", netId);
+        if (!network) {
+            ALOGE("no such netId %u", netId);
+            return -ENONET;
+        }
+        if (network->getType() != Network::PHYSICAL) {
+            ALOGE("cannot set default to non-physical network with netId %u", netId);
             return -EINVAL;
         }
         if (int ret = static_cast<PhysicalNetwork*>(network)->addAsDefault()) {
@@ -284,9 +288,13 @@ int NetworkController::createVirtualNetwork(unsigned netId, bool hasDns, bool se
 }
 
 int NetworkController::destroyNetwork(unsigned netId) {
-    if (netId == LOCAL_NET_ID || !isValidNetwork(netId)) {
-        ALOGE("invalid netId %u", netId);
+    if (netId == LOCAL_NET_ID) {
+        ALOGE("cannot destroy local network");
         return -EINVAL;
+    }
+    if (!isValidNetwork(netId)) {
+        ALOGE("no such netId %u", netId);
+        return -ENONET;
     }
 
     // TODO: ioctl(SIOCKILLADDR, ...) to kill all sockets on the old network.
@@ -315,8 +323,8 @@ int NetworkController::destroyNetwork(unsigned netId) {
 
 int NetworkController::addInterfaceToNetwork(unsigned netId, const char* interface) {
     if (!isValidNetwork(netId)) {
-        ALOGE("invalid netId %u", netId);
-        return -EINVAL;
+        ALOGE("no such netId %u", netId);
+        return -ENONET;
     }
 
     unsigned existingNetId = getNetworkForInterface(interface);
@@ -331,8 +339,8 @@ int NetworkController::addInterfaceToNetwork(unsigned netId, const char* interfa
 
 int NetworkController::removeInterfaceFromNetwork(unsigned netId, const char* interface) {
     if (!isValidNetwork(netId)) {
-        ALOGE("invalid netId %u", netId);
-        return -EINVAL;
+        ALOGE("no such netId %u", netId);
+        return -ENONET;
     }
 
     android::RWLock::AutoWLock lock(mRWLock);
@@ -362,8 +370,12 @@ int NetworkController::setPermissionForNetworks(Permission permission,
     android::RWLock::AutoWLock lock(mRWLock);
     for (unsigned netId : netIds) {
         Network* network = getNetworkLocked(netId);
-        if (!network || network->getType() != Network::PHYSICAL) {
-            ALOGE("invalid netId %u", netId);
+        if (!network) {
+            ALOGE("no such netId %u", netId);
+            return -ENONET;
+        }
+        if (network->getType() != Network::PHYSICAL) {
+            ALOGE("cannot set permissions on non-physical network with netId %u", netId);
             return -EINVAL;
         }
 
@@ -379,8 +391,12 @@ int NetworkController::setPermissionForNetworks(Permission permission,
 int NetworkController::addUsersToNetwork(unsigned netId, const UidRanges& uidRanges) {
     android::RWLock::AutoWLock lock(mRWLock);
     Network* network = getNetworkLocked(netId);
-    if (!network || network->getType() != Network::VIRTUAL) {
-        ALOGE("invalid netId %u", netId);
+    if (!network) {
+        ALOGE("no such netId %u", netId);
+        return -ENONET;
+    }
+    if (network->getType() != Network::VIRTUAL) {
+        ALOGE("cannot add users to non-virtual network with netId %u", netId);
         return -EINVAL;
     }
     if (int ret = static_cast<VirtualNetwork*>(network)->addUsers(uidRanges)) {
@@ -392,8 +408,12 @@ int NetworkController::addUsersToNetwork(unsigned netId, const UidRanges& uidRan
 int NetworkController::removeUsersFromNetwork(unsigned netId, const UidRanges& uidRanges) {
     android::RWLock::AutoWLock lock(mRWLock);
     Network* network = getNetworkLocked(netId);
-    if (!network || network->getType() != Network::VIRTUAL) {
-        ALOGE("invalid netId %u", netId);
+    if (!network) {
+        ALOGE("no such netId %u", netId);
+        return -ENONET;
+    }
+    if (network->getType() != Network::VIRTUAL) {
+        ALOGE("cannot remove users from non-virtual network with netId %u", netId);
         return -EINVAL;
     }
     if (int ret = static_cast<VirtualNetwork*>(network)->removeUsers(uidRanges)) {
@@ -485,8 +505,16 @@ bool NetworkController::canUserSelectNetworkLocked(uid_t uid, unsigned netId) co
 
 int NetworkController::modifyRoute(unsigned netId, const char* interface, const char* destination,
                                    const char* nexthop, bool add, bool legacy, uid_t uid) {
+    if (!isValidNetwork(netId)) {
+        ALOGE("no such netId %u", netId);
+        return -ENONET;
+    }
     unsigned existingNetId = getNetworkForInterface(interface);
-    if (netId == NETID_UNSET || existingNetId != netId) {
+    if (existingNetId == NETID_UNSET) {
+        ALOGE("interface %s not assigned to any netId", interface);
+        return -ENODEV;
+    }
+    if (existingNetId != netId) {
         ALOGE("interface %s assigned to netId %u, not %u", interface, existingNetId, netId);
         return -ENOENT;
     }
@@ -513,9 +541,13 @@ int NetworkController::modifyFallthroughLocked(unsigned vpnNetId, bool add) {
         return 0;
     }
     Network* network = getNetworkLocked(mDefaultNetId);
-    if (!network || network->getType() != Network::PHYSICAL) {
+    if (!network) {
         ALOGE("cannot find previously set default network with netId %u", mDefaultNetId);
         return -ESRCH;
+    }
+    if (network->getType() != Network::PHYSICAL) {
+        ALOGE("inconceivable! default network must be a physical network");
+        return -EINVAL;
     }
     Permission permission = static_cast<PhysicalNetwork*>(network)->getPermission();
     for (const auto& physicalInterface : network->getInterfaces()) {
