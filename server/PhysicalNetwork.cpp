@@ -143,15 +143,19 @@ int PhysicalNetwork::removeInterface(const std::string& interface) {
     if (!hasInterface(interface)) {
         return 0;
     }
-    if (int ret = RouteController::removeInterfaceFromPhysicalNetwork(mNetId, interface.c_str(),
-                                                                      mPermission)) {
-        ALOGE("failed to remove interface %s from netId %u", interface.c_str(), mNetId);
-        return ret;
-    }
     if (mIsDefault) {
         if (int ret = removeFromDefault(mNetId, interface, mPermission, mDelegate)) {
             return ret;
         }
+    }
+    // This step will flush the interface index from the cache in RouteController so it must be
+    // done last as further requests to the RouteController regarding this interface will fail
+    // to find the interface index in the cache in cases where the interface is already gone
+    // (e.g. bt-pan).
+    if (int ret = RouteController::removeInterfaceFromPhysicalNetwork(mNetId, interface.c_str(),
+                                                                      mPermission)) {
+        ALOGE("failed to remove interface %s from netId %u", interface.c_str(), mNetId);
+        return ret;
     }
     mInterfaces.erase(interface);
     return 0;
