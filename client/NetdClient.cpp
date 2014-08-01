@@ -24,6 +24,7 @@
 #include <atomic>
 #include <sys/socket.h>
 #include <unistd.h>
+#include<dlfcn.h>
 
 namespace {
 
@@ -34,12 +35,21 @@ typedef int (*Accept4FunctionType)(int, sockaddr*, socklen_t*, int);
 typedef int (*ConnectFunctionType)(int, const sockaddr*, socklen_t);
 typedef int (*SocketFunctionType)(int, int, int);
 typedef unsigned (*NetIdForResolvFunctionType)(unsigned);
+typedef void (*SetConnectFunc) (ConnectFunctionType* func);
+typedef void (*SetSocketFunc) (SocketFunctionType* func);
 
 // These variables are only modified at startup (when libc.so is loaded) and never afterwards, so
 // it's okay that they are read later at runtime without a lock.
 Accept4FunctionType libcAccept4 = 0;
 ConnectFunctionType libcConnect = 0;
 SocketFunctionType libcSocket = 0;
+ConnectFunctionType propConnect = 0;
+SocketFunctionType propSocket = 0;
+SetConnectFunc setConnect = 0;
+SetSocketFunc setSocket = 0;
+
+
+static void *propClientHandle = 0;
 
 int closeFdAndSetErrno(int fd, int error) {
     close(fd);
@@ -78,20 +88,34 @@ int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
             return -1;
         }
     }
+
+    if ((propConnect) && FwmarkClient::shouldSetFwmark(addr->sa_family)) {
+      return propConnect(sockfd, addr, addrlen);
+    }
+
+    // fallback to libc
     return libcConnect(sockfd, addr, addrlen);
 }
 
 int netdClientSocket(int domain, int type, int protocol) {
-    int socketFd = libcSocket(domain, type, protocol);
-    if (socketFd == -1) {
-        return -1;
+    int socketFd = -1;
+    if (propSocket) {
+      socketFd = propSocket(domain, type, protocol);
+    } else if (libcSocket) {
+      socketFd = libcSocket(domain, type, protocol);
     }
+
+    if (-1 == socketFd) {
+      return -1;
+    }
+
     unsigned netId = netIdForProcess;
     if (netId != NETID_UNSET && FwmarkClient::shouldSetFwmark(domain)) {
         if (int error = setNetworkForSocket(netId, socketFd)) {
             return closeFdAndSetErrno(socketFd, error);
         }
     }
+
     return socketFd;
 }
 
@@ -146,6 +170,21 @@ extern "C" void netdClientInitConnect(ConnectFunctionType* function) {
         libcConnect = *function;
         *function = netdClientConnect;
     }
+
+    if (!propClientHandle) {
+        propClientHandle = dlopen("libvendorconn.so", RTLD_LAZY);
+    }
+    if (!propClientHandle) {
+       return;
+    }
+
+    propConnect = reinterpret_cast<ConnectFunctionType>(dlsym(propClientHandle, "vendorConnect"));
+
+    setConnect = reinterpret_cast<SetConnectFunc>(dlsym(propClientHandle, "setConnectFunc"));
+    // Pass saved libc handle so it can be called from lib
+    if (setConnect && libcConnect) {
+        setConnect(&libcConnect);
+    }
 }
 
 extern "C" void netdClientInitSocket(SocketFunctionType* function) {
@@ -153,6 +192,21 @@ extern "C" void netdClientInitSocket(SocketFunctionType* function) {
         libcSocket = *function;
         *function = netdClientSocket;
     }
+
+    if (!propClientHandle) {
+        propClientHandle = dlopen("libvendorconn.so", RTLD_LAZY);
+    }
+    if (!propClientHandle) {
+       return;
+    }
+
+    propSocket = reinterpret_cast<SocketFunctionType>(dlsym(propClientHandle, "vendorSocket"));
+    setSocket = reinterpret_cast<SetSocketFunc>(dlsym(propClientHandle, "setSocketFunc"));
+    // Pass saved libc handle so it can be called from lib
+    if (setSocket && libcSocket) {
+        setSocket(&libcSocket);
+    }
+
 }
 
 extern "C" void netdClientInitNetIdForResolv(NetIdForResolvFunctionType* function) {

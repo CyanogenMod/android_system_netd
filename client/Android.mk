@@ -21,5 +21,6 @@ LOCAL_CLANG := true
 LOCAL_CPPFLAGS := -std=c++11 -Wall -Werror
 LOCAL_MODULE := libnetd_client
 LOCAL_SRC_FILES := FwmarkClient.cpp NetdClient.cpp
+LOCAL_SHARED_LIBRARIES := libdl
 
 include $(BUILD_SHARED_LIBRARY)
