@@ -587,6 +587,10 @@ void MDnsSdListener::Monitor::run() {
 
     mPollFds = (struct pollfd *)calloc(sizeof(struct pollfd), mPollSize);
     mPollRefs = (DNSServiceRef **)calloc(sizeof(DNSServiceRef *), mPollSize);
+    LOG_ALWAYS_FATAL_IF((mPollFds == NULL), "initial calloc failed on mPollFds with a size of %d",
+            ((int)sizeof(struct pollfd)) * mPollSize);
+    LOG_ALWAYS_FATAL_IF((mPollRefs == NULL), "initial calloc failed on mPollRefs with a size of %d",
+            ((int)sizeof(DNSServiceRef *)) * mPollSize);
 
     mPollFds[0].fd = mCtrlSocketPair[0];
     mPollFds[0].events = POLLIN;
@@ -645,6 +649,10 @@ int MDnsSdListener::Monitor::rescan() {
         free(mPollRefs);
         mPollFds = (struct pollfd *)calloc(sizeof(struct pollfd), mPollSize);
         mPollRefs = (DNSServiceRef **)calloc(sizeof(DNSServiceRef *), mPollSize);
+        LOG_ALWAYS_FATAL_IF((mPollFds == NULL), "calloc failed on mPollFds with a size of %d",
+                ((int)sizeof(struct pollfd)) * mPollSize);
+        LOG_ALWAYS_FATAL_IF((mPollRefs == NULL), "calloc failed on mPollRefs with a size of %d",
+                ((int)sizeof(DNSServiceRef *)) * mPollSize);
     } else {
         memset(mPollFds, 0, sizeof(struct pollfd) * mPollSize);
         memset(mPollRefs, 0, sizeof(DNSServiceRef *) * mPollSize);
