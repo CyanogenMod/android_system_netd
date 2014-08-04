@@ -513,8 +513,13 @@ int MDnsSdListener::Handler::runCommand(SocketClient *cli,
 
 MDnsSdListener::Monitor::Monitor() {
     mHead = NULL;
-    pthread_mutex_init(&mHeadMutex, NULL);
+    mLiveCount = 0;
+    mPollFds = NULL;
+    mPollRefs = NULL;
+    mPollSize = 10;
     socketpair(AF_LOCAL, SOCK_STREAM, 0, mCtrlSocketPair);
+    pthread_mutex_init(&mHeadMutex, NULL);
+
     pthread_create(&mThread, NULL, MDnsSdListener::Monitor::threadStart, this);
     pthread_detach(mThread);
 }
@@ -583,7 +588,6 @@ int MDnsSdListener::Monitor::stopService() {
 
 void MDnsSdListener::Monitor::run() {
     int pollCount = 1;
-    mPollSize = 10;
 
     mPollFds = (struct pollfd *)calloc(sizeof(struct pollfd), mPollSize);
     mPollRefs = (DNSServiceRef **)calloc(sizeof(DNSServiceRef *), mPollSize);
