@@ -37,3 +37,13 @@ int ResolverController::setDnsServers(unsigned netId, const char* domains,
 
     return 0;
 }
+
+int ResolverController::flushDnsCache(unsigned netId) {
+    if (DBG) {
+        ALOGD("flushDnsCache netId = %u\n", netId);
+    }
+
+    _resolv_flush_cache_for_net(netId);
+
+    return 0;
+}
