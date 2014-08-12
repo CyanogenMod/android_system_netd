@@ -301,24 +301,31 @@ int NetworkController::destroyNetwork(unsigned netId) {
 
     android::RWLock::AutoWLock lock(mRWLock);
     Network* network = getNetworkLocked(netId);
-    if (int ret = network->clearInterfaces()) {
-        return ret;
-    }
+
+    // If we fail to destroy a network, things will get stuck badly. Therefore, unlike most of the
+    // other network code, ignore failures and attempt to clear out as much state as possible, even
+    // if we hit an error on the way. Return the first error that we see.
+    int ret = network->clearInterfaces();
+
     if (mDefaultNetId == netId) {
-        if (int ret = static_cast<PhysicalNetwork*>(network)->removeAsDefault()) {
+        if (int err = static_cast<PhysicalNetwork*>(network)->removeAsDefault()) {
             ALOGE("inconceivable! removeAsDefault cannot fail on an empty network");
-            return ret;
+            if (!ret) {
+                ret = err;
+            }
         }
         mDefaultNetId = NETID_UNSET;
     } else if (network->getType() == Network::VIRTUAL) {
-        if (int ret = modifyFallthroughLocked(netId, false)) {
-            return ret;
+        if (int err = modifyFallthroughLocked(netId, false)) {
+            if (!ret) {
+                ret = err;
+            }
         }
     }
     mNetworks.erase(netId);
     delete network;
     _resolv_delete_cache_for_net(netId);
-    return 0;
+    return ret;
 }
 
 int NetworkController::addInterfaceToNetwork(unsigned netId, const char* interface) {
