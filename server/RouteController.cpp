@@ -92,6 +92,8 @@ const char* const RT_TABLES_PATH = "/data/misc/net/rt_tables";
 const int RT_TABLES_FLAGS = O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW | O_CLOEXEC;
 const mode_t RT_TABLES_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;  // mode 0644, rw-r--r--
 
+const unsigned ROUTE_FLUSH_ATTEMPTS = 2;
+
 // Avoids "non-constant-expression cannot be narrowed from type 'unsigned int' to 'unsigned short'"
 // warnings when using RTA_LENGTH(x) inside static initializers (even when x is already uint16_t).
 constexpr uint16_t U16_RTA_LENGTH(uint16_t x) {
@@ -828,6 +830,7 @@ WARN_UNUSED_RESULT int flushRoutes(const char* interface) {
     char tableString[UINT32_STRLEN];
     snprintf(tableString, sizeof(tableString), "%u", table);
 
+    int ret = 0;
     for (size_t i = 0; i < ARRAY_SIZE(IP_VERSIONS); ++i) {
         const char* argv[] = {
             IP_PATH,
@@ -837,14 +840,34 @@ WARN_UNUSED_RESULT int flushRoutes(const char* interface) {
             "table",
             tableString,
         };
-        if (android_fork_execvp(ARRAY_SIZE(argv), const_cast<char**>(argv), NULL, false, false)) {
-            ALOGE("failed to flush routes");
-            return -EREMOTEIO;
+
+        // A flush works by dumping routes and deleting each route as it's returned, and it can
+        // fail if something else deletes the route between the dump and the delete. This can
+        // happen, for example, if an interface goes down while we're trying to flush its routes.
+        // So try multiple times and only return an error if the last attempt fails.
+        //
+        // TODO: replace this with our own netlink code.
+        unsigned attempts = 0;
+        int err;
+        do {
+            err = android_fork_execvp(ARRAY_SIZE(argv), const_cast<char**>(argv),
+                                      NULL, false, false);
+            ++attempts;
+        } while (err != 0 && attempts < ROUTE_FLUSH_ATTEMPTS);
+        if (err) {
+            ALOGE("failed to flush %s routes in table %s after %d attempts",
+                  IP_VERSIONS[i], tableString, attempts);
+            ret = -EREMOTEIO;
         }
     }
 
-    interfaceToTable.erase(interface);
-    return 0;
+    // If we failed to flush routes, the caller may elect to keep this interface around, so keep
+    // track of its name.
+    if (!ret) {
+        interfaceToTable.erase(interface);
+    }
+
+    return ret;
 }
 
 }  // namespace
