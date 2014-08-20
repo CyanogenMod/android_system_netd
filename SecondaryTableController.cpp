@@ -385,6 +385,23 @@ int SecondaryTableController::setFwmarkRule(const char *iface, bool add) {
     // 1280. This must mean that the iface will only be used for v4, so don't fail on a v6 error.
     runCmd(ARRAY_SIZE(route6_cmd), route6_cmd);
 
+    if (add) {
+        const char *fwmark6_cmd[] = {
+            IP_PATH,
+            "-6",
+            "rule",
+            "add",
+            "prio",
+            RULE_PRIO,
+            "fwmark",
+            mark_str,
+            "table",
+            mark_str
+        };
+        ret = runCmd(ARRAY_SIZE(fwmark6_cmd), fwmark6_cmd);
+        if (ret) return ret;
+    }
+
     /* Best effort, because some kernels might not have the needed TCPMSS */
     execIptables(V4V6,
             "-t",
