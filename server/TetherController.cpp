@@ -31,11 +31,14 @@
 #include <cutils/log.h>
 #include <cutils/properties.h>
 
+#include "Fwmark.h"
 #include "NetdConstants.h"
+#include "Permission.h"
 #include "TetherController.h"
 
 TetherController::TetherController() {
     mInterfaces = new InterfaceCollection();
+    mDnsNetId = 0;
     mDnsForwarders = new NetAddressCollection();
     mDaemonFd = -1;
     mDaemonPid = 0;
@@ -197,16 +200,22 @@ bool TetherController::isTetheringStarted() {
 
 #define MAX_CMD_SIZE 1024
 
-int TetherController::setDnsForwarders(char **servers, int numServers) {
+int TetherController::setDnsForwarders(unsigned netId, char **servers, int numServers) {
     int i;
     char daemonCmd[MAX_CMD_SIZE];
 
-    strcpy(daemonCmd, "update_dns");
+    Fwmark fwmark;
+    fwmark.netId = netId;
+    fwmark.explicitlySelected = true;
+    fwmark.protectedFromVpn = true;
+    fwmark.permission = PERMISSION_SYSTEM;
+
+    snprintf(daemonCmd, sizeof(daemonCmd), "update_dns:0x%x", fwmark.intValue);
     int cmdLen = strlen(daemonCmd);
 
     mDnsForwarders->clear();
     for (i = 0; i < numServers; i++) {
-        ALOGD("setDnsForwarders(%d = '%s')", i, servers[i]);
+        ALOGD("setDnsForwarders(0x%x %d = '%s')", fwmark.intValue, i, servers[i]);
 
         struct in_addr a;
 
@@ -227,6 +236,7 @@ int TetherController::setDnsForwarders(char **servers, int numServers) {
         mDnsForwarders->push_back(a);
     }
 
+    mDnsNetId = netId;
     if (mDaemonFd != -1) {
         ALOGD("Sending update msg to dnsmasq [%s]", daemonCmd);
         if (write(mDaemonFd, daemonCmd, strlen(daemonCmd) +1) < 0) {
@@ -236,6 +246,10 @@ int TetherController::setDnsForwarders(char **servers, int numServers) {
         }
     }
     return 0;
+}
+
+unsigned TetherController::getDnsNetId() {
+    return mDnsNetId;
 }
 
 NetAddressCollection *TetherController::getDnsForwarders() {
