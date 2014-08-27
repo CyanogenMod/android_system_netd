@@ -16,10 +16,11 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
-LOCAL_C_INCLUDES := bionic/libc/dns/include external/libcxx/include system/netd/include
+LOCAL_C_INCLUDES := bionic/libc/dns/include system/netd/include
 LOCAL_CLANG := true
 LOCAL_CPPFLAGS := -std=c++11 -Wall -Werror
 LOCAL_MODULE := libnetd_client
 LOCAL_SRC_FILES := FwmarkClient.cpp NetdClient.cpp
 
+include external/libcxx/libcxx.mk
 include $(BUILD_SHARED_LIBRARY)
