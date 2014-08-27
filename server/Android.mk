@@ -19,7 +19,6 @@ include $(CLEAR_VARS)
 LOCAL_C_INCLUDES := \
         $(call include-path-for, libhardware_legacy)/hardware_legacy \
         bionic/libc/dns/include \
-        external/libcxx/include \
         external/mdnsresponder/mDNSShared \
         external/openssl/include \
         system/netd/include \
@@ -68,6 +67,7 @@ LOCAL_SRC_FILES := \
         main.cpp \
         oem_iptables_hook.cpp \
 
+include external/libcxx/libcxx.mk
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
