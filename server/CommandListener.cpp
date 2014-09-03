@@ -536,6 +536,10 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
                 cli->sendMsg(ResponseCode::TetherInterfaceListResult, *it, false);
             }
         } else if (!strcmp(argv[1], "dns") && !strcmp(argv[2], "list")) {
+            char netIdStr[UINT32_STRLEN];
+            snprintf(netIdStr, sizeof(netIdStr), "%u", sTetherCtrl->getDnsNetId());
+            cli->sendMsg(ResponseCode::TetherDnsFwdNetIdResult, netIdStr, false);
+
             NetAddressCollection *dlist = sTetherCtrl->getDnsForwarders();
             NetAddressCollection::iterator it;
 
@@ -584,7 +588,12 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
             }
         } else if (!strcmp(argv[1], "dns")) {
             if (!strcmp(argv[2], "set")) {
-                rc = sTetherCtrl->setDnsForwarders(&argv[3], argc - 3);
+                if (argc < 5) {
+                    cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
+                    return 0;
+                }
+                unsigned netId = stringToNetId(argv[3]);
+                rc = sTetherCtrl->setDnsForwarders(netId, &argv[4], argc - 4);
             /* else if (!strcmp(argv[2], "list")) handled above */
             } else {
                 cli->sendMsg(ResponseCode::CommandParameterError,
