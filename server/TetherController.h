@@ -26,6 +26,9 @@ typedef android::netd::List<struct in_addr> NetAddressCollection;
 
 class TetherController {
     InterfaceCollection  *mInterfaces;
+    // NetId to use for forwarded DNS queries. This may not be the default
+    // network, e.g., in the case where we are tethering to a DUN APN.
+    unsigned              mDnsNetId;
     NetAddressCollection *mDnsForwarders;
     pid_t                 mDaemonPid;
     int                   mDaemonFd;
@@ -42,7 +45,8 @@ public:
     int stopTethering();
     bool isTetheringStarted();
 
-    int setDnsForwarders(char **servers, int numServers);
+    unsigned getDnsNetId();
+    int setDnsForwarders(unsigned netId, char **servers, int numServers);
     NetAddressCollection *getDnsForwarders();
 
     int tetherInterface(const char *interface);
