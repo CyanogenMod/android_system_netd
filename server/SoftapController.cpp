@@ -59,6 +59,10 @@ int SoftapController::startSoftap() {
         return ResponseCode::SoftapStatusResult;
     }
 
+    if (ensure_entropy_file_exists() < 0) {
+        ALOGE("Wi-Fi entropy file was not created");
+    }
+
     if ((pid = fork()) < 0) {
         ALOGE("fork failed (%s)", strerror(errno));
         return ResponseCode::ServiceStartFailed;
