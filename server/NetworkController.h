@@ -40,7 +40,9 @@ class VirtualNetwork;
  */
 class NetworkController {
 public:
-    static const int LOCAL_NET_ID = 9;
+    static const unsigned MIN_OEM_ID;
+    static const unsigned MAX_OEM_ID;
+    static const unsigned LOCAL_NET_ID;
 
     NetworkController();
 

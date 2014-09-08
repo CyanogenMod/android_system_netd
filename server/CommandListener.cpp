@@ -51,6 +51,8 @@
 
 namespace {
 
+const unsigned NUM_OEM_IDS = NetworkController::MAX_OEM_ID - NetworkController::MIN_OEM_ID + 1;
+
 Permission stringToPermission(const char* arg) {
     if (!strcmp(arg, "android.permission.CHANGE_NETWORK_STATE")) {
         return PERMISSION_NETWORK;
@@ -64,6 +66,14 @@ Permission stringToPermission(const char* arg) {
 unsigned stringToNetId(const char* arg) {
     if (!strcmp(arg, "local")) {
         return NetworkController::LOCAL_NET_ID;
+    }
+    // OEM NetIds are "oem1", "oem2", .., "oem50".
+    if (!strncmp(arg, "oem", 3)) {
+        unsigned n = strtoul(arg + 3, NULL, 0);
+        if (1 <= n && n <= NUM_OEM_IDS) {
+            return NetworkController::MIN_OEM_ID + n;
+        }
+        return NETID_UNSET;
     }
     // strtoul() returns 0 on errors, which is fine because 0 is an invalid netId.
     return strtoul(arg, NULL, 0);
