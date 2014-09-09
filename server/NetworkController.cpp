@@ -46,10 +46,15 @@
 namespace {
 
 // Keep these in sync with ConnectivityService.java.
-const unsigned MIN_NET_ID = 10;
+const unsigned MIN_NET_ID = 100;
 const unsigned MAX_NET_ID = 65535;
 
 }  // namespace
+
+const unsigned NetworkController::MIN_OEM_ID   =  1;
+const unsigned NetworkController::MAX_OEM_ID   = 50;
+// NetIds 51..98 are reserved for future use.
+const unsigned NetworkController::LOCAL_NET_ID = 99;
 
 // All calls to methods here are made while holding a write lock on mRWLock.
 class NetworkController::DelegateImpl : public PhysicalNetwork::Delegate {
@@ -246,7 +251,8 @@ bool NetworkController::isVirtualNetwork(unsigned netId) const {
 }
 
 int NetworkController::createPhysicalNetwork(unsigned netId, Permission permission) {
-    if (netId < MIN_NET_ID || netId > MAX_NET_ID) {
+    if (!((MIN_NET_ID <= netId && netId <= MAX_NET_ID) ||
+          (MIN_OEM_ID <= netId && netId <= MAX_OEM_ID))) {
         ALOGE("invalid netId %u", netId);
         return -EINVAL;
     }
@@ -269,7 +275,7 @@ int NetworkController::createPhysicalNetwork(unsigned netId, Permission permissi
 }
 
 int NetworkController::createVirtualNetwork(unsigned netId, bool hasDns, bool secure) {
-    if (netId < MIN_NET_ID || netId > MAX_NET_ID) {
+    if (!(MIN_NET_ID <= netId && netId <= MAX_NET_ID)) {
         ALOGE("invalid netId %u", netId);
         return -EINVAL;
     }
