@@ -24,6 +24,7 @@
 
 #include <cutils/log.h>
 
+#include <netutils/ifc.h>
 #include <sysutils/NetlinkEvent.h>
 #include "NetlinkHandler.h"
 #include "NetlinkManager.h"
@@ -76,6 +77,14 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
             const char *address = evt->findParam("ADDRESS");
             const char *flags = evt->findParam("FLAGS");
             const char *scope = evt->findParam("SCOPE");
+            if (action == evt->NlActionAddressRemoved && iface && address) {
+                int resetMask = strchr(address, ':') ? RESET_IPV6_ADDRESSES : RESET_IPV4_ADDRESSES;
+                resetMask |= RESET_IGNORE_INTERFACE_ADDRESS;
+                if (int ret = ifc_reset_connections(iface, resetMask)) {
+                    ALOGE("ifc_reset_connections failed on iface %s for address %s (%s)", iface,
+                          address, strerror(ret));
+                }
+            }
             if (iface && flags && scope) {
                 notifyAddressChanged(action, address, iface, flags, scope);
             }
