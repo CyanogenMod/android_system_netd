@@ -34,8 +34,10 @@
 #define LOG_NIDEBUG 0
 #include <cutils/log.h>
 #include <cutils/properties.h>
+#include <logwrap/logwrap.h>
 
 #include "TetherController.h"
+#include "SecondaryTableController.h"
 
 #include <private/android_filesystem_config.h>
 #include <unistd.h>
@@ -47,12 +49,23 @@
 #define IP6_IFACE_CFG_ACCEPT_RA     "/proc/sys/net/ipv6/conf/%s/accept_ra"
 #define PROC_PATH_SIZE              255
 
-TetherController::TetherController() {
+#define RTRADVDAEMON_MIN_IFACES     2
+#define MAX_TABLE_LEN               11
+#define MIN_TABLE_NUMBER            0
+
+/* This is the number of arguments for RTRADVDAEMON which accounts for the
+ * location of the daemon, the table name option, the name of the table
+ * and a final empty string
+ */
+#define RTRADVDAEMON_ARGS_COUNT     4
+
+TetherController::TetherController(SecondaryTableController *ctrl) {
     mInterfaces = new InterfaceCollection();
     mUpstreamInterfaces = new InterfaceCollection();
     mDnsForwarders = new NetAddressCollection();
     mDaemonFd = -1;
     mDaemonPid = 0;
+    secondaryTableCtrl = ctrl;
 }
 
 TetherController::~TetherController() {
@@ -247,8 +260,7 @@ bool TetherController::isTetheringStarted() {
     return (mDaemonPid == 0 ? false : true);
 }
 
-
-int TetherController::startV6RtrAdv(int num_ifaces, char **ifaces) {
+int TetherController::startV6RtrAdv(int num_ifaces, char **ifaces, int table_number) {
     int pid;
     int num_processed_args = 1;
     gid_t groups [] = { AID_NET_ADMIN, AID_NET_RAW, AID_INET };
@@ -261,16 +273,32 @@ int TetherController::startV6RtrAdv(int num_ifaces, char **ifaces) {
         char **args;
         const char *cmd = RTRADVDAEMON;
 
-        args = (char **)calloc(num_ifaces * 3 + 2, sizeof(char *));
-
-        args[0] = strdup(RTRADVDAEMON);
-        for (int i=0; i < num_ifaces; i++) {
-            int aidx = 3 * i + num_processed_args;
-            args[aidx] = (char *)"-i";
-            args[aidx + 1] = ifaces[i];
-            args[aidx + 2] = (char *)"-x";
+        args = (char **)calloc(num_ifaces * 3 + RTRADVDAEMON_ARGS_COUNT, sizeof(char *));
+        if (!args) {
+          ALOGE("%s: failed to allocate memory", __func__);
+          return -1;
         }
 
+        args[0] = strdup(RTRADVDAEMON);
+        int aidx = 0;
+        for (int i=0; i < num_ifaces; i++) {
+            aidx = 3 * i + num_processed_args;
+            args[aidx++] = (char *)"-i";
+            args[aidx++] = ifaces[i];
+            args[aidx++] = (char *)"-x";
+        }
+        if (table_number >= MIN_TABLE_NUMBER) {
+          char table_name[MAX_TABLE_LEN];
+          unsigned int retval =  0;
+          retval = snprintf(table_name, sizeof(table_name),
+                            "%d", table_number + BASE_TABLE_NUMBER);
+          if (retval >= sizeof(table_name)) {
+            ALOGE("%s: String truncation occured", __func__);
+          } else {
+            args[aidx++] = (char *)"-t";
+            args[aidx] = table_name;
+          }
+        }
 
         setgroups(sizeof(groups)/sizeof(groups[0]), groups);
         setresgid(AID_RADIO, AID_RADIO, AID_RADIO);
@@ -307,6 +335,8 @@ int TetherController::addV6RtrAdvIface(const char *iface) {
     int i;
     int len;
     InterfaceCollection::iterator it;
+    char *upstream = NULL;
+    int table_number = -1;
     /* For now, just stop and start the daemon with the new interface list */
 
     len = mInterfaces->size() + mUpstreamInterfaces->size();
@@ -324,10 +354,13 @@ int TetherController::addV6RtrAdvIface(const char *iface) {
 
     for (it = mUpstreamInterfaces->begin(); i < len && it != mUpstreamInterfaces->end(); it++, i++) {
         args[i] = *it;
+        upstream = args[i];
+        table_number = secondaryTableCtrl->findTableNumber(upstream);
+        ALOGD("%s: Upstream Iface: %s table number: %d", __func__, upstream, table_number);
     }
 
     stopV6RtrAdv();
-    startV6RtrAdv(i, args);
+    startV6RtrAdv(i, args, table_number);
 
     free(args);
 
