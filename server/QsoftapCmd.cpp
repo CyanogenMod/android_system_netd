@@ -48,7 +48,8 @@ int CommandListener::QsoftapCmd::runCommand(SocketClient *cli,
     if (!strcmp(argv[1], "qccmd")) {
 #define MAX_CMD_SIZE 256
         char qcCmdBuf[MAX_CMD_SIZE], *pCmdBuf;
-        int len = MAX_CMD_SIZE, i = 2, ret;
+        u32 len = MAX_CMD_SIZE;
+        int i = 2, ret;
 
         if ( argc < 4 ) {
             cli->sendMsg(ResponseCode::OperationFailed, "failure: invalid arguments", true);
@@ -119,7 +120,7 @@ int CommandListener::QsoftapCmd::runCommand(SocketClient *cli,
 
             while (argc--) {
                 ret = snprintf(pCmdBuf, len, " %s", argv[i]);
-                if ((ret < 0) || (ret >= len)) {
+                if ((ret < 0) || (ret >= (int)len)) {
                     /* Error case */
                     /* TODO: Command too long send the error message */
                     *pCmdBuf = '\0';
