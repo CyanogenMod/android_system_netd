@@ -1372,9 +1372,11 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         return syntaxError(client, "Missing argument");
     }
 
-    //    0      1      2      3      4       5         6            7               8
-    // network route [legacy <uid>]  add   <netId> <interface> <destination> [nexthop|"unreachable"]
-    // network route [legacy <uid>] remove <netId> <interface> <destination> [nexthop|"unreachable"]
+    //    0      1      2      3      4       5         6            7           8
+    // network route [legacy <uid>]  add   <netId> <interface> <destination> [nexthop]
+    // network route [legacy <uid>] remove <netId> <interface> <destination> [nexthop]
+    //
+    // nexthop may be either an IPv4/IPv6 address or one of "unreachable" or "throw".
     if (!strcmp(argv[1], "route")) {
         if (argc < 6 || argc > 9) {
             return syntaxError(client, "Incorrect number of arguments");
