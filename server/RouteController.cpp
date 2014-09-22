@@ -367,6 +367,10 @@ WARN_UNUSED_RESULT int modifyIpRoute(uint16_t action, uint32_t table, const char
         // unreachable routes, so nuke them. (IPv6 allows them to be specified; IPv4 doesn't.)
         interface = OIF_NONE;
         nexthop = NULL;
+    } else if (nexthop && !strcmp(nexthop, "throw")) {
+        type = RTN_THROW;
+        interface = OIF_NONE;
+        nexthop = NULL;
     } else {
         // If an interface was specified, find the ifindex.
         if (interface != OIF_NONE) {

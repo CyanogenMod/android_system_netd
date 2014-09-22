@@ -75,7 +75,7 @@ public:
     int removeUsersFromNetwork(unsigned netId, const UidRanges& uidRanges) WARN_UNUSED_RESULT;
 
     // |nexthop| can be NULL (to indicate a directly-connected route), "unreachable" (to indicate a
-    // route that's blocked) or a regular IP address.
+    // route that's blocked), "throw" (to indicate the lack of a match), or a regular IP address.
     //
     // Routes are added to tables determined by the interface, so only |interface| is actually used.
     // |netId| is given only to sanity check that the interface has the correct netId.
