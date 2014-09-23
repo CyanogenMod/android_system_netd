@@ -67,7 +67,7 @@ public:
                                                  Permission permission) WARN_UNUSED_RESULT;
 
     // |nexthop| can be NULL (to indicate a directly-connected route), "unreachable" (to indicate a
-    // route that's blocked) or a regular IP address.
+    // route that's blocked), "throw" (to indicate the lack of a match), or a regular IP address.
     static int addRoute(const char* interface, const char* destination, const char* nexthop,
                         TableType tableType) WARN_UNUSED_RESULT;
     static int removeRoute(const char* interface, const char* destination, const char* nexthop,
