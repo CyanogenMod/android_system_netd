@@ -83,12 +83,25 @@ int NatController::setupIptablesHooks() {
 
     struct CommandsAndArgs defaultCommands[] = {
         /*
-         * Chain for tethering counters.
+         * First chain is for tethering counters.
          * This chain is reached via --goto, and then RETURNS.
+         *
+         * Second chain is used to limit downstream mss to the upstream pmtu
+         * so we don't end up fragmenting every large packet tethered devices
+         * send.  Note this feature requires kernel support with flag
+         * CONFIG_NETFILTER_XT_TARGET_TCPMSS=y, which not all builds will have,
+         * so the final rule is allowed to fail.
+         * Bug 17629786 asks to make the failure more obvious, or even fatal
+         * so that all builds eventually gain the performance improvement.
          */
         {{IPTABLES_PATH, "-F", LOCAL_TETHER_COUNTERS_CHAIN,}, 0},
         {{IPTABLES_PATH, "-X", LOCAL_TETHER_COUNTERS_CHAIN,}, 0},
         {{IPTABLES_PATH, "-N", LOCAL_TETHER_COUNTERS_CHAIN,}, 1},
+        {{IPTABLES_PATH, "-t", "mangle", "-F", LOCAL_FORWARD,}, 0},
+        {{IPTABLES_PATH, "-t", "mangle", "-X", LOCAL_FORWARD,}, 0},
+        {{IPTABLES_PATH, "-t", "mangle", "-N", LOCAL_FORWARD,}, 1},
+        {{IPTABLES_PATH, "-t", "mangle", "-A", LOCAL_FORWARD, "-p", "tcp", "--tcp-flags",
+                "SYN", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"}, 0},
     };
     for (unsigned int cmdNum = 0; cmdNum < ARRAY_SIZE(defaultCommands); cmdNum++) {
         if (runCmd(ARRAY_SIZE(defaultCommands[cmdNum].cmd), defaultCommands[cmdNum].cmd) &&
