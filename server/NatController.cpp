@@ -36,6 +36,7 @@
 #include "RouteController.h"
 
 const char* NatController::LOCAL_FORWARD = "natctrl_FORWARD";
+const char* NatController::LOCAL_MANGLE_FORWARD = "natctrl_mangle_FORWARD";
 const char* NatController::LOCAL_NAT_POSTROUTING = "natctrl_nat_POSTROUTING";
 const char* NatController::LOCAL_TETHER_COUNTERS_CHAIN = "natctrl_tether_counters";
 
@@ -97,10 +98,7 @@ int NatController::setupIptablesHooks() {
         {{IPTABLES_PATH, "-F", LOCAL_TETHER_COUNTERS_CHAIN,}, 0},
         {{IPTABLES_PATH, "-X", LOCAL_TETHER_COUNTERS_CHAIN,}, 0},
         {{IPTABLES_PATH, "-N", LOCAL_TETHER_COUNTERS_CHAIN,}, 1},
-        {{IPTABLES_PATH, "-t", "mangle", "-F", LOCAL_FORWARD,}, 0},
-        {{IPTABLES_PATH, "-t", "mangle", "-X", LOCAL_FORWARD,}, 0},
-        {{IPTABLES_PATH, "-t", "mangle", "-N", LOCAL_FORWARD,}, 1},
-        {{IPTABLES_PATH, "-t", "mangle", "-A", LOCAL_FORWARD, "-p", "tcp", "--tcp-flags",
+        {{IPTABLES_PATH, "-t", "mangle", "-A", LOCAL_MANGLE_FORWARD, "-p", "tcp", "--tcp-flags",
                 "SYN", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"}, 0},
     };
     for (unsigned int cmdNum = 0; cmdNum < ARRAY_SIZE(defaultCommands); cmdNum++) {
