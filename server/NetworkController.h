@@ -67,7 +67,7 @@ public:
 
     Permission getPermissionForUser(uid_t uid) const;
     void setPermissionForUsers(Permission permission, const std::vector<uid_t>& uids);
-    bool canUserSelectNetwork(uid_t uid, unsigned netId) const;
+    int checkUserNetworkAccess(uid_t uid, unsigned netId) const;
     int setPermissionForNetworks(Permission permission,
                                  const std::vector<unsigned>& netIds) WARN_UNUSED_RESULT;
 
@@ -93,7 +93,7 @@ private:
     Network* getNetworkLocked(unsigned netId) const;
     VirtualNetwork* getVirtualNetworkForUserLocked(uid_t uid) const;
     Permission getPermissionForUserLocked(uid_t uid) const;
-    bool canUserSelectNetworkLocked(uid_t uid, unsigned netId) const;
+    int checkUserNetworkAccessLocked(uid_t uid, unsigned netId) const;
 
     int modifyRoute(unsigned netId, const char* interface, const char* destination,
                     const char* nexthop, bool add, bool legacy, uid_t uid) WARN_UNUSED_RESULT;
