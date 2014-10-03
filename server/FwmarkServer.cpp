@@ -151,11 +151,13 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
                 fwmark.explicitlySelected = false;
                 fwmark.protectedFromVpn = false;
                 permission = PERMISSION_NONE;
-            } else if (mNetworkController->canUserSelectNetwork(client->getUid(), command.netId)) {
+            } else {
+                if (int ret = mNetworkController->checkUserNetworkAccess(client->getUid(),
+                                                                         command.netId)) {
+                    return ret;
+                }
                 fwmark.explicitlySelected = true;
                 fwmark.protectedFromVpn = mNetworkController->canProtect(client->getUid());
-            } else {
-                return -EPERM;
             }
             break;
         }
