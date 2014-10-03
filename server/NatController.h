@@ -31,6 +31,7 @@ public:
     int setupIptablesHooks();
 
     static const char* LOCAL_FORWARD;
+    static const char* LOCAL_MANGLE_FORWARD;
     static const char* LOCAL_NAT_POSTROUTING;
     static const char* LOCAL_TETHER_COUNTERS_CHAIN;
 
