@@ -132,6 +132,11 @@ static const char* MANGLE_POSTROUTING[] = {
         NULL,
 };
 
+static const char* MANGLE_FORWARD[] = {
+        NatController::LOCAL_MANGLE_FORWARD,
+        NULL,
+};
+
 static const char* NAT_PREROUTING[] = {
         OEM_IPTABLES_NAT_PREROUTING,
         NULL,
@@ -217,6 +222,7 @@ CommandListener::CommandListener() :
     createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT);
     createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING);
     createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING);
+    createChildChains(V4, "mangle", "FORWARD", MANGLE_FORWARD);
     createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING);
     createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING);
 
