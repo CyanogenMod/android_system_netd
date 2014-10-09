@@ -496,6 +496,10 @@ MDnsSdListener::Monitor::Monitor() {
     mHead = NULL;
     pthread_mutex_init(&mHeadMutex, NULL);
     socketpair(AF_LOCAL, SOCK_STREAM, 0, mCtrlSocketPair);
+    mLiveCount = 0;
+    mPollFds = NULL;
+    mPollRefs = NULL;
+    mPollSize = 10;
     pthread_create(&mThread, NULL, MDnsSdListener::Monitor::threadStart, this);
     pthread_detach(mThread);
 }
