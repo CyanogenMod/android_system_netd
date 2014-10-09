@@ -31,6 +31,7 @@ class InterfaceController {
 	void setOnAllInterfaces(const char* filename, const char* value);
 	void setAcceptRA(const char* value);
 	void setAcceptRARouteTable(int tableOrOffset);
+	void setIPv6OptimisticMode(const char *value);
 };
 
 #endif
