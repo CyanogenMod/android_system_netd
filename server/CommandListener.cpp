@@ -730,7 +730,7 @@ int CommandListener::V6RtrAdvCmd::runCommand(SocketClient *cli,
         if (!strcmp(argv[1], "start")) {
             int num_ifaces = argc - 2;
             int arg_index = 2;
-            rc = sTetherCtrl->startV6RtrAdv(num_ifaces, &argv[arg_index]);
+            rc = sTetherCtrl->startV6RtrAdv(num_ifaces, &argv[arg_index], INVALID_TABLE_NUMBER);
         } else if (!strcmp(argv[1], "interface")) {
             if (!strcmp(argv[2], "add")) {
                 rc = sTetherCtrl->tetherInterface(argv[3]);

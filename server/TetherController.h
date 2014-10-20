@@ -21,6 +21,8 @@
 
 #include "List.h"
 
+#define INVALID_TABLE_NUMBER -1
+
 typedef android::netd::List<char *> InterfaceCollection;
 typedef android::netd::List<struct in_addr> NetAddressCollection;
 
@@ -54,16 +56,16 @@ public:
     int tetherInterface(const char *interface);
     int untetherInterface(const char *interface);
     InterfaceCollection *getTetheredInterfaceList();
-    int startV6RtrAdv(int num_ifaces, char **ifaces);
+    int startV6RtrAdv(int num_ifaces, char **ifaces, int table_number);
     int stopV6RtrAdv();
     bool isV6RtrAdvStarted();
-    int addV6RtrAdvIface(const char *iface);
-    int removeV6RtrAdvIface(const char *iface);
+    int configureV6RtrAdv();
     int addUpstreamInterface(char *iface);
     int removeUpstreamInterface(char *iface);
 
 private:
     int applyDnsInterfaces();
+    int getIfaceIndexForIface(const char *iface);
 };
 
 #endif

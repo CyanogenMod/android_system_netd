@@ -49,7 +49,19 @@
 #define IP6_CFG_ALL_FORWARDING      "/proc/sys/net/ipv6/conf/all/forwarding"
 #define IP6_IFACE_CFG_ACCEPT_RA     "/proc/sys/net/ipv6/conf/%s/accept_ra"
 #define PROC_PATH_SIZE              255
+#define RTRADVDAEMON_MIN_IFACES     2
+#define MAX_TABLE_LEN               11
+#define MIN_TABLE_NUMBER            0
+#define IP_ADDR                     "ip addr"
+#define BASE_TABLE_NUMBER           1000
+#define IF_INDEX_PATH               "/sys/class/net/%s/ifindex"
+#define SYS_PATH_SIZE               PROC_PATH_SIZE
 
+/* This is the number of arguments for RTRADVDAEMON which accounts for the
+ * location of the daemon, the table name option, the name of the table
+ * and a final empty string
+ */
+#define RTRADVDAEMON_ARGS_COUNT     4
 
 TetherController::TetherController() {
     mInterfaces = new InterfaceCollection();
@@ -247,12 +259,12 @@ bool TetherController::isTetheringStarted() {
     return (mDaemonPid == 0 ? false : true);
 }
 
-int TetherController::startV6RtrAdv(int num_ifaces, char **ifaces) {
+int TetherController::startV6RtrAdv(int num_ifaces, char **ifaces, int table_number) {
     int pid;
     int num_processed_args = 1;
     gid_t groups [] = { AID_NET_ADMIN, AID_NET_RAW, AID_INET };
 
-    if (num_ifaces < 2) {
+    if (num_ifaces < RTRADVDAEMON_MIN_IFACES) {
         ALOGD("Need atleast two interfaces to start Router advertisement daemon");
         return 0;
     }
@@ -265,16 +277,32 @@ int TetherController::startV6RtrAdv(int num_ifaces, char **ifaces) {
         char **args;
         const char *cmd = RTRADVDAEMON;
 
-        args = (char **)calloc(num_ifaces * 3 + 2, sizeof(char *));
-
-        args[0] = strdup(RTRADVDAEMON);
-        for (int i=0; i < num_ifaces; i++) {
-            int aidx = 3 * i + num_processed_args;
-            args[aidx] = (char *)"-i";
-            args[aidx + 1] = ifaces[i];
-            args[aidx + 2] = (char *)"-x";
+        args = (char **)calloc(num_ifaces * 3 + RTRADVDAEMON_ARGS_COUNT, sizeof(char *));
+        if (!args) {
+          ALOGE("%s: failed to allocate memory", __func__);
+          return -1;
         }
 
+        args[0] = strdup(RTRADVDAEMON);
+        int aidx = 0;
+        for (int i=0; i < num_ifaces; i++) {
+            aidx = 3 * i + num_processed_args;
+            args[aidx++] = (char *)"-i";
+            args[aidx++] = ifaces[i];
+            args[aidx++] = (char *)"-x";
+        }
+        if (table_number > MIN_TABLE_NUMBER) {
+          char table_name[MAX_TABLE_LEN];
+          unsigned int retval =  0;
+          table_number += BASE_TABLE_NUMBER;
+          retval = snprintf(table_name, sizeof(table_name), "%d", table_number);
+          if (retval >= sizeof(table_name)) {
+            ALOGE("%s: String truncation occured", __func__);
+          } else {
+            args[aidx++] = (char *)"-t";
+            args[aidx] = table_name;
+          }
+        }
 
         setgroups(sizeof(groups)/sizeof(groups[0]), groups);
         setresgid(AID_RADIO, AID_RADIO, AID_RADIO);
@@ -306,15 +334,59 @@ int TetherController::stopV6RtrAdv() {
     return 0;
 }
 
-int TetherController::addV6RtrAdvIface(const char *iface) {
+int TetherController::getIfaceIndexForIface(const char *iface)
+{
+   FILE *fp = NULL;
+   char res[MAX_TABLE_LEN];
+   int iface_num = -1;
+   char if_index[SYS_PATH_SIZE];
+   unsigned int retval = 0;
+   if (iface == NULL)
+   {
+     ALOGE("%s() Interface is NULL", __func__);
+     return iface_num;
+   }
+
+   memset(if_index, 0, sizeof(if_index));
+   retval = snprintf(if_index, sizeof(if_index), IF_INDEX_PATH, iface);
+   if (retval >= sizeof(if_index)) {
+     ALOGE("%s() String truncation occurred", __func__);
+     return iface_num;
+   }
+
+   ALOGD("%s() File path is %s", __func__, if_index);
+   fp = fopen(if_index, "r");
+   if (fp == NULL)
+   {
+     ALOGE("%s() Cannot read file : path %s, error %s", __func__, if_index, strerror(errno));
+     return iface_num;
+   }
+
+   memset(res, 0, sizeof(res));
+   while (fgets(res, sizeof(res)-1, fp) != NULL)
+   {
+      ALOGD("%s() %s", __func__, res);
+      iface_num = atoi(res);
+      ALOGD("%s() Interface index for interface %s is %d", __func__, iface, iface_num);
+   }
+
+   fclose(fp);
+   return iface_num;
+}
+
+/* Stop and start the ipv6 router advertisement daemon with the updated
+ * interfaces. Pass the table number as a command line argument when
+ * tethering is enabled.
+ */
+int TetherController::configureV6RtrAdv() {
     char **args;
     int i;
     int len;
     InterfaceCollection::iterator it;
+    int iface_index = -1;
     /* For now, just stop and start the daemon with the new interface list */
 
     len = mInterfaces->size() + mUpstreamInterfaces->size();
-    ALOGD("addV6RtrAdvIface: len = %d. Iface: %s\n", len, iface);
     args = (char **)calloc(len, sizeof(char *));
 
     if (!args) {
@@ -326,24 +398,21 @@ int TetherController::addV6RtrAdvIface(const char *iface) {
         args[i] = *it;
     }
 
-    for (it = mUpstreamInterfaces->begin(); i < len && it != mUpstreamInterfaces->end(); it++, i++) {
+    for (it = mUpstreamInterfaces->begin(); i < len && it != mUpstreamInterfaces->end(); it++, i++)
+    {
         args[i] = *it;
+        iface_index = getIfaceIndexForIface(args[i]);
+        ALOGD("%s: Upstream Iface: %s iface index: %d", __func__, args[i], iface_index);
     }
 
     stopV6RtrAdv();
-    startV6RtrAdv(i, args);
+    startV6RtrAdv(i, args, iface_index);
 
     free(args);
 
     return 0;
 }
 
-int TetherController::removeV6RtrAdvIface(const char *iface) {
-    /* For now, just call addV6RtrAdvIface, since that will stop and
-     * start the daemon with the updated interfaces
-     */
-    return addV6RtrAdvIface(iface);
-}
 bool TetherController::isV6RtrAdvStarted() {
     return (mRtrAdvPid == 0 ? false : true);
 }
@@ -421,7 +490,7 @@ int TetherController::addUpstreamInterface(char *iface)
     }
     mUpstreamInterfaces->push_back(strdup(iface));
 
-    return addV6RtrAdvIface(iface);
+    return configureV6RtrAdv();
 }
 
 int TetherController::removeUpstreamInterface(char *iface)
@@ -436,7 +505,7 @@ int TetherController::removeUpstreamInterface(char *iface)
         if (*it && !strcmp(iface, *it)) {
             free(*it);
             mUpstreamInterfaces->erase(it);
-            return removeV6RtrAdvIface(iface);
+            return configureV6RtrAdv();
         }
     }
 
@@ -486,7 +555,7 @@ int TetherController::tetherInterface(const char *interface) {
     }
     mInterfaces->push_back(strdup(interface));
 
-    addV6RtrAdvIface(interface);
+    configureV6RtrAdv();
 
     if (applyDnsInterfaces()) {
         InterfaceCollection::iterator it;
@@ -512,7 +581,7 @@ int TetherController::untetherInterface(const char *interface) {
         if (!strcmp(interface, *it)) {
             free(*it);
             mInterfaces->erase(it);
-            removeV6RtrAdvIface(NULL);
+            configureV6RtrAdv();
             return applyDnsInterfaces();
         }
     }
