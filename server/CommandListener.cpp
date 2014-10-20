@@ -1318,26 +1318,21 @@ CommandListener::ClatdCmd::ClatdCmd() : NetdCommand("clatd") {
 int CommandListener::ClatdCmd::runCommand(SocketClient *cli, int argc,
                                                             char **argv) {
     int rc = 0;
-    if (argc < 2) {
+    if (argc < 3) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
         return 0;
     }
 
-    if(!strcmp(argv[1], "stop")) {
-        rc = sClatdCtrl->stopClatd();
+    if (!strcmp(argv[1], "stop")) {
+        rc = sClatdCtrl->stopClatd(argv[2]);
     } else if (!strcmp(argv[1], "status")) {
         char *tmp = NULL;
-
-        asprintf(&tmp, "Clatd status: %s", (sClatdCtrl->isClatdStarted() ?
-                                                        "started" : "stopped"));
+        asprintf(&tmp, "Clatd status: %s", (sClatdCtrl->isClatdStarted(argv[2]) ?
+                                            "started" : "stopped"));
         cli->sendMsg(ResponseCode::ClatdStatusResult, tmp, false);
         free(tmp);
         return 0;
-    } else if(!strcmp(argv[1], "start")) {
-        if (argc < 3) {
-            cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-            return 0;
-        }
+    } else if (!strcmp(argv[1], "start")) {
         rc = sClatdCtrl->startClatd(argv[2]);
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown clatd cmd", false);

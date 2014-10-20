@@ -17,6 +17,8 @@
 #ifndef _CLATD_CONTROLLER_H
 #define _CLATD_CONTROLLER_H
 
+#include <map>
+
 class NetworkController;
 
 class ClatdController {
@@ -25,12 +27,13 @@ public:
     virtual ~ClatdController();
 
     int startClatd(char *interface);
-    int stopClatd();
-    bool isClatdStarted();
+    int stopClatd(char* interface);
+    bool isClatdStarted(char* interface);
 
 private:
     NetworkController* const mNetCtrl;
-    pid_t mClatdPid;
+    std::map<std::string, pid_t> mClatdPids;
+    pid_t getClatdPid(char* interface);
 };
 
 #endif
