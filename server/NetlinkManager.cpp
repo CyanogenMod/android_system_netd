@@ -30,10 +30,24 @@
 
 #include <cutils/log.h>
 
+#include <netlink/attr.h>
+#include <netlink/genl/genl.h>
+#include <netlink/handlers.h>
+#include <netlink/msg.h>
+
+#include <linux/netfilter/nfnetlink.h>
+#include <linux/netfilter/nfnetlink_log.h>
+#include <linux/netfilter/nfnetlink_compat.h>
+
+#include <arpa/inet.h>
+
 #include "NetlinkManager.h"
 #include "NetlinkHandler.h"
 
+#include "pcap-netfilter-linux-android.h"
+
 const int NetlinkManager::NFLOG_QUOTA_GROUP = 1;
+const int NetlinkManager::NETFILTER_STRICT_GROUP = 2;
 
 NetlinkManager *NetlinkManager::sInstance = NULL;
 
@@ -112,9 +126,25 @@ int NetlinkManager::start() {
     }
 
     if ((mQuotaHandler = setupSocket(&mQuotaSock, NETLINK_NFLOG,
-        NFLOG_QUOTA_GROUP, NetlinkListener::NETLINK_FORMAT_BINARY)) == NULL) {
-        ALOGE("Unable to open quota2 logging socket");
+            NFLOG_QUOTA_GROUP, NetlinkListener::NETLINK_FORMAT_BINARY)) == NULL) {
+        ALOGE("Unable to open quota socket");
         // TODO: return -1 once the emulator gets a new kernel.
+    }
+
+    if ((mStrictHandler = setupSocket(&mStrictSock, NETLINK_NETFILTER,
+            0, NetlinkListener::NETLINK_FORMAT_BINARY_UNICAST)) == NULL) {
+        ALOGE("Unable to open strict socket");
+        // TODO: return -1 once the emulator gets a new kernel.
+    } else {
+        if (android_nflog_send_config_cmd(mStrictSock, 0, NFULNL_CFG_CMD_PF_UNBIND, AF_INET) < 0) {
+            ALOGE("Failed NFULNL_CFG_CMD_PF_UNBIND: %s", strerror(errno));
+        }
+        if (android_nflog_send_config_cmd(mStrictSock, 0, NFULNL_CFG_CMD_PF_BIND, AF_INET) < 0) {
+            ALOGE("Failed NFULNL_CFG_CMD_PF_BIND: %s", strerror(errno));
+        }
+        if (android_nflog_send_config_cmd(mStrictSock, 0, NFULNL_CFG_CMD_BIND, AF_UNSPEC) < 0) {
+            ALOGE("Failed NFULNL_CFG_CMD_BIND: %s", strerror(errno));
+        }
     }
 
     return 0;
@@ -156,6 +186,19 @@ int NetlinkManager::stop() {
 
         close(mQuotaSock);
         mQuotaSock = -1;
+    }
+
+    if (mStrictHandler) {
+        if (mStrictHandler->stop()) {
+            ALOGE("Unable to stop strict NetlinkHandler: %s", strerror(errno));
+            status = -1;
+        }
+
+        delete mStrictHandler;
+        mStrictHandler = NULL;
+
+        close(mStrictSock);
+        mStrictSock = -1;
     }
 
     return status;

@@ -109,6 +109,11 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
         const char *iface = evt->findParam("INTERFACE");
         notifyQuotaLimitReached(alertName, iface);
 
+    } else if (!strcmp(subsys, "strict")) {
+        const char *uid = evt->findParam("UID");
+        const char *hex = evt->findParam("HEX");
+        notifyStrictCleartext(uid, hex);
+
     } else if (!strcmp(subsys, "xt_idletimer")) {
         const char *label = evt->findParam("INTERFACE");
         const char *state = evt->findParam("STATE");
@@ -195,4 +200,8 @@ void NetlinkHandler::notifyRouteChange(int action, const char *route,
            gateway,
            *iface ? " dev " : "",
            iface);
+}
+
+void NetlinkHandler::notifyStrictCleartext(const char* uid, const char* hex) {
+    notify(ResponseCode::StrictCleartext, "%s %s", uid, hex);
 }
