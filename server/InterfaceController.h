@@ -23,6 +23,7 @@ class InterfaceController {
 	virtual ~InterfaceController();
 	int setEnableIPv6(const char *interface, const int on);
 	int setIPv6PrivacyExtensions(const char *interface, const int on);
+	int setIPv6NdOffload(char* interface, const int on);
 	int setMtu(const char *interface, const char *mtu);
 
  private:
