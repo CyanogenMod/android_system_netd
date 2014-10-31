@@ -444,6 +444,21 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                         "Failed to change IPv6 state", true);
             }
             return 0;
+        } else if (!strcmp(argv[1], "ipv6ndoffload")) {
+            if (argc != 4) {
+                cli->sendMsg(ResponseCode::CommandSyntaxError,
+                        "Usage: interface ipv6ndoffload <interface> <enable|disable>",
+                        false);
+                return 0;
+            }
+            int enable = !strncmp(argv[3], "enable", 7);
+            if (sInterfaceCtrl->setIPv6NdOffload(argv[2], enable) == 0) {
+                cli->sendMsg(ResponseCode::CommandOkay, "IPv6 ND offload changed", false);
+            } else {
+                cli->sendMsg(ResponseCode::OperationFailed,
+                        "Failed to change IPv6 ND offload state", true);
+            }
+            return 0;
         } else if (!strcmp(argv[1], "setmtu")) {
             if (argc != 4) {
                 cli->sendMsg(ResponseCode::CommandSyntaxError,
