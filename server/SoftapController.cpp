@@ -42,100 +42,14 @@
 
 #include "SoftapController.h"
 
-#ifdef LIBWPA_CLIENT_EXISTS
-#include <dirent.h>
-#include "wpa_ctrl.h"
-#endif
-
 static const char HOSTAPD_CONF_FILE[]    = "/data/misc/wifi/hostapd.conf";
 static const char HOSTAPD_BIN_FILE[]    = "/system/bin/hostapd";
-#ifdef LIBWPA_CLIENT_EXISTS
-static const char HOSTAPD_UNIX_FILE[]    = "/data/misc/wifi/hostapd/wlan0";
-static const char HOSTAPD_SOCKETS_DIR[]    = "/data/misc/wifi/sockets";
-static const char HOSTAPD_DHCP_DIR[]    = "/data/misc/dhcp";
-#endif
 
-SoftapController::SoftapController(SocketListener *sl)
-    : mPid(0) {
-    mSpsl = sl;
-}
+SoftapController::SoftapController()
+    : mPid(0) {}
 
 SoftapController::~SoftapController() {
 }
-
-#ifdef LIBWPA_CLIENT_EXISTS
-void *SoftapController::threadStart(void *obj){
-    SoftapController *me = reinterpret_cast<SoftapController *>(obj);
-    struct wpa_ctrl *ctrl;
-    int count = 0;
-
-    ALOGE("SoftapController::threadStart...");
-
-    DIR *dir=NULL;
-
-    dir = opendir(HOSTAPD_SOCKETS_DIR);
-    if(NULL == dir){
-        mkdir(HOSTAPD_SOCKETS_DIR, S_IRWXU|S_IRWXG|S_IRWXO);
-        chown(HOSTAPD_SOCKETS_DIR, AID_WIFI, AID_WIFI);
-    }else{
-        closedir(dir);
-    }
-
-    chmod(HOSTAPD_DHCP_DIR, S_IRWXU|S_IRWXG|S_IRWXO);
-
-    ctrl = wpa_ctrl_open(HOSTAPD_UNIX_FILE);
-    while ( ctrl == NULL ){
-        /*
-         * thread is used to receive sta connected msg from hostapd
-         * through wap_ctrl interface, when thread is starting up,
-         * it's possible that hostpd has sta connected to it, so
-         * decrease sleep time to 10ms to lower the ratio that
-         * miss the msg from hostapd
-         */
-        usleep(20000);
-        ctrl = wpa_ctrl_open(HOSTAPD_UNIX_FILE);
-        if (ctrl != NULL || count >= 150)
-            break;
-        count++;
-    }
-    if (count == 150 && ctrl == NULL){
-        ALOGE("Connection to hostapd Error.");
-        return NULL;
-    }
-
-    if (wpa_ctrl_attach(ctrl) !=0 ){
-        wpa_ctrl_close(ctrl);
-        ALOGE("Attach to hostapd Error.");
-        return NULL;
-    }
-
-    while(me->mHostapdFlag) {
-        int res = 0;
-        char buf[256];
-        char dest_str[300];
-        while (wpa_ctrl_pending(ctrl)) {
-            size_t len = sizeof(buf) - 1;
-            res = wpa_ctrl_recv(ctrl, buf, &len);
-            if (res == 0) {
-                buf[len] = '\0';
-                ALOGD("Get event from hostapd (%s)", buf);
-                memset(dest_str, 0x0, sizeof(dest_str));
-                snprintf(dest_str, sizeof(dest_str), "IfaceMessage active %s", buf);
-                me->mSpsl->sendBroadcast(ResponseCode::InterfaceMessage, dest_str, false);
-            }else
-                break;
-        }
-        if(res < 0)
-        break;
-        sleep(2);
-    }
-
-    wpa_ctrl_detach(ctrl);
-    wpa_ctrl_close(ctrl);
-
-    return NULL;
-}
-#endif
 
 int SoftapController::startSoftap() {
     pid_t pid = 1;
@@ -167,12 +81,6 @@ int SoftapController::startSoftap() {
         mPid = pid;
         ALOGD("SoftAP started successfully");
         usleep(AP_BSS_START_DELAY);
-#ifdef LIBWPA_CLIENT_EXISTS
-        mHostapdFlag = 1;
-        if((mThreadErr = pthread_create(&mThread,NULL,SoftapController::threadStart,this)) != 0){
-            ALOGE("pthread_create failed for hostapd listen socket (%s)", strerror(errno));
-        }
-#endif
     }
     return ResponseCode::SoftapStatusResult;
 }
@@ -183,13 +91,6 @@ int SoftapController::stopSoftap() {
         ALOGE("SoftAP is not running");
         return ResponseCode::SoftapStatusResult;
     }
-
-#ifdef LIBWPA_CLIENT_EXISTS
-    mHostapdFlag = 0;
-    if(mThreadErr == 0){
-        pthread_join(mThread, NULL);
-    }
-#endif
 
     ALOGD("Stopping the SoftAP service...");
     kill(mPid, SIGTERM);
