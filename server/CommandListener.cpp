@@ -54,10 +54,10 @@ namespace {
 const unsigned NUM_OEM_IDS = NetworkController::MAX_OEM_ID - NetworkController::MIN_OEM_ID + 1;
 
 Permission stringToPermission(const char* arg) {
-    if (!strcmp(arg, "android.permission.CHANGE_NETWORK_STATE")) {
+    if (!strcmp(arg, "NETWORK")) {
         return PERMISSION_NETWORK;
     }
-    if (!strcmp(arg, "android.permission.CONNECTIVITY_INTERNAL")) {
+    if (!strcmp(arg, "SYSTEM")) {
         return PERMISSION_SYSTEM;
     }
     return PERMISSION_NONE;
