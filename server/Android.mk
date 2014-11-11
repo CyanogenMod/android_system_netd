@@ -75,6 +75,12 @@ LOCAL_SRC_FILES := \
         main.cpp \
         oem_iptables_hook.cpp \
 
+ifdef WPA_SUPPLICANT_VERSION
+  LOCAL_CFLAGS += -DLIBWPA_CLIENT_EXISTS
+  LOCAL_SHARED_LIBRARIES += libwpa_client
+  LOCAL_C_INCLUDES += external/wpa_supplicant_8/src/common
+endif
+
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
