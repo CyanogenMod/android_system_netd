@@ -136,20 +136,20 @@ const char *BandwidthController::IPT_CLEANUP_COMMANDS[] = {
 };
 
 const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
-    "-N bw_happy_box",
-    "-N bw_penalty_box",
-    "-N bw_costly_shared",
+    "-w -N bw_happy_box",
+    "-w -N bw_penalty_box",
+    "-w -N bw_costly_shared",
 };
 
 const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
-    "-A bw_INPUT -m owner --socket-exists", /* This is a tracking rule. */
+    "-w -A bw_INPUT -m owner --socket-exists", /* This is a tracking rule. */
 
-    "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
+    "-w -A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
 
-    "-A bw_costly_shared --jump bw_penalty_box",
+    "-w -A bw_costly_shared --jump bw_penalty_box",
 
-    "-t raw -A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
-    "-t mangle -A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
+    "-w -t raw -A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
+    "-w -t mangle -A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
 };
 
 BandwidthController::BandwidthController(void) {
