@@ -85,6 +85,8 @@ int PppController::attachPppd(const char *tty, struct in_addr local,
         char *lr;
 
         asprintf(&lr, "%s:%s", l, r);
+        free(l);
+        free(r);
 
         snprintf(dev, sizeof(dev), "/dev/%s", tty);
 
@@ -94,6 +96,9 @@ int PppController::attachPppd(const char *tty, struct in_addr local,
                   lr, "ms-dns", d1, "ms-dns", d2, "lcp-max-configure", "99999", (char *) NULL)) {
             ALOGE("execl failed (%s)", strerror(errno));
         }
+        free(lr);
+        free(d1);
+        free(d2);
         ALOGE("Should never get here!");
         return 0;
     } else {
