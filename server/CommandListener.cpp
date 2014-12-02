@@ -806,6 +806,14 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
                     "Wrong number of arguments to resolver setnetdns", false);
             return 0;
         }
+    } else if (!strcmp(argv[1], "clearnetdns")) { // "resolver clearnetdns <netId>"
+        if (argc == 3) {
+            rc = sResolverCtrl->clearDnsServers(strtoul(argv[2], NULL, 0));
+        } else {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                    "Wrong number of arguments to resolver clearnetdns", false);
+            return 0;
+        }
     } else if (!strcmp(argv[1], "flushnet")) { // "resolver flushnet <netId>"
         if (argc == 3) {
             rc = sResolverCtrl->flushDnsCache(strtoul(argv[2], NULL, 0));
