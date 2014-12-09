@@ -38,9 +38,6 @@ InterfaceController::InterfaceController() {
 	setAcceptRA("2");
 
 	setAcceptRARouteTable(-RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX);
-
-	// Enable optimistic DAD for IPv6 addresses on all interfaces.
-	setIPv6OptimisticMode("1");
 }
 
 InterfaceController::~InterfaceController() {
@@ -149,9 +146,4 @@ int InterfaceController::setMtu(const char *interface, const char *mtu)
 	int success = writeFile(path, mtu, strlen(mtu));
 	free(path);
 	return success;
-}
-
-void InterfaceController::setIPv6OptimisticMode(const char *value) {
-	setOnAllInterfaces("optimistic_dad", value);
-	setOnAllInterfaces("use_optimistic", value);
 }
