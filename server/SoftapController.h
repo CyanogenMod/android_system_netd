@@ -20,6 +20,8 @@
 #include <linux/in.h>
 #include <net/if.h>
 
+#include <sysutils/SocketListener.h>
+
 #define SOFTAP_MAX_BUFFER_SIZE	4096
 #define AP_BSS_START_DELAY	200000
 #define AP_BSS_STOP_DELAY	500000
@@ -29,7 +31,7 @@
 
 class SoftapController {
 public:
-    SoftapController();
+    SoftapController(SocketListener *sl);
     virtual ~SoftapController();
 
     int startSoftap();
@@ -38,8 +40,17 @@ public:
     int setSoftap(int argc, char *argv[]);
     int fwReloadSoftap(int argc, char *argv[]);
 private:
+    SocketListener *mSpsl;
+#ifdef LIBWPA_CLIENT_EXISTS
+    pthread_t mThread;
+    int mThreadErr;
+    int mHostapdFlag;
+#endif
     pid_t mPid;
     void generatePsk(char *ssid, char *passphrase, char *psk);
+#ifdef LIBWPA_CLIENT_EXISTS
+    static void *threadStart(void *obj);
+#endif
 };
 
 #endif
