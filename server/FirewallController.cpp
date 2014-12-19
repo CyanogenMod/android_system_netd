@@ -45,9 +45,9 @@ int FirewallController::enableFirewall(void) {
     disableFirewall();
 
     // create default rule to drop all traffic
-    res |= execIptables(V4V6, "-A", LOCAL_INPUT, "-j", "DROP", NULL);
-    res |= execIptables(V4V6, "-A", LOCAL_OUTPUT, "-j", "REJECT", NULL);
-    res |= execIptables(V4V6, "-A", LOCAL_FORWARD, "-j", "REJECT", NULL);
+    res |= execIptables(V4V6, "-w", "-A", LOCAL_INPUT, "-j", "DROP", NULL);
+    res |= execIptables(V4V6, "-w", "-A", LOCAL_OUTPUT, "-j", "REJECT", NULL);
+    res |= execIptables(V4V6, "-w", "-A", LOCAL_FORWARD, "-j", "REJECT", NULL);
 
     return res;
 }
@@ -56,9 +56,9 @@ int FirewallController::disableFirewall(void) {
     int res = 0;
 
     // flush any existing rules
-    res |= execIptables(V4V6, "-F", LOCAL_INPUT, NULL);
-    res |= execIptables(V4V6, "-F", LOCAL_OUTPUT, NULL);
-    res |= execIptables(V4V6, "-F", LOCAL_FORWARD, NULL);
+    res |= execIptables(V4V6, "-w", "-F", LOCAL_INPUT, NULL);
+    res |= execIptables(V4V6, "-w", "-F", LOCAL_OUTPUT, NULL);
+    res |= execIptables(V4V6, "-w", "-F", LOCAL_FORWARD, NULL);
 
     return res;
 }
@@ -82,8 +82,8 @@ int FirewallController::setInterfaceRule(const char* iface, FirewallRule rule) {
     }
 
     int res = 0;
-    res |= execIptables(V4V6, op, LOCAL_INPUT, "-i", iface, "-j", "RETURN", NULL);
-    res |= execIptables(V4V6, op, LOCAL_OUTPUT, "-o", iface, "-j", "RETURN", NULL);
+    res |= execIptables(V4V6, "-w", op, LOCAL_INPUT, "-i", iface, "-j", "RETURN", NULL);
+    res |= execIptables(V4V6, "-w", op, LOCAL_OUTPUT, "-o", iface, "-j", "RETURN", NULL);
     return res;
 }
 
@@ -101,8 +101,8 @@ int FirewallController::setEgressSourceRule(const char* addr, FirewallRule rule)
     }
 
     int res = 0;
-    res |= execIptables(target, op, LOCAL_INPUT, "-d", addr, "-j", "RETURN", NULL);
-    res |= execIptables(target, op, LOCAL_OUTPUT, "-s", addr, "-j", "RETURN", NULL);
+    res |= execIptables(target, "-w", op, LOCAL_INPUT, "-d", addr, "-j", "RETURN", NULL);
+    res |= execIptables(target, "-w", op, LOCAL_OUTPUT, "-s", addr, "-j", "RETURN", NULL);
     return res;
 }
 
@@ -127,9 +127,9 @@ int FirewallController::setEgressDestRule(const char* addr, int protocol, int po
     }
 
     int res = 0;
-    res |= execIptables(target, op, LOCAL_INPUT, "-s", addr, "-p", protocolStr,
+    res |= execIptables(target, "-w", op, LOCAL_INPUT, "-s", addr, "-p", protocolStr,
             "--sport", portStr, "-j", "RETURN", NULL);
-    res |= execIptables(target, op, LOCAL_OUTPUT, "-d", addr, "-p", protocolStr,
+    res |= execIptables(target, "-w", op, LOCAL_OUTPUT, "-d", addr, "-p", protocolStr,
             "--dport", portStr, "-j", "RETURN", NULL);
     return res;
 }
@@ -146,9 +146,9 @@ int FirewallController::setUidRule(int uid, FirewallRule rule) {
     }
 
     int res = 0;
-    res |= execIptables(V4V6, op, LOCAL_INPUT, "-m", "owner", "--uid-owner", uidStr,
+    res |= execIptables(V4V6, "-w", op, LOCAL_INPUT, "-m", "owner", "--uid-owner", uidStr,
             "-j", "RETURN", NULL);
-    res |= execIptables(V4V6, op, LOCAL_OUTPUT, "-m", "owner", "--uid-owner", uidStr,
+    res |= execIptables(V4V6, "-w", op, LOCAL_OUTPUT, "-m", "owner", "--uid-owner", uidStr,
             "-j", "RETURN", NULL);
     return res;
 }
