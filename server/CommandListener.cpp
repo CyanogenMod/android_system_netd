@@ -168,11 +168,11 @@ static void createChildChains(IptablesTarget target, const char* table, const ch
         // -N to create the chain
         // -A to append the chain to parent
 
-        execIptablesSilently(target, "-t", table, "-D", parentChain, "-j", *childChain, NULL);
-        execIptablesSilently(target, "-t", table, "-F", *childChain, NULL);
-        execIptablesSilently(target, "-t", table, "-X", *childChain, NULL);
-        execIptables(target, "-t", table, "-N", *childChain, NULL);
-        execIptables(target, "-t", table, "-A", parentChain, "-j", *childChain, NULL);
+        execIptablesSilently(target, "-w", "-t", table, "-D", parentChain, "-j", *childChain, NULL);
+        execIptablesSilently(target, "-w", "-t", table, "-F", *childChain, NULL);
+        execIptablesSilently(target, "-w", "-t", table, "-X", *childChain, NULL);
+        execIptables(target, "-w", "-t", table, "-N", *childChain, NULL);
+        execIptables(target, "-w", "-t", table, "-A", parentChain, "-j", *childChain, NULL);
     } while (*(++childChain) != NULL);
 }
 
