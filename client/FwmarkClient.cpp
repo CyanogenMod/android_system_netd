@@ -16,6 +16,7 @@
 
 #include "FwmarkClient.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/un.h>
