@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 
+#include <ctype.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
-#include <ctype.h>
-#include <net/if.h>
 
 #define LOG_TAG "Netd"
 
