@@ -15,6 +15,7 @@
  */
 
 #include <dirent.h>
+#include <errno.h>
 
 #define LOG_TAG "InterfaceController"
 #include <cutils/log.h>

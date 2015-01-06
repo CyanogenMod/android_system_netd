@@ -16,6 +16,15 @@
 
 #include "RouteController.h"
 
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/fib_rules.h>
+#include <net/if.h>
+#include <sys/stat.h>
+
+#include <map>
+
 #include "Fwmark.h"
 #include "UidRanges.h"
 
@@ -23,13 +32,6 @@
 #include "log/log.h"
 #include "logwrap/logwrap.h"
 #include "resolv_netid.h"
-
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <linux/fib_rules.h>
-#include <map>
-#include <net/if.h>
-#include <sys/stat.h>
 
 namespace {
 
