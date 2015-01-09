@@ -57,6 +57,26 @@ int ClatdController::startClatd(char* interface) {
         return -1;
     }
 
+    // Pass in the interface, a netid to use for DNS lookups, and a fwmark for outgoing packets.
+    unsigned netId = mNetCtrl->getNetworkForInterface(interface);
+    if (netId == NETID_UNSET) {
+        ALOGE("interface %s not assigned to any netId", interface);
+        errno = ENODEV;
+        return -1;
+    }
+
+    char netIdString[UINT32_STRLEN];
+    snprintf(netIdString, sizeof(netIdString), "%u", netId);
+
+    Fwmark fwmark;
+    fwmark.netId = netId;
+    fwmark.explicitlySelected = true;
+    fwmark.protectedFromVpn = true;
+    fwmark.permission = PERMISSION_SYSTEM;
+
+    char fwmarkString[UINT32_HEX_STRLEN];
+    snprintf(fwmarkString, sizeof(fwmarkString), "0x%x", fwmark.intValue);
+
     ALOGD("starting clatd on %s", interface);
 
     std::string progname("clatd-");
@@ -68,26 +88,6 @@ int ClatdController::startClatd(char* interface) {
     }
 
     if (!pid) {
-        // Pass in the interface, a netid to use for DNS lookups, and a fwmark for outgoing packets.
-        unsigned netId = mNetCtrl->getNetworkForInterface(interface);
-        if (netId == NETID_UNSET) {
-            ALOGE("interface %s not assigned to any netId", interface);
-            errno = ENODEV;
-            return -1;
-        }
-
-        char netIdString[UINT32_STRLEN];
-        snprintf(netIdString, sizeof(netIdString), "%u", netId);
-
-        Fwmark fwmark;
-        fwmark.netId = netId;
-        fwmark.explicitlySelected = true;
-        fwmark.protectedFromVpn = true;
-        fwmark.permission = PERMISSION_SYSTEM;
-
-        char fwmarkString[UINT32_HEX_STRLEN];
-        snprintf(fwmarkString, sizeof(fwmarkString), "0x%x", fwmark.intValue);
-
         char *args[] = {
             (char *) progname.c_str(),
             (char *) "-i",
@@ -101,10 +101,10 @@ int ClatdController::startClatd(char* interface) {
 
         if (execv(kClatdPath, args)) {
             ALOGE("execv failed (%s)", strerror(errno));
-            return -1;
+            _exit(1);
         }
         ALOGE("Should never get here!");
-        _exit(0);
+        _exit(1);
     } else {
         mClatdPids[interface] = pid;
         ALOGD("clatd started on %s", interface);
