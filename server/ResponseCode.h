@@ -77,5 +77,6 @@ public:
     static const int InterfaceAddressChange         = 614;
     static const int InterfaceDnsInfo               = 615;
     static const int RouteChange                    = 616;
+    static const int StrictCleartext                = 617;
 };
 #endif
