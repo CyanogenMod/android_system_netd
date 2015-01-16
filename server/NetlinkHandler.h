@@ -46,5 +46,6 @@ protected:
     void notifyInterfaceDnsServers(const char *iface, const char *lifetime,
                                    const char *servers);
     void notifyRouteChange(int action, const char *route, const char *gateway, const char *iface);
+    void notifyStrictCleartext(const char* uid, const char* hex);
 };
 #endif
