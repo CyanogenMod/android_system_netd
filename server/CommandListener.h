@@ -31,6 +31,7 @@
 #include "ResolverController.h"
 #include "FirewallController.h"
 #include "ClatdController.h"
+#include "StrictController.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
@@ -43,6 +44,7 @@ class CommandListener : public FrameworkListener {
     static ResolverController *sResolverCtrl;
     static FirewallController *sFirewallCtrl;
     static ClatdController *sClatdCtrl;
+    static StrictController *sStrictCtrl;
 
 public:
     static NetworkController *sNetCtrl;
@@ -141,6 +143,16 @@ private:
         ClatdCmd();
         virtual ~ClatdCmd() {}
         int runCommand(SocketClient *c, int argc, char ** argv);
+    };
+
+    class StrictCmd : public NetdCommand {
+    public:
+        StrictCmd();
+        virtual ~StrictCmd() {}
+        int runCommand(SocketClient *c, int argc, char ** argv);
+    protected:
+        int sendGenericOkFail(SocketClient *cli, int cond);
+        static StrictPenalty parsePenalty(const char* arg);
     };
 
     class NetworkCommand : public NetdCommand {

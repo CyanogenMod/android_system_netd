@@ -92,6 +92,7 @@ InterfaceController *CommandListener::sInterfaceCtrl = NULL;
 ResolverController *CommandListener::sResolverCtrl = NULL;
 FirewallController *CommandListener::sFirewallCtrl = NULL;
 ClatdController *CommandListener::sClatdCtrl = NULL;
+StrictController *CommandListener::sStrictCtrl = NULL;
 
 /**
  * List of module chains to be created, along with explicit ordering. ORDERING
@@ -116,6 +117,7 @@ static const char* FILTER_FORWARD[] = {
 static const char* FILTER_OUTPUT[] = {
         OEM_IPTABLES_FILTER_OUTPUT,
         FirewallController::LOCAL_OUTPUT,
+        StrictController::LOCAL_OUTPUT,
         BandwidthController::LOCAL_OUTPUT,
         NULL,
 };
@@ -182,6 +184,7 @@ CommandListener::CommandListener() :
     registerCmd(new FirewallCmd());
     registerCmd(new ClatdCmd());
     registerCmd(new NetworkCommand());
+    registerCmd(new StrictCmd());
 
     if (!sNetCtrl)
         sNetCtrl = new NetworkController();
@@ -205,6 +208,8 @@ CommandListener::CommandListener() :
         sInterfaceCtrl = new InterfaceController();
     if (!sClatdCtrl)
         sClatdCtrl = new ClatdController(sNetCtrl);
+    if (!sStrictCtrl)
+        sStrictCtrl = new StrictController();
 
     /*
      * This is the only time we touch top-level chains in iptables; controllers
@@ -1368,6 +1373,76 @@ int CommandListener::ClatdCmd::runCommand(SocketClient *cli, int argc,
         cli->sendMsg(ResponseCode::OperationFailed, "Clatd operation failed", false);
     }
 
+    return 0;
+}
+
+CommandListener::StrictCmd::StrictCmd() :
+    NetdCommand("strict") {
+}
+
+int CommandListener::StrictCmd::sendGenericOkFail(SocketClient *cli, int cond) {
+    if (!cond) {
+        cli->sendMsg(ResponseCode::CommandOkay, "Strict command succeeded", false);
+    } else {
+        cli->sendMsg(ResponseCode::OperationFailed, "Strict command failed", false);
+    }
+    return 0;
+}
+
+StrictPenalty CommandListener::StrictCmd::parsePenalty(const char* arg) {
+    if (!strcmp(arg, "reject")) {
+        return REJECT;
+    } else if (!strcmp(arg, "log")) {
+        return LOG;
+    } else if (!strcmp(arg, "accept")) {
+        return ACCEPT;
+    } else {
+        return INVALID;
+    }
+}
+
+int CommandListener::StrictCmd::runCommand(SocketClient *cli, int argc,
+        char **argv) {
+    if (argc < 2) {
+        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing command", false);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "enable")) {
+        int res = sStrictCtrl->enableStrict();
+        return sendGenericOkFail(cli, res);
+    }
+    if (!strcmp(argv[1], "disable")) {
+        int res = sStrictCtrl->disableStrict();
+        return sendGenericOkFail(cli, res);
+    }
+
+    if (!strcmp(argv[1], "set_uid_cleartext_policy")) {
+        if (argc != 4) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: strict set_uid_cleartext_policy <uid> <accept|log|reject>",
+                         false);
+            return 0;
+        }
+
+        errno = 0;
+        unsigned long int uid = strtoul(argv[2], NULL, 0);
+        if (errno || uid > UID_MAX) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Invalid UID", false);
+            return 0;
+        }
+
+        StrictPenalty penalty = parsePenalty(argv[3]);
+        if (penalty == INVALID) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError, "Invalid penalty argument", false);
+            return 0;
+        }
+
+        int res = sStrictCtrl->setUidCleartextPenalty((uid_t) uid, penalty);
+        return sendGenericOkFail(cli, res);
+    }
+
+    cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown command", false);
     return 0;
 }
 
