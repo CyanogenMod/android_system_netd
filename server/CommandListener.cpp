@@ -797,15 +797,19 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
     int rc = 0;
     const char **argv = const_cast<const char **>(margv);
 
-    if (argc < 2) {
+    if (argc < 3) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Resolver missing arguments", false);
         return 0;
     }
 
+    unsigned netId = stringToNetId(argv[2]);
+    // TODO: Consider making NetworkController.isValidNetwork() public
+    // and making that check here.
+
     if (!strcmp(argv[1], "setnetdns")) {
         // "resolver setnetdns <netId> <domains> <dns1> <dns2> ..."
         if (argc >= 5) {
-            rc = sResolverCtrl->setDnsServers(strtoul(argv[2], NULL, 0), argv[3], &argv[4], argc - 4);
+            rc = sResolverCtrl->setDnsServers(netId, argv[3], &argv[4], argc - 4);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver setnetdns", false);
@@ -813,7 +817,7 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
         }
     } else if (!strcmp(argv[1], "clearnetdns")) { // "resolver clearnetdns <netId>"
         if (argc == 3) {
-            rc = sResolverCtrl->clearDnsServers(strtoul(argv[2], NULL, 0));
+            rc = sResolverCtrl->clearDnsServers(netId);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver clearnetdns", false);
@@ -821,7 +825,7 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
         }
     } else if (!strcmp(argv[1], "flushnet")) { // "resolver flushnet <netId>"
         if (argc == 3) {
-            rc = sResolverCtrl->flushDnsCache(strtoul(argv[2], NULL, 0));
+            rc = sResolverCtrl->flushDnsCache(netId);
         } else {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
                     "Wrong number of arguments to resolver flushnet", false);
@@ -1633,24 +1637,36 @@ int CommandListener::NetworkCommand::runCommand(SocketClient* client, int argc, 
         if (nextArg == argc) {
             return syntaxError(client, "Missing id");
         }
+
+        bool userPermissions = !strcmp(argv[2], "user");
+        bool networkPermissions = !strcmp(argv[2], "network");
+        if (!userPermissions && !networkPermissions) {
+            return syntaxError(client, "Unknown argument");
+        }
+
         std::vector<unsigned> ids;
         for (; nextArg < argc; ++nextArg) {
-            char* endPtr;
-            unsigned id = strtoul(argv[nextArg], &endPtr, 0);
-            if (!*argv[nextArg] || *endPtr) {
-                return syntaxError(client, "Invalid id");
+            if (userPermissions) {
+                char* endPtr;
+                unsigned id = strtoul(argv[nextArg], &endPtr, 0);
+                if (!*argv[nextArg] || *endPtr) {
+                    return syntaxError(client, "Invalid id");
+                }
+                ids.push_back(id);
+            } else {
+                // networkPermissions
+                ids.push_back(stringToNetId(argv[nextArg]));
             }
-            ids.push_back(id);
         }
-        if (!strcmp(argv[2], "user")) {
+        if (userPermissions) {
             sNetCtrl->setPermissionForUsers(permission, ids);
-        } else if (!strcmp(argv[2], "network")) {
+        } else {
+            // networkPermissions
             if (int ret = sNetCtrl->setPermissionForNetworks(permission, ids)) {
                 return operationError(client, "setPermissionForNetworks() failed", ret);
             }
-        } else {
-            return syntaxError(client, "Unknown argument");
         }
+
         return success(client);
     }
 
