@@ -57,6 +57,6 @@ public:
 private:
     NetlinkManager();
     NetlinkHandler* setupSocket(int *sock, int netlinkFamily, int groups,
-        int format);
+        int format, bool configNflog);
 };
 #endif
