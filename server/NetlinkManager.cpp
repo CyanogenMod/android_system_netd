@@ -65,7 +65,7 @@ NetlinkManager::~NetlinkManager() {
 }
 
 NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
-    int groups, int format) {
+    int groups, int format, bool configNflog) {
 
     struct sockaddr_nl nladdr;
     int sz = 64 * 1024;
@@ -99,6 +99,21 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
         return NULL;
     }
 
+    if (configNflog) {
+        if (android_nflog_send_config_cmd(*sock, 0, NFULNL_CFG_CMD_PF_UNBIND, AF_INET) < 0) {
+            ALOGE("Failed NFULNL_CFG_CMD_PF_UNBIND: %s", strerror(errno));
+            return NULL;
+        }
+        if (android_nflog_send_config_cmd(*sock, 0, NFULNL_CFG_CMD_PF_BIND, AF_INET) < 0) {
+            ALOGE("Failed NFULNL_CFG_CMD_PF_BIND: %s", strerror(errno));
+            return NULL;
+        }
+        if (android_nflog_send_config_cmd(*sock, 0, NFULNL_CFG_CMD_BIND, AF_UNSPEC) < 0) {
+            ALOGE("Failed NFULNL_CFG_CMD_BIND: %s", strerror(errno));
+            return NULL;
+        }
+    }
+
     NetlinkHandler *handler = new NetlinkHandler(this, *sock, format);
     if (handler->start()) {
         ALOGE("Unable to start NetlinkHandler: %s", strerror(errno));
@@ -111,7 +126,7 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
 
 int NetlinkManager::start() {
     if ((mUeventHandler = setupSocket(&mUeventSock, NETLINK_KOBJECT_UEVENT,
-         0xffffffff, NetlinkListener::NETLINK_FORMAT_ASCII)) == NULL) {
+         0xffffffff, NetlinkListener::NETLINK_FORMAT_ASCII, false)) == NULL) {
         return -1;
     }
 
@@ -121,30 +136,20 @@ int NetlinkManager::start() {
                                      RTMGRP_IPV6_IFADDR |
                                      RTMGRP_IPV6_ROUTE |
                                      (1 << (RTNLGRP_ND_USEROPT - 1)),
-         NetlinkListener::NETLINK_FORMAT_BINARY)) == NULL) {
+         NetlinkListener::NETLINK_FORMAT_BINARY, false)) == NULL) {
         return -1;
     }
 
     if ((mQuotaHandler = setupSocket(&mQuotaSock, NETLINK_NFLOG,
-            NFLOG_QUOTA_GROUP, NetlinkListener::NETLINK_FORMAT_BINARY)) == NULL) {
+            NFLOG_QUOTA_GROUP, NetlinkListener::NETLINK_FORMAT_BINARY, false)) == NULL) {
         ALOGE("Unable to open quota socket");
         // TODO: return -1 once the emulator gets a new kernel.
     }
 
     if ((mStrictHandler = setupSocket(&mStrictSock, NETLINK_NETFILTER,
-            0, NetlinkListener::NETLINK_FORMAT_BINARY_UNICAST)) == NULL) {
+            0, NetlinkListener::NETLINK_FORMAT_BINARY_UNICAST, true)) == NULL) {
         ALOGE("Unable to open strict socket");
         // TODO: return -1 once the emulator gets a new kernel.
-    } else {
-        if (android_nflog_send_config_cmd(mStrictSock, 0, NFULNL_CFG_CMD_PF_UNBIND, AF_INET) < 0) {
-            ALOGE("Failed NFULNL_CFG_CMD_PF_UNBIND: %s", strerror(errno));
-        }
-        if (android_nflog_send_config_cmd(mStrictSock, 0, NFULNL_CFG_CMD_PF_BIND, AF_INET) < 0) {
-            ALOGE("Failed NFULNL_CFG_CMD_PF_BIND: %s", strerror(errno));
-        }
-        if (android_nflog_send_config_cmd(mStrictSock, 0, NFULNL_CFG_CMD_BIND, AF_UNSPEC) < 0) {
-            ALOGE("Failed NFULNL_CFG_CMD_BIND: %s", strerror(errno));
-        }
     }
 
     return 0;
