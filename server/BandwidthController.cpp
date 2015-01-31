@@ -787,7 +787,7 @@ int BandwidthController::getInterfaceQuota(const char *costName, int64_t *bytes)
         return -1;
 
     asprintf(&fname, "/proc/net/xt_quota/%s", costName);
-    fp = fopen(fname, "r");
+    fp = fopen(fname, "re");
     free(fname);
     if (!fp) {
         ALOGE("Reading quota %s failed (%s)", costName, strerror(errno));
@@ -844,7 +844,7 @@ int BandwidthController::updateQuota(const char *quotaName, int64_t bytes) {
     }
 
     asprintf(&fname, "/proc/net/xt_quota/%s", quotaName);
-    fp = fopen(fname, "w");
+    fp = fopen(fname, "we");
     free(fname);
     if (!fp) {
         ALOGE("Updating quota %s failed (%s)", quotaName, strerror(errno));

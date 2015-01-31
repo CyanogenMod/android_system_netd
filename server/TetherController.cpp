@@ -116,7 +116,7 @@ int TetherController::setIpFwdEnabled(bool enable) {
         return 0;
     }
 
-    int fd = open("/proc/sys/net/ipv4/ip_forward", O_WRONLY);
+    int fd = open("/proc/sys/net/ipv4/ip_forward", O_WRONLY | O_CLOEXEC);
     if (fd < 0) {
         ALOGE("Failed to open ip_forward (%s)", strerror(errno));
         return -1;
@@ -143,7 +143,7 @@ int TetherController::setIpFwdEnabled(bool enable) {
 }
 
 bool TetherController::getIpFwdEnabled() {
-    int fd = open("/proc/sys/net/ipv4/ip_forward", O_RDONLY);
+    int fd = open("/proc/sys/net/ipv4/ip_forward", O_RDONLY | O_CLOEXEC);
 
     if (fd < 0) {
         ALOGE("Failed to open ip_forward (%s)", strerror(errno));

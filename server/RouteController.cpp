@@ -198,7 +198,7 @@ WARN_UNUSED_RESULT int sendNetlinkRequest(uint16_t action, uint16_t flags, iovec
         nlmsgerr err;
     } response;
 
-    int sock = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
+    int sock = socket(AF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, NETLINK_ROUTE);
     if (sock != -1 &&
             connect(sock, reinterpret_cast<const sockaddr*>(&NETLINK_ADDRESS),
                     sizeof(NETLINK_ADDRESS)) != -1 &&

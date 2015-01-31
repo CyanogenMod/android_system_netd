@@ -62,7 +62,7 @@ NetlinkHandler *NetlinkManager::setupSocket(int *sock, int netlinkFamily,
     nladdr.nl_pid = getpid();
     nladdr.nl_groups = groups;
 
-    if ((*sock = socket(PF_NETLINK, SOCK_DGRAM, netlinkFamily)) < 0) {
+    if ((*sock = socket(PF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, netlinkFamily)) < 0) {
         ALOGE("Unable to create netlink socket: %s", strerror(errno));
         return NULL;
     }

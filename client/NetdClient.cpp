@@ -140,9 +140,9 @@ int setNetworkForTarget(unsigned netId, std::atomic_uint* target) {
     // might itself cause another check with the fwmark server, which would be wasteful.
     int socketFd;
     if (libcSocket) {
-        socketFd = libcSocket(AF_INET6, SOCK_DGRAM, 0);
+        socketFd = libcSocket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     } else {
-        socketFd = socket(AF_INET6, SOCK_DGRAM, 0);
+        socketFd = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     }
     if (socketFd < 0) {
         return -errno;
