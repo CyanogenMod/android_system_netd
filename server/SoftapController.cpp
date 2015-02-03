@@ -162,7 +162,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         asprintf(&fbuf, "%s", wbuf);
     }
 
-    fd = open(HOSTAPD_CONF_FILE, O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW, 0660);
+    fd = open(HOSTAPD_CONF_FILE, O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW | O_CLOEXEC, 0660);
     if (fd < 0) {
         ALOGE("Cannot update \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
         free(wbuf);
