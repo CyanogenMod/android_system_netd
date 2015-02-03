@@ -114,7 +114,7 @@ int execIptablesSilently(IptablesTarget target, ...) {
 }
 
 int writeFile(const char *path, const char *value, int size) {
-    int fd = open(path, O_WRONLY);
+    int fd = open(path, O_WRONLY | O_CLOEXEC);
     if (fd < 0) {
         ALOGE("Failed to open %s: %s", path, strerror(errno));
         return -1;
@@ -131,7 +131,7 @@ int writeFile(const char *path, const char *value, int size) {
 
 int readFile(const char *path, char *buf, int *sizep)
 {
-    int fd = open(path, O_RDONLY);
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
     int size;
 
     if (fd < 0) {
