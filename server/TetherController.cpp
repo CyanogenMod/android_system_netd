@@ -30,6 +30,7 @@
 #define LOG_TAG "TetherController"
 #include <cutils/log.h>
 #include <cutils/properties.h>
+#include <utils/file.h>
 
 #include "Fwmark.h"
 #include "NetdConstants.h"
@@ -66,38 +67,22 @@ int TetherController::setIpFwdEnabled(bool enable) {
         return 0;
     }
 
-    int fd = open("/proc/sys/net/ipv4/ip_forward", O_WRONLY | O_CLOEXEC);
-    if (fd < 0) {
-        ALOGE("Failed to open ip_forward (%s)", strerror(errno));
+    if (!android::WriteStringToFile(enable ? "1" : "0", "/proc/sys/net/ipv4/ip_forward")) {
+        ALOGE("Failed to write ip_forward (%s)", strerror(errno));
         return -1;
     }
 
-    if (write(fd, (enable ? "1" : "0"), 1) != 1) {
-        ALOGE("Failed to write ip_forward (%s)", strerror(errno));
-        close(fd);
-        return -1;
-    }
-    close(fd);
     return 0;
 }
 
 bool TetherController::getIpFwdEnabled() {
-    int fd = open("/proc/sys/net/ipv4/ip_forward", O_RDONLY | O_CLOEXEC);
-
-    if (fd < 0) {
-        ALOGE("Failed to open ip_forward (%s)", strerror(errno));
-        return false;
-    }
-
-    char enabled;
-    if (read(fd, &enabled, 1) != 1) {
+    std::string enabled;
+    if (!android::ReadFileToString("/proc/sys/net/ipv4/ip_forward", &enabled)) {
         ALOGE("Failed to read ip_forward (%s)", strerror(errno));
-        close(fd);
         return -1;
     }
 
-    close(fd);
-    return (enabled  == '1' ? true : false);
+    return (enabled == "1" ? true : false);
 }
 
 #define TETHER_START_CONST_ARG        8
