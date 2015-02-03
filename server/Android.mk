@@ -19,7 +19,6 @@ include $(CLEAR_VARS)
 LOCAL_C_INCLUDES := \
         $(call include-path-for, libhardware_legacy)/hardware_legacy \
         bionic/libc/dns/include \
-        external/libcxx/include \
         external/mdnsresponder/mDNSShared \
         system/netd/include \
 
@@ -38,6 +37,7 @@ LOCAL_SHARED_LIBRARIES := \
         libnetutils \
         libnl \
         libsysutils \
+        libutils \
 
 LOCAL_STATIC_LIBRARIES := \
         libpcap \
