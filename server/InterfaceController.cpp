@@ -20,6 +20,7 @@
 
 #define LOG_TAG "InterfaceController"
 #include <cutils/log.h>
+#include <utils/file.h>
 
 #include "InterfaceController.h"
 #include "RouteController.h"
@@ -49,7 +50,7 @@ int InterfaceController::writeIPv6ProcPath(const char *interface, const char *se
 		return -1;
 	}
 	asprintf(&path, "%s/%s/%s", ipv6_proc_path, interface, setting);
-	int success = writeFile(path, value, strlen(value));
+	bool success = android::WriteStringToFile(value, path);
 	free(path);
 	return success;
 }
@@ -119,7 +120,7 @@ int InterfaceController::setMtu(const char *interface, const char *mtu)
 		return -1;
 	}
 	asprintf(&path, "%s/%s/mtu", sys_net_path, interface);
-	int success = writeFile(path, mtu, strlen(mtu));
+	bool success = android::WriteStringToFile(mtu, path);
 	free(path);
 	return success;
 }

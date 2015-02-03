@@ -113,43 +113,6 @@ int execIptablesSilently(IptablesTarget target, ...) {
     return res;
 }
 
-int writeFile(const char *path, const char *value, int size) {
-    int fd = open(path, O_WRONLY | O_CLOEXEC);
-    if (fd < 0) {
-        ALOGE("Failed to open %s: %s", path, strerror(errno));
-        return -1;
-    }
-
-    if (write(fd, value, size) != size) {
-        ALOGE("Failed to write %s: %s", path, strerror(errno));
-        close(fd);
-        return -1;
-    }
-    close(fd);
-    return 0;
-}
-
-int readFile(const char *path, char *buf, int *sizep)
-{
-    int fd = open(path, O_RDONLY | O_CLOEXEC);
-    int size;
-
-    if (fd < 0) {
-        ALOGE("Failed to open %s: %s", path, strerror(errno));
-        return -1;
-    }
-
-    size = read(fd, buf, *sizep);
-    if (size < 0) {
-        ALOGE("Failed to write %s: %s", path, strerror(errno));
-        close(fd);
-        return -1;
-    }
-    *sizep = size;
-    close(fd);
-    return 0;
-}
-
 /*
  * Check an interface name for plausibility. This should e.g. help against
  * directory traversal.
