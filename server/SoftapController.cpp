@@ -37,6 +37,8 @@
 #include <cutils/log.h>
 #include <netutils/ifc.h>
 #include <private/android_filesystem_config.h>
+#include <utils/file.h>
+#include <utils/stringprintf.h>
 #include "wifi.h"
 #include "ResponseCode.h"
 
@@ -112,13 +114,8 @@ bool SoftapController::isSoftapStarted() {
  *  argv[7] - Key
  */
 int SoftapController::setSoftap(int argc, char *argv[]) {
-    char psk_str[2*SHA256_DIGEST_LENGTH+1];
-    int ret = ResponseCode::SoftapStatusResult;
-    int fd;
     int hidden = 0;
     int channel = AP_CHANNEL_DEFAULT;
-    char *wbuf = NULL;
-    char *fbuf = NULL;
 
     if (argc < 5) {
         ALOGE("Softap set is missing arguments. Please use:");
@@ -135,62 +132,42 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
             channel = AP_CHANNEL_DEFAULT;
     }
 
-    asprintf(&wbuf, "interface=%s\ndriver=nl80211\nctrl_interface="
-            "/data/misc/wifi/hostapd\nssid=%s\nchannel=%d\nieee80211n=1\n"
-            "hw_mode=g\nignore_broadcast_ssid=%d\nwowlan_triggers=any\n",
-            argv[2], argv[3], channel, hidden);
+    std::string wbuf(android::StringPrintf("interface=%s\n"
+            "driver=nl80211\n"
+            "ctrl_interface=/data/misc/wifi/hostapd\n"
+            "ssid=%s\n"
+            "channel=%d\n"
+            "ieee80211n=1\n"
+            "hw_mode=g\n"
+            "ignore_broadcast_ssid=%d\n"
+            "wowlan_triggers=any\n",
+            argv[2], argv[3], channel, hidden));
 
+    std::string fbuf;
     if (argc > 7) {
+        char psk_str[2*SHA256_DIGEST_LENGTH+1];
         if (!strcmp(argv[6], "wpa-psk")) {
             generatePsk(argv[3], argv[7], psk_str);
-            asprintf(&fbuf, "%swpa=3\nwpa_pairwise=TKIP CCMP\nwpa_psk=%s\n", wbuf, psk_str);
+            fbuf = android::StringPrintf("%swpa=3\nwpa_pairwise=TKIP CCMP\nwpa_psk=%s\n", wbuf.c_str(), psk_str);
         } else if (!strcmp(argv[6], "wpa2-psk")) {
             generatePsk(argv[3], argv[7], psk_str);
-            asprintf(&fbuf, "%swpa=2\nrsn_pairwise=CCMP\nwpa_psk=%s\n", wbuf, psk_str);
+            fbuf = android::StringPrintf("%swpa=2\nrsn_pairwise=CCMP\nwpa_psk=%s\n", wbuf.c_str(), psk_str);
         } else if (!strcmp(argv[6], "open")) {
-            asprintf(&fbuf, "%s", wbuf);
+            fbuf = wbuf;
         }
     } else if (argc > 6) {
         if (!strcmp(argv[6], "open")) {
-            asprintf(&fbuf, "%s", wbuf);
+            fbuf = wbuf;
         }
     } else {
-        asprintf(&fbuf, "%s", wbuf);
+        fbuf = wbuf;
     }
 
-    fd = open(HOSTAPD_CONF_FILE, O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW | O_CLOEXEC, 0660);
-    if (fd < 0) {
-        ALOGE("Cannot update \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
-        free(wbuf);
-        free(fbuf);
-        return ResponseCode::OperationFailed;
-    }
-    if (write(fd, fbuf, strlen(fbuf)) < 0) {
+    if (!android::WriteStringToFile(fbuf, HOSTAPD_CONF_FILE, 0660, AID_SYSTEM, AID_WIFI)) {
         ALOGE("Cannot write to \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
-        ret = ResponseCode::OperationFailed;
-    }
-    free(wbuf);
-    free(fbuf);
-
-    /* Note: apparently open can fail to set permissions correctly at times */
-    if (fchmod(fd, 0660) < 0) {
-        ALOGE("Error changing permissions of %s to 0660: %s",
-                HOSTAPD_CONF_FILE, strerror(errno));
-        close(fd);
-        unlink(HOSTAPD_CONF_FILE);
         return ResponseCode::OperationFailed;
     }
-
-    if (fchown(fd, AID_SYSTEM, AID_WIFI) < 0) {
-        ALOGE("Error changing group ownership of %s to %d: %s",
-                HOSTAPD_CONF_FILE, AID_WIFI, strerror(errno));
-        close(fd);
-        unlink(HOSTAPD_CONF_FILE);
-        return ResponseCode::OperationFailed;
-    }
-
-    close(fd);
-    return ret;
+    return ResponseCode::SoftapStatusResult;
 }
 
 /*
