@@ -23,6 +23,8 @@
 #include <net/if.h>
 #include <sys/stat.h>
 
+#include <private/android_filesystem_config.h>
+
 #include <map>
 
 #include "Fwmark.h"
@@ -31,6 +33,7 @@
 #define LOG_TAG "Netd"
 #include "log/log.h"
 #include "logwrap/logwrap.h"
+#include "utils/file.h"
 #include "resolv_netid.h"
 
 namespace {
@@ -91,7 +94,6 @@ const bool ACTION_DEL = false;
 const bool MODIFY_NON_UID_BASED_RULES = true;
 
 const char* const RT_TABLES_PATH = "/data/misc/net/rt_tables";
-const int RT_TABLES_FLAGS = O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW | O_CLOEXEC;
 const mode_t RT_TABLES_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;  // mode 0644, rw-r--r--
 
 const unsigned ROUTE_FLUSH_ATTEMPTS = 2;
@@ -162,21 +164,10 @@ void updateTableNamesFile() {
         addTableName(entry.second, entry.first, &contents);
     }
 
-    int fd = open(RT_TABLES_PATH, RT_TABLES_FLAGS, RT_TABLES_MODE);
-    if (fd == -1) {
-        ALOGE("failed to create %s (%s)", RT_TABLES_PATH, strerror(errno));
+    if (!android::WriteStringToFile(contents, RT_TABLES_PATH, RT_TABLES_MODE, AID_SYSTEM, AID_WIFI)) {
+        ALOGE("failed to write to %s (%s)", RT_TABLES_PATH, strerror(errno));
         return;
     }
-    // File creation is affected by umask, so make sure the right mode bits are set.
-    if (fchmod(fd, RT_TABLES_MODE) == -1) {
-        ALOGE("failed to set mode 0%o on %s (%s)", RT_TABLES_MODE, RT_TABLES_PATH, strerror(errno));
-    }
-    ssize_t bytesWritten = write(fd, contents.data(), contents.size());
-    if (bytesWritten != static_cast<ssize_t>(contents.size())) {
-        ALOGE("failed to write to %s (%zd vs %zu bytes) (%s)", RT_TABLES_PATH, bytesWritten,
-              contents.size(), strerror(errno));
-    }
-    close(fd);
 }
 
 // Sends a netlink request and expects an ack.
