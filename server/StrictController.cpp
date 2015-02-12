@@ -24,6 +24,7 @@
 
 #include <cutils/log.h>
 
+#include "ConnmarkFlags.h"
 #include "NetdConstants.h"
 #include "StrictController.h"
 
@@ -37,24 +38,34 @@ StrictController::StrictController(void) {
 }
 
 int StrictController::enableStrict(void) {
+    char connmarkFlagAccept[16];
+    char connmarkFlagReject[16];
+    char connmarkFlagTestAccept[32];
+    char connmarkFlagTestReject[32];
+    sprintf(connmarkFlagAccept, "0x%x", ConnmarkFlags::STRICT_RESOLVED_ACCEPT);
+    sprintf(connmarkFlagReject, "0x%x", ConnmarkFlags::STRICT_RESOLVED_REJECT);
+    sprintf(connmarkFlagTestAccept, "0x%x/0x%x",
+            ConnmarkFlags::STRICT_RESOLVED_ACCEPT,
+            ConnmarkFlags::STRICT_RESOLVED_ACCEPT);
+    sprintf(connmarkFlagTestReject, "0x%x/0x%x",
+            ConnmarkFlags::STRICT_RESOLVED_REJECT,
+            ConnmarkFlags::STRICT_RESOLVED_REJECT);
+
     int res = 0;
 
     disableStrict();
 
-    // Mark 0x01 means resolved and ACCEPT
-    // Mark 0x02 means resolved and REJECT
-
     // Chain triggered when cleartext socket detected and penalty is log
     res |= execIptables(V4V6, "-N", LOCAL_PENALTY_LOG, NULL);
     res |= execIptables(V4V6, "-A", LOCAL_PENALTY_LOG,
-            "-j", "CONNMARK", "--or-mark", "0x01000000", NULL);
+            "-j", "CONNMARK", "--or-mark", connmarkFlagAccept, NULL);
     res |= execIptables(V4V6, "-A", LOCAL_PENALTY_LOG,
             "-j", "NFLOG", "--nflog-group", "0", NULL);
 
     // Chain triggered when cleartext socket detected and penalty is reject
     res |= execIptables(V4V6, "-N", LOCAL_PENALTY_REJECT, NULL);
     res |= execIptables(V4V6, "-A", LOCAL_PENALTY_REJECT,
-            "-j", "CONNMARK", "--or-mark", "0x02000000", NULL);
+            "-j", "CONNMARK", "--or-mark", connmarkFlagReject, NULL);
     res |= execIptables(V4V6, "-A", LOCAL_PENALTY_REJECT,
             "-j", "NFLOG", "--nflog-group", "0", NULL);
     res |= execIptables(V4V6, "-A", LOCAL_PENALTY_REJECT,
@@ -67,21 +78,21 @@ int StrictController::enableStrict(void) {
 
     // Quickly skip connections that we've already resolved
     res |= execIptables(V4V6, "-A", LOCAL_CLEAR_DETECT,
-            "-m", "connmark", "--mark", "0x02000000/0x02000000",
+            "-m", "connmark", "--mark", connmarkFlagTestReject,
             "-j", "REJECT", NULL);
     res |= execIptables(V4V6, "-A", LOCAL_CLEAR_DETECT,
-            "-m", "connmark", "--mark", "0x01000000/0x01000000",
+            "-m", "connmark", "--mark", connmarkFlagTestAccept,
             "-j", "RETURN", NULL);
 
     // Look for IPv4 TCP/UDP connections with TLS/DTLS header
     res |= execIptables(V4, "-A", LOCAL_CLEAR_DETECT, "-p", "tcp",
             "-m", "u32", "--u32", "0>>22&0x3C@ 12>>26&0x3C@ 0&0xFFFF0000=0x16030000 &&"
                                   "0>>22&0x3C@ 12>>26&0x3C@ 4&0x00FF0000=0x00010000",
-            "-j", "CONNMARK", "--or-mark", "0x01000000", NULL);
+            "-j", "CONNMARK", "--or-mark", connmarkFlagAccept, NULL);
     res |= execIptables(V4, "-A", LOCAL_CLEAR_DETECT, "-p", "udp",
             "-m", "u32", "--u32", "0>>22&0x3C@ 8&0xFFFF0000=0x16FE0000 &&"
                                   "0>>22&0x3C@ 20&0x00FF0000=0x00010000",
-            "-j", "CONNMARK", "--or-mark", "0x01000000", NULL);
+            "-j", "CONNMARK", "--or-mark", connmarkFlagAccept, NULL);
 
     // Look for IPv6 TCP/UDP connections with TLS/DTLS header.  The IPv6 header
     // doesn't have an IHL field to shift with, so we have to manually add in
@@ -89,15 +100,15 @@ int StrictController::enableStrict(void) {
     res |= execIptables(V6, "-A", LOCAL_CLEAR_DETECT, "-p", "tcp",
             "-m", "u32", "--u32", "52>>26&0x3C@ 40&0xFFFF0000=0x16030000 &&"
                                   "52>>26&0x3C@ 44&0x00FF0000=0x00010000",
-            "-j", "CONNMARK", "--or-mark", "0x01000000", NULL);
+            "-j", "CONNMARK", "--or-mark", connmarkFlagAccept, NULL);
     res |= execIptables(V6, "-A", LOCAL_CLEAR_DETECT, "-p", "udp",
             "-m", "u32", "--u32", "48&0xFFFF0000=0x16FE0000 &&"
                                   "60&0x00FF0000=0x00010000",
-            "-j", "CONNMARK", "--or-mark", "0x01000000", NULL);
+            "-j", "CONNMARK", "--or-mark", connmarkFlagAccept, NULL);
 
     // Skip newly classified connections from above
     res |= execIptables(V4V6, "-A", LOCAL_CLEAR_DETECT,
-            "-m", "connmark", "--mark", "0x01000000/0x01000000",
+            "-m", "connmark", "--mark", connmarkFlagTestAccept,
             "-j", "RETURN", NULL);
 
     // Handle TCP/UDP payloads that didn't match TLS/DTLS filters above,
