@@ -43,6 +43,7 @@ public:
     static const unsigned MIN_OEM_ID;
     static const unsigned MAX_OEM_ID;
     static const unsigned LOCAL_NET_ID;
+    static const unsigned DUMMY_NET_ID;
 
     NetworkController();
 

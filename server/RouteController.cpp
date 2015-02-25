@@ -18,10 +18,12 @@
 
 #include "Fwmark.h"
 #include "UidRanges.h"
+#include "DummyNetwork.h"
 
 #define LOG_TAG "Netd"
 #include "log/log.h"
 #include "logwrap/logwrap.h"
+#include "netutils/ifc.h"
 #include "resolv_netid.h"
 
 #include <arpa/inet.h>
@@ -644,6 +646,41 @@ WARN_UNUSED_RESULT int addLocalNetworkRules(unsigned localNetId) {
                         fwmark.intValue, mask.intValue);
 }
 
+int configureDummyNetwork() {
+    const char *interface = DummyNetwork::INTERFACE_NAME;
+    uint32_t table = getRouteTableForInterface(interface);
+    if (table == RT_TABLE_UNSPEC) {
+        // getRouteTableForInterface has already looged an error.
+        return -ESRCH;
+    }
+
+    ifc_init();
+    int ret = ifc_up(interface);
+    ifc_close();
+    if (ret) {
+        ALOGE("Can't bring up %s: %s", interface, strerror(errno));
+        return -errno;
+    }
+
+    if ((ret = modifyOutputInterfaceRule(interface, table, PERMISSION_NONE,
+                                         INVALID_UID, INVALID_UID, ACTION_ADD))) {
+        ALOGE("Can't create oif rule for %s: %s", interface, strerror(-ret));
+        return ret;
+    }
+
+    if ((ret = modifyIpRoute(RTM_NEWROUTE, table, interface, "0.0.0.0/0", NULL))) {
+        ALOGE("Can't add IPv4 default route to %s: %s", interface, strerror(-ret));
+        return ret;
+    }
+
+    if ((ret = modifyIpRoute(RTM_NEWROUTE, table, interface, "::/0", NULL))) {
+        ALOGE("Can't add IPv6 default route to %s: %s", interface, strerror(-ret));
+        return ret;
+    }
+
+    return 0;
+}
+
 // Add a new rule to look up the 'main' table, with the same selectors as the "default network"
 // rule, but with a lower priority. We will never create routes in the main table; it should only be
 // used for directly-connected routes implicitly created by the kernel when adding IP addresses.
@@ -889,6 +926,9 @@ int RouteController::Init(unsigned localNetId) {
     if (int ret = addUnreachableRule()) {
         return ret;
     }
+    // Don't complain if we can't add the dummy network, since not all devices support it.
+    configureDummyNetwork();
+
     updateTableNamesFile();
     return 0;
 }

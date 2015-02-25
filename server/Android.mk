@@ -44,6 +44,7 @@ LOCAL_SRC_FILES := \
         ClatdController.cpp \
         CommandListener.cpp \
         DnsProxyListener.cpp \
+        DummyNetwork.cpp \
         FirewallController.cpp \
         FwmarkServer.cpp \
         IdletimerController.cpp \
