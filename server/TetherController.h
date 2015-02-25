@@ -18,6 +18,8 @@
 #define _TETHER_CONTROLLER_H
 
 #include <netinet/in.h>
+#include <set>
+#include <string>
 
 #include "List.h"
 
@@ -32,16 +34,17 @@ class TetherController {
     NetAddressCollection *mDnsForwarders;
     pid_t                 mDaemonPid;
     int                   mDaemonFd;
+    std::set<std::string> mForwardingRequests;
 
 public:
     TetherController();
     virtual ~TetherController();
 
-    int setIpFwdEnabled(bool enable);
-    bool getIpFwdEnabled();
+    bool enableForwarding(const char* requester);
+    bool disableForwarding(const char* requester);
+    size_t forwardingRequestCount();
 
     int startTethering(int num_addrs, struct in_addr* addrs);
-
     int stopTethering();
     bool isTetheringStarted();
 
@@ -55,6 +58,7 @@ public:
 
 private:
     int applyDnsInterfaces();
+    bool setIpFwdEnabled();
 };
 
 #endif

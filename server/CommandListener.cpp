@@ -502,32 +502,34 @@ CommandListener::IpFwdCmd::IpFwdCmd() :
                  NetdCommand("ipfwd") {
 }
 
-int CommandListener::IpFwdCmd::runCommand(SocketClient *cli,
-                                                      int argc, char **argv) {
-    int rc = 0;
+int CommandListener::IpFwdCmd::runCommand(SocketClient *cli, int argc, char **argv) {
+    bool success;
 
-    if (argc < 2) {
+    if (argc == 2 && !strcmp(argv[1], "status")) {
+        char *tmp = NULL;
+
+        asprintf(&tmp, "Forwarding %s",
+                 ((sTetherCtrl->forwardingRequestCount() > 0) ? "enabled" : "disabled"));
+        cli->sendMsg(ResponseCode::IpFwdStatusResult, tmp, false);
+        free(tmp);
+        return 0;
+    }
+
+    if (argc < 3) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
         return 0;
     }
 
-    if (!strcmp(argv[1], "status")) {
-        char *tmp = NULL;
-
-        asprintf(&tmp, "Forwarding %s", (sTetherCtrl->getIpFwdEnabled() ? "enabled" : "disabled"));
-        cli->sendMsg(ResponseCode::IpFwdStatusResult, tmp, false);
-        free(tmp);
-        return 0;
-    } else if (!strcmp(argv[1], "enable")) {
-        rc = sTetherCtrl->setIpFwdEnabled(true);
+    if (!strcmp(argv[1], "enable")) {
+        success = sTetherCtrl->enableForwarding(argv[2]);
     } else if (!strcmp(argv[1], "disable")) {
-        rc = sTetherCtrl->setIpFwdEnabled(false);
+        success = sTetherCtrl->disableForwarding(argv[2]);
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown ipfwd cmd", false);
         return 0;
     }
 
-    if (!rc) {
+    if (success) {
         cli->sendMsg(ResponseCode::CommandOkay, "ipfwd operation succeeded", false);
     } else {
         cli->sendMsg(ResponseCode::OperationFailed, "ipfwd operation failed", true);

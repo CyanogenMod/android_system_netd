@@ -36,12 +36,50 @@
 #include "Permission.h"
 #include "TetherController.h"
 
+namespace {
+
+static const char BP_TOOLS_MODE[] = "bp-tools";
+static const char IPV4_FORWARDING_PROC_FILE[] = "/proc/sys/net/ipv4/ip_forward";
+static const char IPV6_FORWARDING_PROC_FILE[] = "/proc/sys/net/ipv6/conf/all/forwarding";
+
+bool writeToFile(const char* filename, const char* value) {
+    int fd = open(filename, O_WRONLY);
+    if (fd < 0) {
+        ALOGE("Failed to open %s: %s", filename, strerror(errno));
+        return false;
+    }
+
+    const ssize_t len = strlen(value);
+    if (write(fd, value, len) != len) {
+        ALOGE("Failed to write %s to %s: %s", value, filename, strerror(errno));
+        close(fd);
+        return false;
+    }
+    close(fd);
+    return true;
+}
+
+bool inBpToolsMode() {
+    // In BP tools mode, do not disable IP forwarding
+    char bootmode[PROPERTY_VALUE_MAX] = {0};
+    property_get("ro.bootmode", bootmode, "unknown");
+    return !strcmp(BP_TOOLS_MODE, bootmode);
+}
+
+}  // namespace
+
+
 TetherController::TetherController() {
     mInterfaces = new InterfaceCollection();
     mDnsNetId = 0;
     mDnsForwarders = new NetAddressCollection();
     mDaemonFd = -1;
     mDaemonPid = 0;
+    if (inBpToolsMode()) {
+        enableForwarding(BP_TOOLS_MODE);
+    } else {
+        setIpFwdEnabled();
+    }
 }
 
 TetherController::~TetherController() {
@@ -53,51 +91,33 @@ TetherController::~TetherController() {
     mInterfaces->clear();
 
     mDnsForwarders->clear();
+    mForwardingRequests.clear();
 }
 
-int TetherController::setIpFwdEnabled(bool enable) {
-
-    ALOGD("Setting IP forward enable = %d", enable);
-
-    // In BP tools mode, do not disable IP forwarding
-    char bootmode[PROPERTY_VALUE_MAX] = {0};
-    property_get("ro.bootmode", bootmode, "unknown");
-    if ((enable == false) && (0 == strcmp("bp-tools", bootmode))) {
-        return 0;
-    }
-
-    int fd = open("/proc/sys/net/ipv4/ip_forward", O_WRONLY);
-    if (fd < 0) {
-        ALOGE("Failed to open ip_forward (%s)", strerror(errno));
-        return -1;
-    }
-
-    if (write(fd, (enable ? "1" : "0"), 1) != 1) {
-        ALOGE("Failed to write ip_forward (%s)", strerror(errno));
-        close(fd);
-        return -1;
-    }
-    close(fd);
-    return 0;
+bool TetherController::setIpFwdEnabled() {
+    bool success = true;
+    const char* value = mForwardingRequests.empty() ? "0" : "1";
+    ALOGD("Setting IP forward enable = %s", value);
+    success &= writeToFile(IPV4_FORWARDING_PROC_FILE, value);
+    success &= writeToFile(IPV6_FORWARDING_PROC_FILE, value);
+    return success;
 }
 
-bool TetherController::getIpFwdEnabled() {
-    int fd = open("/proc/sys/net/ipv4/ip_forward", O_RDONLY);
+bool TetherController::enableForwarding(const char* requester) {
+    // Don't return an error if this requester already requested forwarding. Only return errors for
+    // things that the caller caller needs to care about, such as "couldn't write to the file to
+    // enable forwarding".
+    mForwardingRequests.insert(requester);
+    return setIpFwdEnabled();
+}
 
-    if (fd < 0) {
-        ALOGE("Failed to open ip_forward (%s)", strerror(errno));
-        return false;
-    }
+bool TetherController::disableForwarding(const char* requester) {
+    mForwardingRequests.erase(requester);
+    return setIpFwdEnabled();
+}
 
-    char enabled;
-    if (read(fd, &enabled, 1) != 1) {
-        ALOGE("Failed to read ip_forward (%s)", strerror(errno));
-        close(fd);
-        return -1;
-    }
-
-    close(fd);
-    return (enabled  == '1' ? true : false);
+size_t TetherController::forwardingRequestCount() {
+    return mForwardingRequests.size();
 }
 
 #define TETHER_START_CONST_ARG        8
