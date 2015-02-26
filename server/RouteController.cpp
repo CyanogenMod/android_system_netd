@@ -84,6 +84,7 @@ const uint8_t AF_FAMILIES[] = {AF_INET, AF_INET6};
 const char* const IP_VERSIONS[] = {"-4", "-6"};
 
 const uid_t UID_ROOT = 0;
+const char* const IIF_LOOPBACK = "lo";
 const char* const IIF_NONE = NULL;
 const char* const OIF_NONE = NULL;
 const bool ACTION_ADD = true;
@@ -483,7 +484,7 @@ WARN_UNUSED_RESULT int modifyVpnUidRangeRule(uint32_t table, uid_t uidStart, uid
     }
 
     return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, priority, table, fwmark.intValue,
-                        mask.intValue, IIF_NONE, OIF_NONE, uidStart, uidEnd);
+                        mask.intValue, IIF_LOOPBACK, OIF_NONE, uidStart, uidEnd);
 }
 
 // A rule to allow system apps to send traffic over this VPN even if they are not part of the target
