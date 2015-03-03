@@ -247,8 +247,10 @@ int padInterfaceName(const char* input, char* name, size_t* length, uint16_t* pa
 
 // Adds or removes a routing rule for IPv4 and IPv6.
 //
-// + If |table| is non-zero, the rule points at the specified routing table. Otherwise, the rule
-//   returns ENETUNREACH.
+// + If |priority| is RULE_PRIORITY_UNREACHABLE, the rule returns ENETUNREACH (i.e., specifies an
+//   action of FR_ACT_UNREACHABLE). Otherwise, the rule specifies an action of FR_ACT_TO_TBL.
+// + If |table| is non-zero, the rule points at the specified routing table. Otherwise, the table is
+//   unspecified. An unspecified table is only allowed when deleting a rule.
 // + If |mask| is non-zero, the rule matches the specified fwmark and mask. Otherwise, |fwmark| is
 //   ignored.
 // + If |iif| is non-NULL, the rule matches the specified incoming interface.
@@ -287,9 +289,19 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t
 
     // Assemble a rule request and put it in an array of iovec structures.
     fib_rule_hdr rule = {
-        .action = static_cast<uint8_t>(table != RT_TABLE_UNSPEC ? FR_ACT_TO_TBL :
-                                                                  FR_ACT_UNREACHABLE),
+        .action = static_cast<uint8_t>(priority != RULE_PRIORITY_UNREACHABLE ? FR_ACT_TO_TBL :
+                                                                               FR_ACT_UNREACHABLE),
+        // Note that here we're implicitly setting rule.table to 0. When we want to specify a
+        // non-zero table, we do this via the FRATTR_TABLE attribute.
     };
+
+    // Don't ever create a rule that looks up table 0, because table 0 is the local table.
+    // It's OK to specify a table ID of 0 when deleting a rule, because that doesn't actually select
+    // table 0, it's a wildcard that matches anything.
+    if (table == RT_TABLE_UNSPEC && rule.action == FR_ACT_TO_TBL && action != RTM_DELRULE) {
+        ALOGE("RT_TABLE_UNSPEC only allowed when deleting rules");
+        return -ENOTUNIQ;
+    }
 
     rtattr fraIifName = { U16_RTA_LENGTH(iifLength), FRA_IIFNAME };
     rtattr fraOifName = { U16_RTA_LENGTH(oifLength), FRA_OIFNAME };
@@ -920,6 +932,20 @@ WARN_UNUSED_RESULT int flushRoutes(const char* interface) {
     return ret;
 }
 
+WARN_UNUSED_RESULT int clearTetheringRules(const char* inputInterface) {
+    int ret = 0;
+    while (ret == 0) {
+        ret = modifyIpRule(RTM_DELRULE, RULE_PRIORITY_TETHERING, 0, MARK_UNSET, MARK_UNSET,
+                           inputInterface, OIF_NONE, INVALID_UID, INVALID_UID);
+    }
+
+    if (ret == -ENOENT) {
+        return 0;
+    } else {
+        return ret;
+    }
+}
+
 }  // namespace
 
 int RouteController::Init(unsigned localNetId) {
@@ -968,6 +994,9 @@ int RouteController::removeInterfaceFromPhysicalNetwork(unsigned netId, const ch
         return ret;
     }
     if (int ret = flushRoutes(interface)) {
+        return ret;
+    }
+    if (int ret = clearTetheringRules(interface)) {
         return ret;
     }
     updateTableNamesFile();
