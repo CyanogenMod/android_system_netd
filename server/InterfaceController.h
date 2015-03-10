@@ -23,6 +23,7 @@ class InterfaceController {
 	virtual ~InterfaceController();
 	int setEnableIPv6(const char *interface, const int on);
 	int setIPv6PrivacyExtensions(const char *interface, const int on);
+	int setIPv6NdOffload(char* interface, const int on);
 	int setMtu(const char *interface, const char *mtu);
 
  private:
@@ -31,6 +32,7 @@ class InterfaceController {
 	void setOnAllInterfaces(const char* filename, const char* value);
 	void setAcceptRA(const char* value);
 	void setAcceptRARouteTable(int tableOrOffset);
+	void setIPv6OptimisticMode(const char *value);
 };
 
 #endif

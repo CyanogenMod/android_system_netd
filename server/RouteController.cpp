@@ -813,11 +813,8 @@ WARN_UNUSED_RESULT int modifyRoute(uint16_t action, const char* interface, const
     }
 
     int ret = modifyIpRoute(action, table, interface, destination, nexthop);
-    // We allow apps to call requestRouteToHost() multiple times with the same route, so ignore
-    // EEXIST failures when adding routes to legacy tables.
-    if (ret && !(action == RTM_NEWROUTE && ret == -EEXIST &&
-                 (tableType == RouteController::LEGACY_NETWORK ||
-                  tableType == RouteController::LEGACY_SYSTEM))) {
+    // Trying to add a route that already exists shouldn't cause an error.
+    if (ret && !(action == RTM_NEWROUTE && ret == -EEXIST)) {
         return ret;
     }
 

@@ -18,6 +18,7 @@
 
 #define LOG_TAG "InterfaceController"
 #include <cutils/log.h>
+#include <logwrap/logwrap.h>
 
 #include "InterfaceController.h"
 #include "RouteController.h"
@@ -25,6 +26,8 @@
 const char ipv6_proc_path[] = "/proc/sys/net/ipv6/conf";
 
 const char sys_net_path[] = "/sys/class/net";
+
+const char wl_util_path[] = "/system/xbin/wlutil";
 
 InterfaceController::InterfaceController() {
 	// Initial IPv6 settings.
@@ -35,6 +38,9 @@ InterfaceController::InterfaceController() {
 	setAcceptRA("2");
 
 	setAcceptRARouteTable(-RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX);
+
+	// Enable optimistic DAD for IPv6 addresses on all interfaces.
+	setIPv6OptimisticMode("1");
 }
 
 InterfaceController::~InterfaceController() {
@@ -64,6 +70,29 @@ int InterfaceController::setIPv6PrivacyExtensions(const char *interface, const i
 	// 0: disable IPv6 privacy addresses
 	// 0: enable IPv6 privacy addresses and prefer them over non-privacy ones.
 	return writeIPv6ProcPath(interface, "use_tempaddr", on ? "2" : "0");
+}
+
+// Enables or disables IPv6 ND offload. This is useful for 464xlat on wifi, IPv6 tethering, and
+// generally implementing IPv6 neighbour discovery and duplicate address detection properly.
+// TODO: This should be implemented in wpa_supplicant via driver commands instead.
+int InterfaceController::setIPv6NdOffload(char* interface, const int on) {
+    // Only supported on Broadcom chipsets via wlutil for now.
+    if (access(wl_util_path, X_OK) == 0) {
+        const char *argv[] = {
+            wl_util_path,
+            "-a",
+            interface,
+            "ndoe",
+            on ? "1" : "0"
+        };
+        int ret = android_fork_execvp(ARRAY_SIZE(argv), const_cast<char**>(argv), NULL,
+                                      false, false);
+        ALOGD("%s ND offload on %s: %d (%s)",
+              (on ? "enabling" : "disabling"), interface, ret, strerror(errno));
+        return ret;
+    } else {
+        return 0;
+    }
 }
 
 int InterfaceController::isInterfaceName(const char *name) {
@@ -120,4 +149,9 @@ int InterfaceController::setMtu(const char *interface, const char *mtu)
 	int success = writeFile(path, mtu, strlen(mtu));
 	free(path);
 	return success;
+}
+
+void InterfaceController::setIPv6OptimisticMode(const char *value) {
+	setOnAllInterfaces("optimistic_dad", value);
+	setOnAllInterfaces("use_optimistic", value);
 }
