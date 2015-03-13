@@ -58,26 +58,26 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
     }
 
     if (!strcmp(subsys, "net")) {
-        int action = evt->getAction();
+        NetlinkEvent::Action action = evt->getAction();
         const char *iface = evt->findParam("INTERFACE");
 
-        if (action == evt->NlActionAdd) {
+        if (action == NetlinkEvent::Action::kAdd) {
             notifyInterfaceAdded(iface);
-        } else if (action == evt->NlActionRemove) {
+        } else if (action == NetlinkEvent::Action::kRemove) {
             notifyInterfaceRemoved(iface);
-        } else if (action == evt->NlActionChange) {
+        } else if (action == NetlinkEvent::Action::kChange) {
             evt->dump();
             notifyInterfaceChanged("nana", true);
-        } else if (action == evt->NlActionLinkUp) {
+        } else if (action == NetlinkEvent::Action::kLinkUp) {
             notifyInterfaceLinkChanged(iface, true);
-        } else if (action == evt->NlActionLinkDown) {
+        } else if (action == NetlinkEvent::Action::kLinkDown) {
             notifyInterfaceLinkChanged(iface, false);
-        } else if (action == evt->NlActionAddressUpdated ||
-                   action == evt->NlActionAddressRemoved) {
+        } else if (action == NetlinkEvent::Action::kAddressUpdated ||
+                   action == NetlinkEvent::Action::kAddressRemoved) {
             const char *address = evt->findParam("ADDRESS");
             const char *flags = evt->findParam("FLAGS");
             const char *scope = evt->findParam("SCOPE");
-            if (action == evt->NlActionAddressRemoved && iface && address) {
+            if (action == NetlinkEvent::Action::kAddressRemoved && iface && address) {
                 int resetMask = strchr(address, ':') ? RESET_IPV6_ADDRESSES : RESET_IPV4_ADDRESSES;
                 resetMask |= RESET_IGNORE_INTERFACE_ADDRESS;
                 if (int ret = ifc_reset_connections(iface, resetMask)) {
@@ -88,14 +88,14 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
             if (iface && flags && scope) {
                 notifyAddressChanged(action, address, iface, flags, scope);
             }
-        } else if (action == evt->NlActionRdnss) {
+        } else if (action == NetlinkEvent::Action::kRdnss) {
             const char *lifetime = evt->findParam("LIFETIME");
             const char *servers = evt->findParam("SERVERS");
             if (lifetime && servers) {
                 notifyInterfaceDnsServers(iface, lifetime, servers);
             }
-        } else if (action == evt->NlActionRouteUpdated ||
-                   action == evt->NlActionRouteRemoved) {
+        } else if (action == NetlinkEvent::Action::kRouteUpdated ||
+                   action == NetlinkEvent::Action::kRouteRemoved) {
             const char *route = evt->findParam("ROUTE");
             const char *gateway = evt->findParam("GATEWAY");
             const char *iface = evt->findParam("INTERFACE");
@@ -174,12 +174,12 @@ void NetlinkHandler::notifyInterfaceClassActivity(const char *name,
            "IfaceClass %s %s %s", isActive ? "active" : "idle", name, timestamp);
 }
 
-void NetlinkHandler::notifyAddressChanged(int action, const char *addr,
+void NetlinkHandler::notifyAddressChanged(NetlinkEvent::Action action, const char *addr,
                                           const char *iface, const char *flags,
                                           const char *scope) {
     notify(ResponseCode::InterfaceAddressChange,
            "Address %s %s %s %s %s",
-           (action == NetlinkEvent::NlActionAddressUpdated) ? kUpdated : kRemoved,
+           (action == NetlinkEvent::Action::kAddressUpdated) ? kUpdated : kRemoved,
            addr, iface, flags, scope);
 }
 
@@ -190,11 +190,11 @@ void NetlinkHandler::notifyInterfaceDnsServers(const char *iface,
            iface, lifetime, servers);
 }
 
-void NetlinkHandler::notifyRouteChange(int action, const char *route,
+void NetlinkHandler::notifyRouteChange(NetlinkEvent::Action action, const char *route,
                                        const char *gateway, const char *iface) {
     notify(ResponseCode::RouteChange,
            "Route %s %s%s%s%s%s",
-           (action == NetlinkEvent::NlActionRouteUpdated) ? kUpdated : kRemoved,
+           (action == NetlinkEvent::Action::kRouteUpdated) ? kUpdated : kRemoved,
            route,
            *gateway ? " via " : "",
            gateway,

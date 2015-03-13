@@ -17,6 +17,7 @@
 #ifndef _NETLINKHANDLER_H
 #define _NETLINKHANDLER_H
 
+#include <sysutils/NetlinkEvent.h>
 #include <sysutils/NetlinkListener.h>
 #include "NetlinkManager.h"
 
@@ -41,11 +42,11 @@ protected:
     void notifyQuotaLimitReached(const char *name, const char *iface);
     void notifyInterfaceClassActivity(const char *name, bool isActive,
                                       const char *timestamp);
-    void notifyAddressChanged(int action, const char *addr, const char *iface,
+    void notifyAddressChanged(NetlinkEvent::Action action, const char *addr, const char *iface,
                               const char *flags, const char *scope);
     void notifyInterfaceDnsServers(const char *iface, const char *lifetime,
                                    const char *servers);
-    void notifyRouteChange(int action, const char *route, const char *gateway, const char *iface);
+    void notifyRouteChange(NetlinkEvent::Action action, const char *route, const char *gateway, const char *iface);
     void notifyStrictCleartext(const char* uid, const char* hex);
 };
 #endif
