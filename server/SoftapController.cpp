@@ -34,15 +34,18 @@
 #include <openssl/sha.h>
 
 #define LOG_TAG "SoftapController"
+#include <base/file.h>
+#include <base/stringprintf.h>
 #include <cutils/log.h>
 #include <netutils/ifc.h>
 #include <private/android_filesystem_config.h>
-#include <utils/file.h>
-#include <utils/stringprintf.h>
 #include "wifi.h"
 #include "ResponseCode.h"
 
 #include "SoftapController.h"
+
+using android::base::StringPrintf;
+using android::base::WriteStringToFile;
 
 static const char HOSTAPD_CONF_FILE[]    = "/data/misc/wifi/hostapd.conf";
 static const char HOSTAPD_BIN_FILE[]    = "/system/bin/hostapd";
@@ -136,7 +139,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
             channel = AP_CHANNEL_DEFAULT;
     }
 
-    std::string wbuf(android::StringPrintf("interface=%s\n"
+    std::string wbuf(StringPrintf("interface=%s\n"
             "driver=nl80211\n"
             "ctrl_interface=/data/misc/wifi/hostapd\n"
             "ssid=%s\n"
@@ -152,10 +155,10 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         char psk_str[2*SHA256_DIGEST_LENGTH+1];
         if (!strcmp(argv[6], "wpa-psk")) {
             generatePsk(argv[3], argv[7], psk_str);
-            fbuf = android::StringPrintf("%swpa=3\nwpa_pairwise=TKIP CCMP\nwpa_psk=%s\n", wbuf.c_str(), psk_str);
+            fbuf = StringPrintf("%swpa=3\nwpa_pairwise=TKIP CCMP\nwpa_psk=%s\n", wbuf.c_str(), psk_str);
         } else if (!strcmp(argv[6], "wpa2-psk")) {
             generatePsk(argv[3], argv[7], psk_str);
-            fbuf = android::StringPrintf("%swpa=2\nrsn_pairwise=CCMP\nwpa_psk=%s\n", wbuf.c_str(), psk_str);
+            fbuf = StringPrintf("%swpa=2\nrsn_pairwise=CCMP\nwpa_psk=%s\n", wbuf.c_str(), psk_str);
         } else if (!strcmp(argv[6], "open")) {
             fbuf = wbuf;
         }
@@ -167,7 +170,7 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
         fbuf = wbuf;
     }
 
-    if (!android::WriteStringToFile(fbuf, HOSTAPD_CONF_FILE, 0660, AID_SYSTEM, AID_WIFI)) {
+    if (!WriteStringToFile(fbuf, HOSTAPD_CONF_FILE, 0660, AID_SYSTEM, AID_WIFI)) {
         ALOGE("Cannot write to \"%s\": %s", HOSTAPD_CONF_FILE, strerror(errno));
         return ResponseCode::OperationFailed;
     }
