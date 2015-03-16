@@ -20,6 +20,7 @@
 
 #define LOG_TAG "Netd"
 #include "log/log.h"
+#include "errno.h"
 
 const char* DummyNetwork::INTERFACE_NAME = "dummy0";
 

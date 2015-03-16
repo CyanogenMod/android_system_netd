@@ -44,7 +44,20 @@ static const char IPV4_FORWARDING_PROC_FILE[] = "/proc/sys/net/ipv4/ip_forward";
 static const char IPV6_FORWARDING_PROC_FILE[] = "/proc/sys/net/ipv6/conf/all/forwarding";
 
 bool writeToFile(const char* filename, const char* value) {
-    return WriteStringToFile(value, file);
+    int fd = open(filename, O_WRONLY);
+    if (fd < 0) {
+        ALOGE("Failed to open %s: %s", filename, strerror(errno));
+        return false;
+    }
+
+    const ssize_t len = strlen(value);
+    if (write(fd, value, len) != len) {
+        ALOGE("Failed to write %s to %s: %s", value, filename, strerror(errno));
+        close(fd);
+        return false;
+    }
+    close(fd);
+    return true;
 }
 
 bool inBpToolsMode() {
