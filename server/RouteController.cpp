@@ -31,12 +31,14 @@
 #include "UidRanges.h"
 #include "DummyNetwork.h"
 
+#include "base/file.h"
 #define LOG_TAG "Netd"
 #include "log/log.h"
 #include "logwrap/logwrap.h"
 #include "netutils/ifc.h"
-#include "utils/file.h"
 #include "resolv_netid.h"
+
+using android::base::WriteStringToFile;
 
 namespace {
 
@@ -168,7 +170,7 @@ void updateTableNamesFile() {
         addTableName(entry.second, entry.first, &contents);
     }
 
-    if (!android::WriteStringToFile(contents, RT_TABLES_PATH, RT_TABLES_MODE, AID_SYSTEM, AID_WIFI)) {
+    if (!WriteStringToFile(contents, RT_TABLES_PATH, RT_TABLES_MODE, AID_SYSTEM, AID_WIFI)) {
         ALOGE("failed to write to %s (%s)", RT_TABLES_PATH, strerror(errno));
         return;
     }

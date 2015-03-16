@@ -30,7 +30,6 @@
 #define LOG_TAG "TetherController"
 #include <cutils/log.h>
 #include <cutils/properties.h>
-#include <utils/file.h>
 
 #include "Fwmark.h"
 #include "NetdConstants.h"
