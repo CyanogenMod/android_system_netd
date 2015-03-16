@@ -27,18 +27,15 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include <base/file.h>
 #define LOG_TAG "TetherController"
 #include <cutils/log.h>
 #include <cutils/properties.h>
+#include <utils/file.h>
 
 #include "Fwmark.h"
 #include "NetdConstants.h"
 #include "Permission.h"
 #include "TetherController.h"
-
-using android::base::ReadFileToString;
-using android::base::WriteStringToFile;
 
 namespace {
 
