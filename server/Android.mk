@@ -37,6 +37,7 @@ LOCAL_SHARED_LIBRARIES := \
         libnetutils \
         libnl \
         libsysutils \
+        libbase \
         libutils \
 
 LOCAL_STATIC_LIBRARIES := \

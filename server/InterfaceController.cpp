@@ -19,13 +19,16 @@
 #include <malloc.h>
 
 #define LOG_TAG "InterfaceController"
+#include <base/file.h>
+#include <base/stringprintf.h>
 #include <cutils/log.h>
 #include <logwrap/logwrap.h>
-#include <utils/file.h>
-#include <utils/stringprintf.h>
 
 #include "InterfaceController.h"
 #include "RouteController.h"
+
+using android::base::StringPrintf;
+using android::base::WriteStringToFile;
 
 const char ipv6_proc_path[] = "/proc/sys/net/ipv6/conf";
 
@@ -55,8 +58,8 @@ int InterfaceController::writeIPv6ProcPath(const char *interface, const char *se
 		errno = ENOENT;
 		return -1;
 	}
-	std::string path(android::StringPrintf("%s/%s/%s", ipv6_proc_path, interface, setting));
-	return android::WriteStringToFile(value, path);
+	std::string path(StringPrintf("%s/%s/%s", ipv6_proc_path, interface, setting));
+	return WriteStringToFile(value, path);
 }
 
 int InterfaceController::setEnableIPv6(const char *interface, const int on) {
@@ -133,7 +136,7 @@ void InterfaceController::setAcceptRA(const char *value) {
 //             ID to get the table. If it's set to -1000, routes from interface ID 5 will go into
 //             table 1005, etc.
 void InterfaceController::setAcceptRARouteTable(int tableOrOffset) {
-	std::string value(android::StringPrintf("%d", tableOrOffset));
+	std::string value(StringPrintf("%d", tableOrOffset));
 	setOnAllInterfaces("accept_ra_rt_table", value.c_str());
 }
 
@@ -143,8 +146,8 @@ int InterfaceController::setMtu(const char *interface, const char *mtu)
 		errno = ENOENT;
 		return -1;
 	}
-	std::string path(android::StringPrintf("%s/%s/mtu", sys_net_path, interface));
-	return android::WriteStringToFile(mtu, path);
+	std::string path(StringPrintf("%s/%s/mtu", sys_net_path, interface));
+	return WriteStringToFile(mtu, path);
 }
 
 void InterfaceController::setIPv6OptimisticMode(const char *value) {
