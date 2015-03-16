@@ -27,18 +27,15 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include <base/file.h>
 #define LOG_TAG "TetherController"
 #include <cutils/log.h>
 #include <cutils/properties.h>
+#include <utils/file.h>
 
 #include "Fwmark.h"
 #include "NetdConstants.h"
 #include "Permission.h"
 #include "TetherController.h"
-
-using android::base::ReadFileToString;
-using android::base::WriteStringToFile;
 
 TetherController::TetherController() {
     mInterfaces = new InterfaceCollection();
@@ -70,7 +67,7 @@ int TetherController::setIpFwdEnabled(bool enable) {
         return 0;
     }
 
-    if (!WriteStringToFile(enable ? "1" : "0", "/proc/sys/net/ipv4/ip_forward")) {
+    if (!android::WriteStringToFile(enable ? "1" : "0", "/proc/sys/net/ipv4/ip_forward")) {
         ALOGE("Failed to write ip_forward (%s)", strerror(errno));
         return -1;
     }
@@ -80,7 +77,7 @@ int TetherController::setIpFwdEnabled(bool enable) {
 
 bool TetherController::getIpFwdEnabled() {
     std::string enabled;
-    if (!ReadFileToString("/proc/sys/net/ipv4/ip_forward", &enabled)) {
+    if (!android::ReadFileToString("/proc/sys/net/ipv4/ip_forward", &enabled)) {
         ALOGE("Failed to read ip_forward (%s)", strerror(errno));
         return -1;
     }
