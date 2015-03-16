@@ -32,6 +32,7 @@
 
 #include "NetworkController.h"
 
+#include "DummyNetwork.h"
 #include "Fwmark.h"
 #include "LocalNetwork.h"
 #include "PhysicalNetwork.h"
@@ -53,7 +54,8 @@ const unsigned MAX_NET_ID = 65535;
 
 const unsigned NetworkController::MIN_OEM_ID   =  1;
 const unsigned NetworkController::MAX_OEM_ID   = 50;
-// NetIds 51..98 are reserved for future use.
+const unsigned NetworkController::DUMMY_NET_ID = 51;
+// NetIds 52..98 are reserved for future use.
 const unsigned NetworkController::LOCAL_NET_ID = 99;
 
 // All calls to methods here are made while holding a write lock on mRWLock.
@@ -132,6 +134,7 @@ int NetworkController::DelegateImpl::modifyFallthrough(const std::string& physic
 NetworkController::NetworkController() :
         mDelegateImpl(new NetworkController::DelegateImpl(this)), mDefaultNetId(NETID_UNSET) {
     mNetworks[LOCAL_NET_ID] = new LocalNetwork(LOCAL_NET_ID);
+    mNetworks[DUMMY_NET_ID] = new DummyNetwork(DUMMY_NET_ID);
 }
 
 unsigned NetworkController::getDefaultNetwork() const {

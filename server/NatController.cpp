@@ -199,15 +199,6 @@ int NatController::enableNat(const char* intIface, const char* extIface) {
     };
     runCmd(ARRAY_SIZE(cmd2), cmd2);
 
-    if (int ret = RouteController::enableTethering(intIface, extIface)) {
-        ALOGE("failed to add tethering rule for iif=%s oif=%s", intIface, extIface);
-        if (natCount == 0) {
-            setDefaults();
-        }
-        errno = -ret;
-        return -1;
-    }
-
     natCount++;
     return 0;
 }
@@ -365,12 +356,6 @@ err_invalid_drop:
 int NatController::disableNat(const char* intIface, const char* extIface) {
     if (!isIfaceName(intIface) || !isIfaceName(extIface)) {
         errno = ENODEV;
-        return -1;
-    }
-
-    if (int ret = RouteController::disableTethering(intIface, extIface)) {
-        ALOGE("failed to remove tethering rule for iif=%s oif=%s", intIface, extIface);
-        errno = -ret;
         return -1;
     }
 

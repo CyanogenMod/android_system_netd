@@ -507,37 +507,59 @@ CommandListener::IpFwdCmd::IpFwdCmd() :
                  NetdCommand("ipfwd") {
 }
 
-int CommandListener::IpFwdCmd::runCommand(SocketClient *cli,
-                                                      int argc, char **argv) {
-    int rc = 0;
+int CommandListener::IpFwdCmd::runCommand(SocketClient *cli, int argc, char **argv) {
+    bool matched = false;
+    bool success;
 
-    if (argc < 2) {
-        cli->sendMsg(ResponseCode::CommandSyntaxError, "Missing argument", false);
-        return 0;
+    if (argc == 2) {
+        //   0     1
+        // ipfwd status
+        if (!strcmp(argv[1], "status")) {
+            char *tmp = NULL;
+
+            asprintf(&tmp, "Forwarding %s",
+                     ((sTetherCtrl->forwardingRequestCount() > 0) ? "enabled" : "disabled"));
+            cli->sendMsg(ResponseCode::IpFwdStatusResult, tmp, false);
+            free(tmp);
+            return 0;
+        }
+    } else if (argc == 3) {
+        //  0      1         2
+        // ipfwd enable  <requester>
+        // ipfwd disable <requester>
+        if (!strcmp(argv[1], "enable")) {
+            matched = true;
+            success = sTetherCtrl->enableForwarding(argv[2]);
+        } else if (!strcmp(argv[1], "disable")) {
+            matched = true;
+            success = sTetherCtrl->disableForwarding(argv[2]);
+        }
+    } else if (argc == 4) {
+        //  0      1      2     3
+        // ipfwd  add   wlan0 dummy0
+        // ipfwd remove wlan0 dummy0
+        int ret = 0;
+        if (!strcmp(argv[1], "add")) {
+            matched = true;
+            ret = RouteController::enableTethering(argv[2], argv[3]);
+        } else if (!strcmp(argv[1], "remove")) {
+            matched = true;
+            ret = RouteController::disableTethering(argv[2], argv[3]);
+        }
+        success = (ret == 0);
+        errno = -ret;
     }
 
-    if (!strcmp(argv[1], "status")) {
-        char *tmp = NULL;
-
-        asprintf(&tmp, "Forwarding %s", (sTetherCtrl->getIpFwdEnabled() ? "enabled" : "disabled"));
-        cli->sendMsg(ResponseCode::IpFwdStatusResult, tmp, false);
-        free(tmp);
-        return 0;
-    } else if (!strcmp(argv[1], "enable")) {
-        rc = sTetherCtrl->setIpFwdEnabled(true);
-    } else if (!strcmp(argv[1], "disable")) {
-        rc = sTetherCtrl->setIpFwdEnabled(false);
-    } else {
+    if (!matched) {
         cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown ipfwd cmd", false);
         return 0;
     }
 
-    if (!rc) {
+    if (success) {
         cli->sendMsg(ResponseCode::CommandOkay, "ipfwd operation succeeded", false);
     } else {
         cli->sendMsg(ResponseCode::OperationFailed, "ipfwd operation failed", true);
     }
-
     return 0;
 }
 
