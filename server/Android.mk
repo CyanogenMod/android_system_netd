@@ -74,7 +74,6 @@ LOCAL_SRC_FILES := \
         main.cpp \
         oem_iptables_hook.cpp \
 
-include external/libcxx/libcxx.mk
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
