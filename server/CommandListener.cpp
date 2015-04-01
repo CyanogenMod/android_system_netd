@@ -474,7 +474,7 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 cli->sendMsg(ResponseCode::CommandOkay, "MTU changed", false);
             } else {
                 cli->sendMsg(ResponseCode::OperationFailed,
-                        "Failed to get MTU", true);
+                        "Failed to set MTU", true);
             }
             return 0;
         } else {
