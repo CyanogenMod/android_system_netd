@@ -41,7 +41,7 @@ protected:
     void notifyInterfaceLinkChanged(const char *name, bool isUp);
     void notifyQuotaLimitReached(const char *name, const char *iface);
     void notifyInterfaceClassActivity(const char *name, bool isActive,
-                                      const char *timestamp);
+                                      const char *timestamp, const char *uid);
     void notifyAddressChanged(NetlinkEvent::Action action, const char *addr, const char *iface,
                               const char *flags, const char *scope);
     void notifyInterfaceDnsServers(const char *iface, const char *lifetime,
