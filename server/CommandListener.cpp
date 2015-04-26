@@ -1275,8 +1275,22 @@ int CommandListener::FirewallCmd::sendGenericOkFail(SocketClient *cli, int cond)
 FirewallRule CommandListener::FirewallCmd::parseRule(const char* arg) {
     if (!strcmp(arg, "allow")) {
         return ALLOW;
-    } else {
+    } else if (!strcmp(arg, "deny")) {
         return DENY;
+    } else {
+        ALOGE("failed to parse uid rule (%s)", arg);
+        return ALLOW;
+    }
+}
+
+FirewallType CommandListener::FirewallCmd::parseFirewallType(const char* arg) {
+    if (!strcmp(arg, "whitelist")) {
+        return WHITELIST;
+    } else if (!strcmp(arg, "blacklist")) {
+        return BLACKLIST;
+    } else {
+        ALOGE("failed to parse firewall type (%s)", arg);
+        return BLACKLIST;
     }
 }
 
@@ -1288,7 +1302,14 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
     }
 
     if (!strcmp(argv[1], "enable")) {
-        int res = sFirewallCtrl->enableFirewall();
+        if (argc != 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                        "Usage: firewall enable <whitelist|blacklist>", false);
+            return 0;
+        }
+        FirewallType firewallType = parseFirewallType(argv[2]);
+
+        int res = sFirewallCtrl->enableFirewall(firewallType);
         return sendGenericOkFail(cli, res);
     }
     if (!strcmp(argv[1], "disable")) {
@@ -1357,7 +1378,6 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
 
         int uid = atoi(argv[2]);
         FirewallRule rule = parseRule(argv[3]);
-
         int res = sFirewallCtrl->setUidRule(uid, rule);
         return sendGenericOkFail(cli, res);
     }

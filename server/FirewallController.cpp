@@ -32,28 +32,37 @@ const char* FirewallController::LOCAL_OUTPUT = "fw_OUTPUT";
 const char* FirewallController::LOCAL_FORWARD = "fw_FORWARD";
 
 FirewallController::FirewallController(void) {
+    // If no rules are set, it's in BLACKLIST mode
+    firewallType = BLACKLIST;
 }
 
 int FirewallController::setupIptablesHooks(void) {
     return 0;
 }
 
-int FirewallController::enableFirewall(void) {
+int FirewallController::enableFirewall(FirewallType ftype) {
     int res = 0;
 
     // flush any existing rules
     disableFirewall();
 
-    // create default rule to drop all traffic
-    res |= execIptables(V4V6, "-A", LOCAL_INPUT, "-j", "DROP", NULL);
-    res |= execIptables(V4V6, "-A", LOCAL_OUTPUT, "-j", "REJECT", NULL);
-    res |= execIptables(V4V6, "-A", LOCAL_FORWARD, "-j", "REJECT", NULL);
+    if (ftype == WHITELIST) {
+        // create default rule to drop all traffic
+        res |= execIptables(V4V6, "-A", LOCAL_INPUT, "-j", "DROP", NULL);
+        res |= execIptables(V4V6, "-A", LOCAL_OUTPUT, "-j", "REJECT", NULL);
+        res |= execIptables(V4V6, "-A", LOCAL_FORWARD, "-j", "REJECT", NULL);
+    }
+
+    // Set this after calling disableFirewall(), since it defaults to WHITELIST there
+    firewallType = ftype;
 
     return res;
 }
 
 int FirewallController::disableFirewall(void) {
     int res = 0;
+
+    firewallType = WHITELIST;
 
     // flush any existing rules
     res |= execIptables(V4V6, "-F", LOCAL_INPUT, NULL);
@@ -69,6 +78,11 @@ int FirewallController::isFirewallEnabled(void) {
 }
 
 int FirewallController::setInterfaceRule(const char* iface, FirewallRule rule) {
+    if (firewallType == BLACKLIST) {
+        // Unsupported in BLACKLIST mode
+        return -1;
+    }
+
     if (!isIfaceName(iface)) {
         errno = ENOENT;
         return -1;
@@ -88,6 +102,11 @@ int FirewallController::setInterfaceRule(const char* iface, FirewallRule rule) {
 }
 
 int FirewallController::setEgressSourceRule(const char* addr, FirewallRule rule) {
+    if (firewallType == BLACKLIST) {
+        // Unsupported in BLACKLIST mode
+        return -1;
+    }
+
     IptablesTarget target = V4;
     if (strchr(addr, ':')) {
         target = V6;
@@ -108,6 +127,11 @@ int FirewallController::setEgressSourceRule(const char* addr, FirewallRule rule)
 
 int FirewallController::setEgressDestRule(const char* addr, int protocol, int port,
         FirewallRule rule) {
+    if (firewallType == BLACKLIST) {
+        // Unsupported in BLACKLIST mode
+        return -1;
+    }
+
     IptablesTarget target = V4;
     if (strchr(addr, ':')) {
         target = V6;
@@ -139,16 +163,19 @@ int FirewallController::setUidRule(int uid, FirewallRule rule) {
     sprintf(uidStr, "%d", uid);
 
     const char* op;
-    if (rule == ALLOW) {
-        op = "-I";
-    } else {
-        op = "-D";
+    const char* target;
+    if (firewallType == WHITELIST) {
+        target = "RETURN";
+        op = (rule == ALLOW)? "-I" : "-D";
+    } else { // BLACKLIST mode
+        target = "DROP";
+        op = (rule == DENY)? "-I" : "-D";
     }
 
     int res = 0;
     res |= execIptables(V4V6, op, LOCAL_INPUT, "-m", "owner", "--uid-owner", uidStr,
-            "-j", "RETURN", NULL);
+            "-j", target, NULL);
     res |= execIptables(V4V6, op, LOCAL_OUTPUT, "-m", "owner", "--uid-owner", uidStr,
-            "-j", "RETURN", NULL);
+            "-j", target, NULL);
     return res;
 }

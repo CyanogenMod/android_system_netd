@@ -73,6 +73,10 @@ static int execIptables(IptablesTarget target, bool silent, va_list args) {
     std::list<const char*> argsList;
     argsList.push_back(NULL);
     const char* arg;
+
+    // Wait to avoid failure due to another process holding the lock
+    argsList.push_back("-w");
+
     do {
         arg = va_arg(args, const char *);
         argsList.push_back(arg);
