@@ -1228,6 +1228,42 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         return 0;
 
     }
+    if (!strcmp(argv[1], "addrestrictappsondata")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "addrestrictappsondata <appUid> ...");
+            return 0;
+        }
+        int rc = sBandwidthCtrl->addRestrictAppsOnData(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+    if (!strcmp(argv[1], "removerestrictappsondata")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "removerestrictappsondata <appUid> ...");
+            return 0;
+        }
+        int rc = sBandwidthCtrl->removeRestrictAppsOnData(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+    if (!strcmp(argv[1], "addrestrictappsonwlan")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "addrestrictappsonwlan <appUid> ...");
+            return 0;
+        }
+        int rc = sBandwidthCtrl->addRestrictAppsOnWlan(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+    if (!strcmp(argv[1], "removerestrictappsonwlan")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "removerestrictappsonwlan <appUid> ...");
+            return 0;
+        }
+        int rc = sBandwidthCtrl->removeRestrictAppsOnWlan(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
 
     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown bandwidth cmd", false);
     return 0;
