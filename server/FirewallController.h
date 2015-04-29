@@ -19,7 +19,12 @@
 
 #include <string>
 
-enum FirewallRule { ALLOW, DENY };
+enum FirewallRule { DENY, ALLOW };
+
+// WHITELIST means the firewall denies all by default, uids must be explicitly ALLOWed
+// BLACKLIST means the firewall allows all by default, uids must be explicitly DENYed
+
+enum FirewallType { WHITELIST, BLACKLIST };
 
 #define PROTOCOL_TCP 6
 #define PROTOCOL_UDP 17
@@ -34,7 +39,7 @@ public:
 
     int setupIptablesHooks(void);
 
-    int enableFirewall(void);
+    int enableFirewall(FirewallType);
     int disableFirewall(void);
     int isFirewallEnabled(void);
 
@@ -51,6 +56,8 @@ public:
     static const char* LOCAL_OUTPUT;
     static const char* LOCAL_FORWARD;
 
+private:
+    FirewallType firewallType;
 };
 
 #endif
