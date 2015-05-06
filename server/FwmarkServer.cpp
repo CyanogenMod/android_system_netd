@@ -75,6 +75,15 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
         return -EBADMSG;
     }
 
+    Permission permission = mNetworkController->getPermissionForUser(client->getUid());
+
+    if (command.cmdId == FwmarkCommand::QUERY_USER_ACCESS) {
+        if ((permission & PERMISSION_SYSTEM) != PERMISSION_SYSTEM) {
+            return -EPERM;
+        }
+        return mNetworkController->checkUserNetworkAccess(command.uid, command.netId);
+    }
+
     cmsghdr* const cmsgh = CMSG_FIRSTHDR(&message);
     if (cmsgh && cmsgh->cmsg_level == SOL_SOCKET && cmsgh->cmsg_type == SCM_RIGHTS &&
         cmsgh->cmsg_len == CMSG_LEN(sizeof(*socketFd))) {
@@ -90,8 +99,6 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
     if (getsockopt(*socketFd, SOL_SOCKET, SO_MARK, &fwmark.intValue, &fwmarkLen) == -1) {
         return -errno;
     }
-
-    Permission permission = mNetworkController->getPermissionForUser(client->getUid());
 
     switch (command.cmdId) {
         case FwmarkCommand::ON_ACCEPT: {

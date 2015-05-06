@@ -16,6 +16,8 @@
 
 #include "FwmarkClient.h"
 
+#include "FwmarkCommand.h"
+
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,7 +44,7 @@ FwmarkClient::~FwmarkClient() {
     }
 }
 
-int FwmarkClient::send(void* data, size_t len, int fd) {
+int FwmarkClient::send(FwmarkCommand* data, int fd) {
     mChannel = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (mChannel == -1) {
         return -errno;
@@ -57,27 +59,29 @@ int FwmarkClient::send(void* data, size_t len, int fd) {
 
     iovec iov;
     iov.iov_base = data;
-    iov.iov_len = len;
+    iov.iov_len = sizeof(*data);
 
     msghdr message;
     memset(&message, 0, sizeof(message));
     message.msg_iov = &iov;
     message.msg_iovlen = 1;
 
-    union {
-        cmsghdr cmh;
-        char cmsg[CMSG_SPACE(sizeof(fd))];
-    } cmsgu;
+    if (data->cmdId != FwmarkCommand::QUERY_USER_ACCESS) {
+        union {
+            cmsghdr cmh;
+            char cmsg[CMSG_SPACE(sizeof(fd))];
+        } cmsgu;
 
-    memset(cmsgu.cmsg, 0, sizeof(cmsgu.cmsg));
-    message.msg_control = cmsgu.cmsg;
-    message.msg_controllen = sizeof(cmsgu.cmsg);
+        memset(cmsgu.cmsg, 0, sizeof(cmsgu.cmsg));
+        message.msg_control = cmsgu.cmsg;
+        message.msg_controllen = sizeof(cmsgu.cmsg);
 
-    cmsghdr* const cmsgh = CMSG_FIRSTHDR(&message);
-    cmsgh->cmsg_len = CMSG_LEN(sizeof(fd));
-    cmsgh->cmsg_level = SOL_SOCKET;
-    cmsgh->cmsg_type = SCM_RIGHTS;
-    memcpy(CMSG_DATA(cmsgh), &fd, sizeof(fd));
+        cmsghdr* const cmsgh = CMSG_FIRSTHDR(&message);
+        cmsgh->cmsg_len = CMSG_LEN(sizeof(fd));
+        cmsgh->cmsg_level = SOL_SOCKET;
+        cmsgh->cmsg_type = SCM_RIGHTS;
+        memcpy(CMSG_DATA(cmsgh), &fd, sizeof(fd));
+    }
 
     if (TEMP_FAILURE_RETRY(sendmsg(mChannel, &message, 0)) == -1) {
         return -errno;
