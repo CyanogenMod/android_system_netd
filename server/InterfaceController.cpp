@@ -34,6 +34,10 @@ namespace {
 
 const char ipv6_proc_path[] = "/proc/sys/net/ipv6/conf";
 
+const char ipv4_neigh_conf_dir[] = "/proc/sys/net/ipv4/neigh";
+
+const char ipv6_neigh_conf_dir[] = "/proc/sys/net/ipv6/neigh";
+
 const char sys_net_path[] = "/sys/class/net";
 
 const char wl_util_path[] = "/system/xbin/wlutil";
@@ -86,6 +90,9 @@ InterfaceController::InterfaceController() {
 
 	// Enable optimistic DAD for IPv6 addresses on all interfaces.
 	setIPv6OptimisticMode("1");
+
+	// Reduce the ARP/ND base reachable time from the default (30sec) to 15sec.
+	setBaseReachableTimeMs(15 * 1000);
 }
 
 InterfaceController::~InterfaceController() {
@@ -158,6 +165,12 @@ int InterfaceController::setMtu(const char *interface, const char *mtu)
         return -1;
     }
     return writeValueToPath(sys_net_path, interface, "mtu", mtu);
+}
+
+void InterfaceController::setBaseReachableTimeMs(unsigned int millis) {
+    std::string value(StringPrintf("%u", millis));
+    setOnAllInterfaces(ipv4_neigh_conf_dir, "base_reachable_time_ms", value.c_str());
+    setOnAllInterfaces(ipv6_neigh_conf_dir, "base_reachable_time_ms", value.c_str());
 }
 
 void InterfaceController::setIPv6OptimisticMode(const char *value) {
