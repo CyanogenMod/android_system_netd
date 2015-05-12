@@ -27,9 +27,11 @@ struct FwmarkCommand {
         SELECT_NETWORK,
         PROTECT_FROM_VPN,
         SELECT_FOR_USER,
+        QUERY_USER_ACCESS,
     } cmdId;
     unsigned netId;  // used only in the SELECT_NETWORK command; ignored otherwise.
-    uid_t uid;  // used only in the SELECT_FOR_USER command; ignored otherwise.
+    uid_t uid;  // used only in the SELECT_FOR_USER and QUERY_USER_ACCESS commands;
+                // ignored otherwise.
 };
 
 #endif  // NETD_INCLUDE_FWMARK_COMMAND_H

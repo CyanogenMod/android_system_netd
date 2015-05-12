@@ -19,6 +19,8 @@
 
 #include <sys/socket.h>
 
+struct FwmarkCommand;
+
 class FwmarkClient {
 public:
     // Returns true if a socket of the given |family| should be sent to the fwmark server to have
@@ -30,7 +32,7 @@ public:
 
     // Sends |data| to the fwmark server, along with |fd| as ancillary data using cmsg(3).
     // Returns 0 on success or a negative errno value on failure.
-    int send(void* data, size_t len, int fd);
+    int send(FwmarkCommand* data, int fd);
 
 private:
     int mChannel;

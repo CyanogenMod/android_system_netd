@@ -37,6 +37,8 @@ int protectFromVpn(int socketFd);
 
 int setNetworkForUser(uid_t uid, int socketFd);
 
+int queryUserAccess(uid_t uid, unsigned netId);
+
 __END_DECLS
 
 #endif  // NETD_INCLUDE_NETD_CLIENT_H
