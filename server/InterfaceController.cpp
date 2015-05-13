@@ -30,11 +30,49 @@
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 
+namespace {
+
 const char ipv6_proc_path[] = "/proc/sys/net/ipv6/conf";
 
 const char sys_net_path[] = "/sys/class/net";
 
 const char wl_util_path[] = "/system/xbin/wlutil";
+
+bool isInterfaceName(const char *name) {
+    return strcmp(name, ".") &&
+            strcmp(name, "..") &&
+            strcmp(name, "default") &&
+            strcmp(name, "all");
+}
+
+int writeValueToPath(
+        const char* dirname, const char* subdirname, const char* basename,
+        const char* value) {
+    std::string path(StringPrintf("%s/%s/%s", dirname, subdirname, basename));
+    return WriteStringToFile(value, path);
+}
+
+void setOnAllInterfaces(const char* dirname, const char* basename, const char* value) {
+    // Set the default value, which is used by any interfaces that are created in the future.
+    writeValueToPath(dirname, "default", basename, value);
+
+    // Set the value on all the interfaces that currently exist.
+    DIR* dir = opendir(dirname);
+    if (!dir) {
+        ALOGE("Can't list %s: %s", dirname, strerror(errno));
+        return;
+    }
+    dirent* d;
+    while ((d = readdir(dir))) {
+        if ((d->d_type != DT_DIR) || !isInterfaceName(d->d_name)) {
+            continue;
+        }
+        writeValueToPath(dirname, d->d_name, basename, value);
+    }
+    closedir(dir);
+}
+
+}  // namespace
 
 InterfaceController::InterfaceController() {
 	// Initial IPv6 settings.
@@ -53,27 +91,26 @@ InterfaceController::InterfaceController() {
 InterfaceController::~InterfaceController() {
 }
 
-int InterfaceController::writeIPv6ProcPath(const char *interface, const char *setting, const char *value) {
-	if (!isIfaceName(interface)) {
-		errno = ENOENT;
-		return -1;
-	}
-	std::string path(StringPrintf("%s/%s/%s", ipv6_proc_path, interface, setting));
-	return WriteStringToFile(value, path);
-}
-
 int InterfaceController::setEnableIPv6(const char *interface, const int on) {
-	// When disable_ipv6 changes from 1 to 0, the kernel starts autoconf.
-	// When disable_ipv6 changes from 0 to 1, the kernel clears all autoconf
-	// addresses and routes and disables IPv6 on the interface.
-	const char *disable_ipv6 = on ? "0" : "1";
-	return writeIPv6ProcPath(interface, "disable_ipv6", disable_ipv6);
+    if (!isIfaceName(interface)) {
+        errno = ENOENT;
+        return -1;
+    }
+    // When disable_ipv6 changes from 1 to 0, the kernel starts autoconf.
+    // When disable_ipv6 changes from 0 to 1, the kernel clears all autoconf
+    // addresses and routes and disables IPv6 on the interface.
+    const char *disable_ipv6 = on ? "0" : "1";
+    return writeValueToPath(ipv6_proc_path, interface, "disable_ipv6", disable_ipv6);
 }
 
 int InterfaceController::setIPv6PrivacyExtensions(const char *interface, const int on) {
-	// 0: disable IPv6 privacy addresses
-	// 0: enable IPv6 privacy addresses and prefer them over non-privacy ones.
-	return writeIPv6ProcPath(interface, "use_tempaddr", on ? "2" : "0");
+    if (!isIfaceName(interface)) {
+        errno = ENOENT;
+        return -1;
+    }
+    // 0: disable IPv6 privacy addresses
+    // 0: enable IPv6 privacy addresses and prefer them over non-privacy ones.
+    return writeValueToPath(ipv6_proc_path, interface, "use_tempaddr", on ? "2" : "0");
 }
 
 // Enables or disables IPv6 ND offload. This is useful for 464xlat on wifi, IPv6 tethering, and
@@ -99,34 +136,8 @@ int InterfaceController::setIPv6NdOffload(char* interface, const int on) {
     }
 }
 
-int InterfaceController::isInterfaceName(const char *name) {
-	return strcmp(name, ".") &&
-		strcmp(name, "..") &&
-		strcmp(name, "default") &&
-		strcmp(name, "all");
-}
-
-void InterfaceController::setOnAllInterfaces(const char* filename, const char* value) {
-	// Set the default value, which is used by any interfaces that are created in the future.
-	writeIPv6ProcPath("default", filename, value);
-
-	// Set the value on all the interfaces that currently exist.
-	DIR* dir = opendir(ipv6_proc_path);
-	if (!dir) {
-		ALOGE("Can't list %s: %s", ipv6_proc_path, strerror(errno));
-		return;
-	}
-	dirent* d;
-	while ((d = readdir(dir))) {
-		if (d->d_type == DT_DIR && isInterfaceName(d->d_name)) {
-			writeIPv6ProcPath(d->d_name, filename, value);
-		}
-	}
-	closedir(dir);
-}
-
 void InterfaceController::setAcceptRA(const char *value) {
-	setOnAllInterfaces("accept_ra", value);
+    setOnAllInterfaces(ipv6_proc_path, "accept_ra", value);
 }
 
 // |tableOrOffset| is interpreted as:
@@ -136,21 +147,20 @@ void InterfaceController::setAcceptRA(const char *value) {
 //             ID to get the table. If it's set to -1000, routes from interface ID 5 will go into
 //             table 1005, etc.
 void InterfaceController::setAcceptRARouteTable(int tableOrOffset) {
-	std::string value(StringPrintf("%d", tableOrOffset));
-	setOnAllInterfaces("accept_ra_rt_table", value.c_str());
+    std::string value(StringPrintf("%d", tableOrOffset));
+    setOnAllInterfaces(ipv6_proc_path, "accept_ra_rt_table", value.c_str());
 }
 
 int InterfaceController::setMtu(const char *interface, const char *mtu)
 {
-	if (!isIfaceName(interface)) {
-		errno = ENOENT;
-		return -1;
-	}
-	std::string path(StringPrintf("%s/%s/mtu", sys_net_path, interface));
-	return WriteStringToFile(mtu, path);
+    if (!isIfaceName(interface)) {
+        errno = ENOENT;
+        return -1;
+    }
+    return writeValueToPath(sys_net_path, interface, "mtu", mtu);
 }
 
 void InterfaceController::setIPv6OptimisticMode(const char *value) {
-	setOnAllInterfaces("optimistic_dad", value);
-	setOnAllInterfaces("use_optimistic", value);
+    setOnAllInterfaces(ipv6_proc_path, "optimistic_dad", value);
+    setOnAllInterfaces(ipv6_proc_path, "use_optimistic", value);
 }
