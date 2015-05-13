@@ -29,6 +29,7 @@ class InterfaceController {
  private:
 	void setAcceptRA(const char* value);
 	void setAcceptRARouteTable(int tableOrOffset);
+	void setBaseReachableTimeMs(unsigned int millis);
 	void setIPv6OptimisticMode(const char *value);
 };
 
