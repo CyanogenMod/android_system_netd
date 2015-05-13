@@ -27,9 +27,6 @@ class InterfaceController {
 	int setMtu(const char *interface, const char *mtu);
 
  private:
-	int writeIPv6ProcPath(const char *interface, const char *setting, const char *value);
-	int isInterfaceName(const char *name);
-	void setOnAllInterfaces(const char* filename, const char* value);
 	void setAcceptRA(const char* value);
 	void setAcceptRARouteTable(int tableOrOffset);
 	void setIPv6OptimisticMode(const char *value);
