@@ -53,7 +53,7 @@ int writeValueToPath(
         const char* dirname, const char* subdirname, const char* basename,
         const char* value) {
     std::string path(StringPrintf("%s/%s/%s", dirname, subdirname, basename));
-    return WriteStringToFile(value, path);
+    return WriteStringToFile(value, path) ? 0 : -1;
 }
 
 void setOnAllInterfaces(const char* dirname, const char* basename, const char* value) {
