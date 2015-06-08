@@ -137,6 +137,7 @@ private:
         int sendGenericOkFail(SocketClient *cli, int cond);
         static FirewallRule parseRule(const char* arg);
         static FirewallType parseFirewallType(const char* arg);
+        static ChildChain parseChildChain(const char* arg);
     };
 
     class ClatdCmd : public NetdCommand {
