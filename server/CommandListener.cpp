@@ -1294,6 +1294,19 @@ FirewallType CommandListener::FirewallCmd::parseFirewallType(const char* arg) {
     }
 }
 
+ChildChain CommandListener::FirewallCmd::parseChildChain(const char* arg) {
+    if (!strcmp(arg, "dozable")) {
+        return DOZABLE;
+    } else if (!strcmp(arg, "standby")) {
+        return STANDBY;
+    } else if (!strcmp(arg, "none")) {
+        return NONE;
+    } else {
+        ALOGE("failed to parse child firewall chain (%s)", arg);
+        return INVALID_CHAIN;
+    }
+}
+
 int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
         char **argv) {
     if (argc < 2) {
@@ -1369,16 +1382,49 @@ int CommandListener::FirewallCmd::runCommand(SocketClient *cli, int argc,
     }
 
     if (!strcmp(argv[1], "set_uid_rule")) {
-        if (argc != 4) {
+        if (argc != 5) {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
-                         "Usage: firewall set_uid_rule <1000> <allow|deny>",
+                         "Usage: firewall set_uid_rule <dozable|standby|none> <1000> <allow|deny>",
                          false);
             return 0;
         }
 
-        int uid = atoi(argv[2]);
-        FirewallRule rule = parseRule(argv[3]);
-        int res = sFirewallCtrl->setUidRule(uid, rule);
+        ChildChain childChain = parseChildChain(argv[2]);
+        if (childChain == INVALID_CHAIN) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Invalid chain name. Valid names are: <dozable|standby|none>",
+                         false);
+            return 0;
+        }
+        int uid = atoi(argv[3]);
+        FirewallRule rule = parseRule(argv[4]);
+        int res = sFirewallCtrl->setUidRule(childChain, uid, rule);
+        return sendGenericOkFail(cli, res);
+    }
+
+    if (!strcmp(argv[1], "enable_chain")) {
+        if (argc != 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: firewall enable_chain <dozable|standby>",
+                         false);
+            return 0;
+        }
+
+        ChildChain childChain = parseChildChain(argv[2]);
+        int res = sFirewallCtrl->enableChildChains(childChain, true);
+        return sendGenericOkFail(cli, res);
+    }
+
+    if (!strcmp(argv[1], "disable_chain")) {
+        if (argc != 3) {
+            cli->sendMsg(ResponseCode::CommandSyntaxError,
+                         "Usage: firewall disable_chain <dozable|standby>",
+                         false);
+            return 0;
+        }
+
+        ChildChain childChain = parseChildChain(argv[2]);
+        int res = sFirewallCtrl->enableChildChains(childChain, false);
         return sendGenericOkFail(cli, res);
     }
 

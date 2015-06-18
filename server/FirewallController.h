@@ -26,6 +26,8 @@ enum FirewallRule { DENY, ALLOW };
 
 enum FirewallType { WHITELIST, BLACKLIST };
 
+enum ChildChain { NONE, DOZABLE, STANDBY, INVALID_CHAIN };
+
 #define PROTOCOL_TCP 6
 #define PROTOCOL_UDP 17
 
@@ -49,15 +51,25 @@ public:
     int setEgressSourceRule(const char*, FirewallRule);
     /* Match traffic coming-in-from or going-out-to given address, port, and protocol. */
     int setEgressDestRule(const char*, int, int, FirewallRule);
-    /* Match traffic owned by given UID. */
-    int setUidRule(int, FirewallRule);
+    /* Match traffic owned by given UID. This is specific to a particular chain. */
+    int setUidRule(ChildChain, int, FirewallRule);
+
+    int enableChildChains(ChildChain, bool);
+
+    static const char* TABLE;
 
     static const char* LOCAL_INPUT;
     static const char* LOCAL_OUTPUT;
     static const char* LOCAL_FORWARD;
 
+    static const char* LOCAL_DOZABLE;
+    static const char* LOCAL_STANDBY;
 private:
-    FirewallType firewallType;
+    FirewallType mFirewallType;
+    int attachChain(const char*, const char*);
+    int detachChain(const char*, const char*);
+    int createChain(const char*, const char*, FirewallType);
+    FirewallType getFirewallType(ChildChain);
 };
 
 #endif

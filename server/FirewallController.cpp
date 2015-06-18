@@ -27,42 +27,55 @@
 #include "NetdConstants.h"
 #include "FirewallController.h"
 
+const char* FirewallController::TABLE = "filter";
+
 const char* FirewallController::LOCAL_INPUT = "fw_INPUT";
 const char* FirewallController::LOCAL_OUTPUT = "fw_OUTPUT";
 const char* FirewallController::LOCAL_FORWARD = "fw_FORWARD";
 
+const char* FirewallController::LOCAL_DOZABLE = "fw_dozable";
+const char* FirewallController::LOCAL_STANDBY = "fw_standby";
+
 FirewallController::FirewallController(void) {
     // If no rules are set, it's in BLACKLIST mode
-    firewallType = BLACKLIST;
+    mFirewallType = BLACKLIST;
 }
 
 int FirewallController::setupIptablesHooks(void) {
-    return 0;
+    int res = 0;
+    // child chains are created but not attached, they will be attached explicitly.
+    FirewallType firewallType = getFirewallType(DOZABLE);
+    res |= createChain(LOCAL_DOZABLE, LOCAL_INPUT, firewallType);
+
+    firewallType = getFirewallType(STANDBY);
+    res |= createChain(LOCAL_STANDBY, LOCAL_INPUT, firewallType);
+
+    return res;
 }
 
 int FirewallController::enableFirewall(FirewallType ftype) {
     int res = 0;
+    if (mFirewallType != ftype) {
+        // flush any existing rules
+        disableFirewall();
 
-    // flush any existing rules
-    disableFirewall();
+        if (ftype == WHITELIST) {
+            // create default rule to drop all traffic
+            res |= execIptables(V4V6, "-A", LOCAL_INPUT, "-j", "DROP", NULL);
+            res |= execIptables(V4V6, "-A", LOCAL_OUTPUT, "-j", "REJECT", NULL);
+            res |= execIptables(V4V6, "-A", LOCAL_FORWARD, "-j", "REJECT", NULL);
+        }
 
-    if (ftype == WHITELIST) {
-        // create default rule to drop all traffic
-        res |= execIptables(V4V6, "-A", LOCAL_INPUT, "-j", "DROP", NULL);
-        res |= execIptables(V4V6, "-A", LOCAL_OUTPUT, "-j", "REJECT", NULL);
-        res |= execIptables(V4V6, "-A", LOCAL_FORWARD, "-j", "REJECT", NULL);
+        // Set this after calling disableFirewall(), since it defaults to WHITELIST there
+        mFirewallType = ftype;
     }
-
-    // Set this after calling disableFirewall(), since it defaults to WHITELIST there
-    firewallType = ftype;
-
     return res;
 }
 
 int FirewallController::disableFirewall(void) {
     int res = 0;
 
-    firewallType = WHITELIST;
+    mFirewallType = WHITELIST;
 
     // flush any existing rules
     res |= execIptables(V4V6, "-F", LOCAL_INPUT, NULL);
@@ -72,13 +85,37 @@ int FirewallController::disableFirewall(void) {
     return res;
 }
 
+int FirewallController::enableChildChains(ChildChain chain, bool enable) {
+    int res = 0;
+    const char* name;
+    switch(chain) {
+        case DOZABLE:
+            name = LOCAL_DOZABLE;
+            break;
+        case STANDBY:
+            name = LOCAL_STANDBY;
+            break;
+        default:
+            return res;
+    }
+
+    if (enable) {
+        res |= attachChain(name, LOCAL_INPUT);
+        res |= attachChain(name, LOCAL_OUTPUT);
+    } else {
+        res |= detachChain(name, LOCAL_INPUT);
+        res |= detachChain(name, LOCAL_OUTPUT);
+    }
+    return res;
+}
+
 int FirewallController::isFirewallEnabled(void) {
     // TODO: verify that rules are still in place near top
     return -1;
 }
 
 int FirewallController::setInterfaceRule(const char* iface, FirewallRule rule) {
-    if (firewallType == BLACKLIST) {
+    if (mFirewallType == BLACKLIST) {
         // Unsupported in BLACKLIST mode
         return -1;
     }
@@ -102,7 +139,7 @@ int FirewallController::setInterfaceRule(const char* iface, FirewallRule rule) {
 }
 
 int FirewallController::setEgressSourceRule(const char* addr, FirewallRule rule) {
-    if (firewallType == BLACKLIST) {
+    if (mFirewallType == BLACKLIST) {
         // Unsupported in BLACKLIST mode
         return -1;
     }
@@ -127,7 +164,7 @@ int FirewallController::setEgressSourceRule(const char* addr, FirewallRule rule)
 
 int FirewallController::setEgressDestRule(const char* addr, int protocol, int port,
         FirewallRule rule) {
-    if (firewallType == BLACKLIST) {
+    if (mFirewallType == BLACKLIST) {
         // Unsupported in BLACKLIST mode
         return -1;
     }
@@ -158,12 +195,26 @@ int FirewallController::setEgressDestRule(const char* addr, int protocol, int po
     return res;
 }
 
-int FirewallController::setUidRule(int uid, FirewallRule rule) {
+FirewallType FirewallController::getFirewallType(ChildChain chain) {
+    switch(chain) {
+        case DOZABLE:
+            return WHITELIST;
+        case STANDBY:
+            return BLACKLIST;
+        case NONE:
+            return mFirewallType;
+        default:
+            return BLACKLIST;
+    }
+}
+
+int FirewallController::setUidRule(ChildChain chain, int uid, FirewallRule rule) {
     char uidStr[16];
     sprintf(uidStr, "%d", uid);
 
     const char* op;
     const char* target;
+    FirewallType firewallType = getFirewallType(chain);
     if (firewallType == WHITELIST) {
         target = "RETURN";
         op = (rule == ALLOW)? "-I" : "-D";
@@ -173,9 +224,47 @@ int FirewallController::setUidRule(int uid, FirewallRule rule) {
     }
 
     int res = 0;
-    res |= execIptables(V4V6, op, LOCAL_INPUT, "-m", "owner", "--uid-owner", uidStr,
-            "-j", target, NULL);
-    res |= execIptables(V4V6, op, LOCAL_OUTPUT, "-m", "owner", "--uid-owner", uidStr,
-            "-j", target, NULL);
+    switch(chain) {
+        case DOZABLE:
+            res |= execIptables(V4V6, op, LOCAL_DOZABLE, "-m", "owner", "--uid-owner",
+                    uidStr, "-j", target, NULL);
+            break;
+        case STANDBY:
+            res |= execIptables(V4V6, op, LOCAL_STANDBY, "-m", "owner", "--uid-owner",
+                    uidStr, "-j", target, NULL);
+            break;
+        case NONE:
+            res |= execIptables(V4V6, op, LOCAL_INPUT, "-m", "owner", "--uid-owner", uidStr,
+                    "-j", target, NULL);
+            res |= execIptables(V4V6, op, LOCAL_OUTPUT, "-m", "owner", "--uid-owner", uidStr,
+                    "-j", target, NULL);
+            break;
+        default:
+            ALOGW("Unknown child chain: %d", chain);
+            break;
+    }
+    return res;
+}
+
+int FirewallController::attachChain(const char* childChain, const char* parentChain) {
+    return execIptables(V4V6, "-t", TABLE, "-A", parentChain, "-j", childChain, NULL);
+}
+
+int FirewallController::detachChain(const char* childChain, const char* parentChain) {
+    return execIptables(V4V6, "-t", TABLE, "-D", parentChain, "-j", childChain, NULL);
+}
+
+int FirewallController::createChain(const char* childChain,
+        const char* parentChain, FirewallType type) {
+    // Order is important, otherwise later steps may fail.
+    execIptablesSilently(V4V6, "-t", TABLE, "-D", parentChain, "-j", childChain, NULL);
+    execIptablesSilently(V4V6, "-t", TABLE, "-F", childChain, NULL);
+    execIptablesSilently(V4V6, "-t", TABLE, "-X", childChain, NULL);
+    int res = 0;
+    res |= execIptables(V4V6, "-t", TABLE, "-N", childChain, NULL);
+    if (type == WHITELIST) {
+        // create default rule to drop all traffic
+        res |= execIptables(V4V6, "-A", childChain, "-j", "DROP", NULL);
+    }
     return res;
 }
