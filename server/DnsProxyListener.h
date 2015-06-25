@@ -17,6 +17,7 @@
 #ifndef _DNSPROXYLISTENER_H__
 #define _DNSPROXYLISTENER_H__
 
+#include <resolv_netid.h>  // struct android_net_context
 #include <sysutils/FrameworkListener.h>
 
 #include "NetdCommand.h"
@@ -46,8 +47,7 @@ private:
                            char* host,
                            char* service,
                            struct addrinfo* hints,
-                           unsigned netId,
-                           uint32_t mark);
+                           const struct android_net_context& netcontext);
         ~GetAddrInfoHandler();
 
         static void* threadStart(void* handler);
@@ -59,8 +59,7 @@ private:
         char* mHost;    // owned
         char* mService; // owned
         struct addrinfo* mHints;  // owned
-        unsigned mNetId;
-        uint32_t mMark;
+        struct android_net_context mNetContext;
     };
 
     /* ------ gethostbyname ------*/
