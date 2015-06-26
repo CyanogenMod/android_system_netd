@@ -23,6 +23,7 @@
 #define LOG_NDEBUG 0
 
 #include <cutils/log.h>
+#include <private/android_filesystem_config.h>
 
 #include "NetdConstants.h"
 #include "FirewallController.h"
@@ -263,6 +264,11 @@ int FirewallController::createChain(const char* childChain,
     int res = 0;
     res |= execIptables(V4V6, "-t", TABLE, "-N", childChain, NULL);
     if (type == WHITELIST) {
+        // create default white list for system uid range
+        char uidStr[16];
+        sprintf(uidStr, "0-%d", AID_APP - 1);
+        res |= execIptables(V4V6, "-A", childChain, "-m", "owner", "--uid-owner",
+                uidStr, "-j", "RETURN", NULL);
         // create default rule to drop all traffic
         res |= execIptables(V4V6, "-A", childChain, "-j", "DROP", NULL);
     }
