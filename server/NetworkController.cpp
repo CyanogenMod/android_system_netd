@@ -237,6 +237,30 @@ unsigned NetworkController::getNetworkForConnect(uid_t uid) const {
     return mDefaultNetId;
 }
 
+void NetworkController::getNetworkContext(
+        unsigned netId, uid_t uid, struct android_net_context* netcontext) const {
+    struct android_net_context nc = {
+            .app_netid = netId,
+            .app_mark = MARK_UNSET,
+            .dns_netid = netId,
+            .dns_mark = MARK_UNSET,
+            .uid = uid,
+    };
+
+    if (nc.app_netid == NETID_UNSET) {
+        nc.app_netid = getNetworkForConnect(uid);
+    }
+    Fwmark fwmark;
+    fwmark.netId = nc.app_netid;
+    nc.app_mark = fwmark.intValue;
+
+    nc.dns_mark = getNetworkForDns(&(nc.dns_netid), uid);
+
+    if (netcontext) {
+        *netcontext = nc;
+    }
+}
+
 unsigned NetworkController::getNetworkForInterface(const char* interface) const {
     android::RWLock::AutoRLock lock(mRWLock);
     for (const auto& entry : mNetworks) {

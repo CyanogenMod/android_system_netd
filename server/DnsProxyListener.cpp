@@ -48,18 +48,14 @@ DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl) :
     registerCmd(new GetHostByNameCmd(this));
 }
 
-DnsProxyListener::GetAddrInfoHandler::GetAddrInfoHandler(SocketClient *c,
-                                                         char* host,
-                                                         char* service,
-                                                         struct addrinfo* hints,
-                                                         unsigned netId,
-                                                         uint32_t mark)
+DnsProxyListener::GetAddrInfoHandler::GetAddrInfoHandler(
+        SocketClient *c, char* host, char* service, struct addrinfo* hints,
+        const struct android_net_context& netcontext)
         : mClient(c),
           mHost(host),
           mService(service),
           mHints(hints),
-          mNetId(netId),
-          mMark(mark) {
+          mNetContext(netcontext) {
 }
 
 DnsProxyListener::GetAddrInfoHandler::~GetAddrInfoHandler() {
@@ -160,11 +156,14 @@ static bool sendaddrinfo(SocketClient* c, struct addrinfo* ai) {
 
 void DnsProxyListener::GetAddrInfoHandler::run() {
     if (DBG) {
-        ALOGD("GetAddrInfoHandler, now for %s / %s / %u / %u", mHost, mService, mNetId, mMark);
+        ALOGD("GetAddrInfoHandler, now for %s / %s / {%u,%u,%u,%u,%u}", mHost, mService,
+                mNetContext.app_netid, mNetContext.app_mark,
+                mNetContext.dns_netid, mNetContext.dns_mark,
+                mNetContext.uid);
     }
 
     struct addrinfo* result = NULL;
-    uint32_t rv = android_getaddrinfofornet(mHost, mService, mHints, mNetId, mMark, &result);
+    uint32_t rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, &result);
     if (rv) {
         // getaddrinfo failed
         mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, &rv, sizeof(rv));
@@ -229,7 +228,8 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
     unsigned netId = strtoul(argv[7], NULL, 10);
     uid_t uid = cli->getUid();
 
-    uint32_t mark = mDnsProxyListener->mNetCtrl->getNetworkForDns(&netId, uid);
+    struct android_net_context netcontext;
+    mDnsProxyListener->mNetCtrl->getNetworkContext(netId, uid, &netcontext);
 
     if (ai_flags != -1 || ai_family != -1 ||
         ai_socktype != -1 || ai_protocol != -1) {
@@ -242,21 +242,23 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
         // Only implement AI_ADDRCONFIG if application is using default network since our
         // implementation only works on the default network.
         if ((hints->ai_flags & AI_ADDRCONFIG) &&
-                netId != mDnsProxyListener->mNetCtrl->getDefaultNetwork()) {
+                netcontext.dns_netid != mDnsProxyListener->mNetCtrl->getDefaultNetwork()) {
             hints->ai_flags &= ~AI_ADDRCONFIG;
         }
     }
 
     if (DBG) {
-        ALOGD("GetAddrInfoHandler for %s / %s / %u / %d / %u",
+        ALOGD("GetAddrInfoHandler for %s / %s / {%u,%u,%u,%u,%u}",
              name ? name : "[nullhost]",
              service ? service : "[nullservice]",
-             netId, uid, mark);
+             netcontext.app_netid, netcontext.app_mark,
+             netcontext.dns_netid, netcontext.dns_mark,
+             netcontext.uid);
     }
 
     cli->incRef();
     DnsProxyListener::GetAddrInfoHandler* handler =
-            new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints, netId, mark);
+            new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints, netcontext);
     handler->start();
 
     return 0;
