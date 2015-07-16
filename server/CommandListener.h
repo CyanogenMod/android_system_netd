@@ -32,6 +32,7 @@
 #include "FirewallController.h"
 #include "ClatdController.h"
 #include "StrictController.h"
+#include "QtiConnectivityController.h"
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
@@ -45,6 +46,7 @@ class CommandListener : public FrameworkListener {
     static FirewallController *sFirewallCtrl;
     static ClatdController *sClatdCtrl;
     static StrictController *sStrictCtrl;
+    static QtiConnectivityController *sQtiConnectivityCtrl;
 
 public:
     static NetworkController *sNetCtrl;
