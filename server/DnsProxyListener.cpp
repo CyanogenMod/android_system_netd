@@ -238,13 +238,6 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
         hints->ai_family = ai_family;
         hints->ai_socktype = ai_socktype;
         hints->ai_protocol = ai_protocol;
-
-        // Only implement AI_ADDRCONFIG if application is using default network since our
-        // implementation only works on the default network.
-        if ((hints->ai_flags & AI_ADDRCONFIG) &&
-                netcontext.dns_netid != mDnsProxyListener->mNetCtrl->getDefaultNetwork()) {
-            hints->ai_flags &= ~AI_ADDRCONFIG;
-        }
     }
 
     if (DBG) {
