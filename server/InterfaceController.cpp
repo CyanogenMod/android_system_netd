@@ -76,6 +76,10 @@ void setOnAllInterfaces(const char* dirname, const char* basename, const char* v
     closedir(dir);
 }
 
+void setIPv6UseOutgoingInterfaceAddrsOnly(const char *value) {
+    setOnAllInterfaces(ipv6_proc_path, "use_oif_addrs_only", value);
+}
+
 }  // namespace
 
 InterfaceController::InterfaceController() {
@@ -93,6 +97,10 @@ InterfaceController::InterfaceController() {
 
 	// Reduce the ARP/ND base reachable time from the default (30sec) to 15sec.
 	setBaseReachableTimeMs(15 * 1000);
+
+	// When sending traffic via a given interface use only addresses configured
+        // on that interface as possible source addresses.
+	setIPv6UseOutgoingInterfaceAddrsOnly("1");
 }
 
 InterfaceController::~InterfaceController() {
