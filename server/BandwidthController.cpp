@@ -199,7 +199,7 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptJumpOp jumpHandling,
         break;
     }
 
-    fullCmd.insert(0, " ");
+    fullCmd.insert(0, " -w ");
     fullCmd.insert(0, iptVer == IptIpV4 ? IPTABLES_PATH : IP6TABLES_PATH);
 
     if (StrncpyAndCheck(buffer, fullCmd.c_str(), sizeof(buffer))) {
