@@ -37,6 +37,7 @@ static int runIptablesCmd(int argc, const char **argv) {
 static bool oemCleanupHooks() {
     const char *cmd1[] = {
             IPTABLES_PATH,
+            "-w",
             "-F",
             "oem_out"
     };
@@ -44,6 +45,7 @@ static bool oemCleanupHooks() {
 
     const char *cmd2[] = {
             IPTABLES_PATH,
+            "-w",
             "-F",
             "oem_fwd"
     };
@@ -51,6 +53,7 @@ static bool oemCleanupHooks() {
 
     const char *cmd3[] = {
             IPTABLES_PATH,
+            "-w",
             "-t",
             "nat",
             "-F",
