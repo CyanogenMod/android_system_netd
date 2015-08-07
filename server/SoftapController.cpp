@@ -43,12 +43,14 @@
 #include "ResponseCode.h"
 
 #include "SoftapController.h"
+#include <dirent.h>
 
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 
 static const char HOSTAPD_CONF_FILE[]    = "/data/misc/wifi/hostapd.conf";
 static const char HOSTAPD_BIN_FILE[]    = "/system/bin/hostapd";
+static const char HOSTAPD_SOCKETS_DIR[]    = "/data/misc/wifi/sockets";
 
 SoftapController::SoftapController()
     : mPid(0) {}
@@ -58,6 +60,7 @@ SoftapController::~SoftapController() {
 
 int SoftapController::startSoftap() {
     pid_t pid = 1;
+    DIR *dir = NULL;
 
     if (mPid) {
         ALOGE("SoftAP is already running");
@@ -86,6 +89,20 @@ int SoftapController::startSoftap() {
         mPid = pid;
         ALOGD("SoftAP started successfully");
         usleep(AP_BSS_START_DELAY);
+        dir = opendir(HOSTAPD_SOCKETS_DIR);
+        if (NULL == dir && errno == ENOENT) {
+            mkdir(HOSTAPD_SOCKETS_DIR, S_IRWXU|S_IRWXG|S_IRWXO);
+            chown(HOSTAPD_SOCKETS_DIR, AID_WIFI, AID_WIFI);
+            chmod(HOSTAPD_SOCKETS_DIR, S_IRWXU|S_IRWXG);
+        } else {
+            if (dir != NULL) { /* Directory already exists */
+                ALOGD("%s already exists", HOSTAPD_SOCKETS_DIR);
+                closedir(dir);
+            }
+            if (errno == EACCES) {
+                ALOGE("Cant open %s , check permissions ", HOSTAPD_SOCKETS_DIR);
+            }
+        }
     }
     return ResponseCode::SoftapStatusResult;
 }
