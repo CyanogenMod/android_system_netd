@@ -45,7 +45,7 @@
 #include "FirewallController.h"
 #include "RouteController.h"
 #include "UidRanges.h"
-#include "QtiConnectivityController.h"
+#include "QtiConnectivityAdapter.h"
 
 #ifdef QSAP_WLAN
 #include "qsap_api.h"
@@ -98,7 +98,6 @@ ResolverController *CommandListener::sResolverCtrl = NULL;
 FirewallController *CommandListener::sFirewallCtrl = NULL;
 ClatdController *CommandListener::sClatdCtrl = NULL;
 StrictController *CommandListener::sStrictCtrl = NULL;
-QtiConnectivityController *CommandListener::sQtiConnectivityCtrl = NULL;
 
 /**
  * List of module chains to be created, along with explicit ordering. ORDERING
@@ -191,6 +190,7 @@ CommandListener::CommandListener() :
     registerCmd(new ClatdCmd());
     registerCmd(new NetworkCommand());
     registerCmd(new StrictCmd());
+    registerCmd(getQtiConnectivityCmd(this));
 
     if (!sNetCtrl)
         sNetCtrl = new NetworkController();
@@ -216,10 +216,6 @@ CommandListener::CommandListener() :
         sClatdCtrl = new ClatdController(sNetCtrl);
     if (!sStrictCtrl)
         sStrictCtrl = new StrictController();
-    if (!sQtiConnectivityCtrl) {
-        sQtiConnectivityCtrl = new QtiConnectivityController();
-        registerCmd(sQtiConnectivityCtrl->getQtiConnectivityCmd());
-    }
 
     /*
      * This is the only time we touch top-level chains in iptables; controllers
@@ -702,13 +698,13 @@ int CommandListener::NatCmd::runCommand(SocketClient *cli,
     if (!strcmp(argv[1], "enable") && argc >= 4) {
         rc = sNatCtrl->enableNat(argv[2], argv[3]);
         if(!rc) {
-            sQtiConnectivityCtrl->natStarted(argv[2], argv[3]);
+            natStarted(argv[2], argv[3]);
             /* Ignore ifaces for now. */
             rc = sBandwidthCtrl->setGlobalAlertInForwardChain();
         }
     } else if (!strcmp(argv[1], "disable") && argc >= 4) {
         /* Ignore ifaces for now. */
-        sQtiConnectivityCtrl->natStopped(argv[2], argv[3]);
+        natStopped(argv[2], argv[3]);
         rc = sBandwidthCtrl->removeGlobalAlertInForwardChain();
         rc |= sNatCtrl->disableNat(argv[2], argv[3]);
     } else {
