@@ -44,7 +44,7 @@ FwmarkClient::~FwmarkClient() {
     }
 }
 
-int __attribute__((optnone)) FwmarkClient::send(FwmarkCommand* data, int fd) {
+int FwmarkClient::send(FwmarkCommand* data, int fd) {
     mChannel = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (mChannel == -1) {
         return -errno;
