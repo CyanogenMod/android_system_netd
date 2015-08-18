@@ -66,12 +66,12 @@ int FwmarkClient::send(FwmarkCommand* data, int fd) {
     message.msg_iov = &iov;
     message.msg_iovlen = 1;
 
-    if (data->cmdId != FwmarkCommand::QUERY_USER_ACCESS) {
-        union {
-            cmsghdr cmh;
-            char cmsg[CMSG_SPACE(sizeof(fd))];
-        } cmsgu;
+    union {
+        cmsghdr cmh;
+        char cmsg[CMSG_SPACE(sizeof(fd))];
+    } cmsgu;
 
+    if (data->cmdId != FwmarkCommand::QUERY_USER_ACCESS) {
         memset(cmsgu.cmsg, 0, sizeof(cmsgu.cmsg));
         message.msg_control = cmsgu.cmsg;
         message.msg_controllen = sizeof(cmsgu.cmsg);
