@@ -1249,7 +1249,7 @@ int BandwidthController::getTetherStats(SocketClient *cli, TetherStats &stats, s
      * the wanted info.
      */
     fullCmd = IPTABLES_PATH;
-    fullCmd += " -nvx -L ";
+    fullCmd += " -nvx -w -L ";
     fullCmd += NatController::LOCAL_TETHER_COUNTERS_CHAIN;
     iptOutput = popen(fullCmd.c_str(), "r");
     if (!iptOutput) {
@@ -1270,7 +1270,7 @@ void BandwidthController::flushExistingCostlyTables(bool doClean) {
 
     /* Only lookup ip4 table names as ip6 will have the same tables ... */
     fullCmd = IPTABLES_PATH;
-    fullCmd += " -S";
+    fullCmd += " -w -S";
     iptOutput = popen(fullCmd.c_str(), "r");
     if (!iptOutput) {
             ALOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
