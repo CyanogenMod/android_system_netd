@@ -26,6 +26,8 @@ LOCAL_CLANG := true
 LOCAL_CPPFLAGS := -std=c++11 -Wall -Werror
 LOCAL_MODULE := netd
 
+LOCAL_INIT_RC := netd.rc
+
 LOCAL_SHARED_LIBRARIES := \
         libcrypto \
         libcutils \
