@@ -37,6 +37,18 @@ const char* FirewallController::LOCAL_FORWARD = "fw_FORWARD";
 const char* FirewallController::LOCAL_DOZABLE = "fw_dozable";
 const char* FirewallController::LOCAL_STANDBY = "fw_standby";
 
+// ICMPv6 types that are required for any form of IPv6 connectivity to work. Note that because the
+// fw_dozable chain is called from both INPUT and OUTPUT, this includes both packets that we need
+// to be able to send (e.g., RS, NS), and packets that we need to receive (e.g., RA, NA).
+const char* FirewallController::ICMPV6_TYPES[] = {
+    "packet-too-big",
+    "router-solicitation",
+    "router-advertisement",
+    "neighbour-solicitation",
+    "neighbour-advertisement",
+    "redirect",
+};
+
 FirewallController::FirewallController(void) {
     // If no rules are set, it's in BLACKLIST mode
     mFirewallType = BLACKLIST;
@@ -264,11 +276,18 @@ int FirewallController::createChain(const char* childChain,
     int res = 0;
     res |= execIptables(V4V6, "-t", TABLE, "-N", childChain, NULL);
     if (type == WHITELIST) {
+        // Allow ICMPv6 packets necessary to make IPv6 connectivity work. http://b/23158230 .
+        for (size_t i = 0; i < ARRAY_SIZE(ICMPV6_TYPES); i++) {
+            res |= execIptables(V6, "-A", childChain, "-p", "icmpv6", "--icmpv6-type",
+                    ICMPV6_TYPES[i], "-j", "RETURN", NULL);
+        }
+
         // create default white list for system uid range
         char uidStr[16];
         sprintf(uidStr, "0-%d", AID_APP - 1);
         res |= execIptables(V4V6, "-A", childChain, "-m", "owner", "--uid-owner",
                 uidStr, "-j", "RETURN", NULL);
+
         // create default rule to drop all traffic
         res |= execIptables(V4V6, "-A", childChain, "-j", "DROP", NULL);
     }
