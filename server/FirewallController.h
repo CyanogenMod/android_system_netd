@@ -64,6 +64,9 @@ public:
 
     static const char* LOCAL_DOZABLE;
     static const char* LOCAL_STANDBY;
+
+    static const char* ICMPV6_TYPES[];
+
 private:
     FirewallType mFirewallType;
     int attachChain(const char*, const char*);
