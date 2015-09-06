@@ -40,6 +40,7 @@
 #include <netutils/ifc.h>
 #include <private/android_filesystem_config.h>
 #include "wifi.h"
+#include "wifi_fst.h"
 #include "ResponseCode.h"
 
 #include "SoftapController.h"
@@ -59,6 +60,7 @@ static const char HOSTAPD_DHCP_DIR[]    = "/data/misc/dhcp";
 #endif
 static const char HOSTAPD_CONF_FILE[]    = "/data/misc/wifi/hostapd.conf";
 static const char HOSTAPD_BIN_FILE[]    = "/system/bin/hostapd";
+static const char WIFI_HOSTAPD_GLOBAL_CTRL_IFACE[] = "/data/misc/wifi/hostapd/global";
 
 SoftapController::SoftapController(SocketListener *sl)
     : mPid(0) {
@@ -154,6 +156,7 @@ void *SoftapController::threadStart(void *obj){
 
 int SoftapController::startSoftap() {
     pid_t pid = 1;
+    int ret;
 
     if (mPid) {
         ALOGE("SoftAP is already running");
@@ -164,19 +167,35 @@ int SoftapController::startSoftap() {
         ALOGE("Wi-Fi entropy file was not created");
     }
 
+    ret = wifi_start_fstman(true);
+    if (ret) {
+        return ResponseCode::ServiceStartFailed;
+    }
+
     if ((pid = fork()) < 0) {
         ALOGE("fork failed (%s)", strerror(errno));
+        wifi_stop_fstman(true);
         return ResponseCode::ServiceStartFailed;
     }
 
     if (!pid) {
         ensure_entropy_file_exists();
-        if (execl(HOSTAPD_BIN_FILE, HOSTAPD_BIN_FILE,
-                  "-e", WIFI_ENTROPY_FILE,
-                  HOSTAPD_CONF_FILE, (char *) NULL)) {
+        if (is_fst_softap_enabled()) {
+            /* fstman needs hostapd global control interface */
+            ret = execl(HOSTAPD_BIN_FILE, HOSTAPD_BIN_FILE,
+                        "-e", WIFI_ENTROPY_FILE, "-ddd",
+                        "-g", WIFI_HOSTAPD_GLOBAL_CTRL_IFACE,
+                        HOSTAPD_CONF_FILE, (char *)NULL);
+        } else {
+            ret = execl(HOSTAPD_BIN_FILE, HOSTAPD_BIN_FILE,
+                        "-e", WIFI_ENTROPY_FILE, HOSTAPD_CONF_FILE,
+                        (char *)NULL);
+        }
+        if (ret) {
             ALOGE("execl failed (%s)", strerror(errno));
         }
         ALOGE("SoftAP failed to start");
+        wifi_stop_fstman(true);
         return ResponseCode::ServiceStartFailed;
     } else {
         mPid = pid;
@@ -212,6 +231,7 @@ int SoftapController::stopSoftap() {
 
     mPid = 0;
     ALOGD("SoftAP stopped successfully");
+    wifi_stop_fstman(true);
     usleep(AP_BSS_STOP_DELAY);
     return ResponseCode::SoftapStatusResult;
 }
