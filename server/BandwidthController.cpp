@@ -555,6 +555,12 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
 
     snprintf(cmd, sizeof(cmd), "-I bw_OUTPUT %d -o %s --jump %s", ruleInsertPos, ifn, costCString);
     res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
+
+    snprintf(cmd, sizeof(cmd), "-D bw_FORWARD -o %s --jump %s", ifn, costCString);
+    runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
+    snprintf(cmd, sizeof(cmd), "-A bw_FORWARD -o %s --jump %s", ifn, costCString);
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
+
     return res;
 }
 
@@ -580,8 +586,10 @@ int BandwidthController::cleanupCostlyIface(const char *ifn, QuotaType quotaType
 
     snprintf(cmd, sizeof(cmd), "-D bw_INPUT -i %s --jump %s", ifn, costCString);
     res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
-    snprintf(cmd, sizeof(cmd), "-D bw_OUTPUT -o %s --jump %s", ifn, costCString);
-    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
+    for (const auto tableName : {LOCAL_OUTPUT, LOCAL_FORWARD}) {
+        snprintf(cmd, sizeof(cmd), "-D %s -o %s --jump %s", tableName, ifn, costCString);
+        res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
+    }
 
     /* The "-N bw_costly_shared" is created upfront, no need to handle it here. */
     if (quotaType == QuotaUnique) {
