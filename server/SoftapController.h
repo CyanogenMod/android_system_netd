@@ -39,7 +39,7 @@ public:
     int fwReloadSoftap(int argc, char *argv[]);
 private:
     pid_t mPid;
-    void generatePsk(char *ssid, char *passphrase, char *psk);
+    bool generatePsk(char *ssid, char *passphrase, char *psk);
 };
 
 #endif

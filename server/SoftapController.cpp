@@ -154,10 +154,14 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
     if (argc > 7) {
         char psk_str[2*SHA256_DIGEST_LENGTH+1];
         if (!strcmp(argv[6], "wpa-psk")) {
-            generatePsk(argv[3], argv[7], psk_str);
+            if (!generatePsk(argv[3], argv[7], psk_str)) {
+                return ResponseCode::OperationFailed;
+            }
             fbuf = StringPrintf("%swpa=3\nwpa_pairwise=TKIP CCMP\nwpa_psk=%s\n", wbuf.c_str(), psk_str);
         } else if (!strcmp(argv[6], "wpa2-psk")) {
-            generatePsk(argv[3], argv[7], psk_str);
+            if (!generatePsk(argv[3], argv[7], psk_str)) {
+                return ResponseCode::OperationFailed;
+            }
             fbuf = StringPrintf("%swpa=2\nrsn_pairwise=CCMP\nwpa_psk=%s\n", wbuf.c_str(), psk_str);
         } else if (!strcmp(argv[6], "open")) {
             fbuf = wbuf;
@@ -210,14 +214,21 @@ int SoftapController::fwReloadSoftap(int argc, char *argv[])
     return ResponseCode::SoftapStatusResult;
 }
 
-void SoftapController::generatePsk(char *ssid, char *passphrase, char *psk_str) {
+bool SoftapController::generatePsk(char *ssid, char *passphrase, char *psk_str) {
     unsigned char psk[SHA256_DIGEST_LENGTH];
-    int j;
+
     // Use the PKCS#5 PBKDF2 with 4096 iterations
-    PKCS5_PBKDF2_HMAC_SHA1(passphrase, strlen(passphrase),
-            reinterpret_cast<const unsigned char *>(ssid), strlen(ssid),
-            4096, SHA256_DIGEST_LENGTH, psk);
-    for (j=0; j < SHA256_DIGEST_LENGTH; j++) {
+    if (PKCS5_PBKDF2_HMAC_SHA1(passphrase, strlen(passphrase),
+                               reinterpret_cast<const unsigned char *>(ssid),
+                               strlen(ssid), 4096, SHA256_DIGEST_LENGTH,
+                               psk) != 1) {
+        ALOGE("Cannot generate PSK using PKCS#5 PBKDF2");
+        return false;
+    }
+
+    for (int j=0; j < SHA256_DIGEST_LENGTH; j++) {
         sprintf(&psk_str[j*2], "%02x", psk[j]);
     }
+
+    return true;
 }
