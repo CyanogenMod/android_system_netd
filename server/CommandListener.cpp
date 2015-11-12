@@ -620,19 +620,17 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
                 return 0;
             }
 
-            int num_addrs = argc - 2;
-            int arg_index = 2;
-            int array_index = 0;
-            in_addr *addrs = (in_addr *)malloc(sizeof(in_addr) * num_addrs);
-            while (array_index < num_addrs) {
-                if (!inet_aton(argv[arg_index++], &(addrs[array_index++]))) {
+            const int num_addrs = argc - 2;
+            // TODO: consider moving this validation into TetherController.
+            struct in_addr tmp_addr;
+            for (int arg_index = 2; arg_index < argc; arg_index++) {
+                if (!inet_aton(argv[arg_index], &tmp_addr)) {
                     cli->sendMsg(ResponseCode::CommandParameterError, "Invalid address", false);
-                    free(addrs);
                     return 0;
                 }
             }
-            rc = sTetherCtrl->startTethering(num_addrs, addrs);
-            free(addrs);
+
+            rc = sTetherCtrl->startTethering(num_addrs, &(argv[2]));
         } else if (!strcmp(argv[1], "interface")) {
             if (!strcmp(argv[2], "add")) {
                 rc = sTetherCtrl->tetherInterface(argv[3]);

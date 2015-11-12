@@ -44,7 +44,7 @@ public:
     bool disableForwarding(const char* requester);
     size_t forwardingRequestCount();
 
-    int startTethering(int num_addrs, struct in_addr* addrs);
+    int startTethering(int num_addrs, char **dhcp_ranges);
     int stopTethering();
     bool isTetheringStarted();
 
