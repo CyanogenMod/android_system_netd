@@ -120,7 +120,7 @@ size_t TetherController::forwardingRequestCount() {
     return mForwardingRequests.size();
 }
 
-#define TETHER_START_CONST_ARG        8
+#define TETHER_START_CONST_ARG        9
 
 int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
     if (mDaemonPid != 0) {
@@ -172,6 +172,7 @@ int TetherController::startTethering(int num_addrs, char **dhcp_ranges) {
         args[5] = (char *)"--dhcp-option-force=43,ANDROID_METERED";
         args[6] = (char *)"--pid-file";
         args[7] = (char *)"";
+        args[8] = (char *)"-z";  // OPT_NOWILD
 
         int nextArg = TETHER_START_CONST_ARG;
         for (int addrIndex = 0; addrIndex < num_addrs; addrIndex += 2) {
