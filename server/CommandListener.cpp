@@ -598,11 +598,8 @@ int CommandListener::TetherCmd::runCommand(SocketClient *cli,
             snprintf(netIdStr, sizeof(netIdStr), "%u", sTetherCtrl->getDnsNetId());
             cli->sendMsg(ResponseCode::TetherDnsFwdNetIdResult, netIdStr, false);
 
-            NetAddressCollection *dlist = sTetherCtrl->getDnsForwarders();
-            NetAddressCollection::iterator it;
-
-            for (it = dlist->begin(); it != dlist->end(); ++it) {
-                cli->sendMsg(ResponseCode::TetherDnsFwdTgtListResult, inet_ntoa(*it), false);
+            for (const auto &fwdr : *(sTetherCtrl->getDnsForwarders())) {
+                cli->sendMsg(ResponseCode::TetherDnsFwdTgtListResult, fwdr.c_str(), false);
             }
         }
     } else {

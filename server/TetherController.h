@@ -24,7 +24,7 @@
 #include "List.h"
 
 typedef android::netd::List<char *> InterfaceCollection;
-typedef android::netd::List<struct in_addr> NetAddressCollection;
+typedef android::netd::List<std::string> NetAddressCollection;
 
 class TetherController {
     InterfaceCollection  *mInterfaces;

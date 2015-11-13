@@ -236,9 +236,11 @@ int TetherController::setDnsForwarders(unsigned netId, char **servers, int numSe
     for (i = 0; i < numServers; i++) {
         ALOGD("setDnsForwarders(0x%x %d = '%s')", fwmark.intValue, i, servers[i]);
 
-        struct in_addr a;
+        struct in_addr v4dns;
+        struct in6_addr v6dns;
 
-        if (!inet_aton(servers[i], &a)) {
+        if (!inet_aton(servers[i], &v4dns) &&
+            (inet_pton(AF_INET6, servers[i], &v6dns) != 1)) {
             ALOGE("Failed to parse DNS server '%s'", servers[i]);
             mDnsForwarders->clear();
             return -1;
@@ -252,7 +254,7 @@ int TetherController::setDnsForwarders(unsigned netId, char **servers, int numSe
 
         strcat(daemonCmd, SEPARATOR);
         strcat(daemonCmd, servers[i]);
-        mDnsForwarders->push_back(a);
+        mDnsForwarders->push_back(servers[i]);
     }
 
     mDnsNetId = netId;
