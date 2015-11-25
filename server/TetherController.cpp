@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netdb.h>
 #include <string.h>
 
 #include <sys/socket.h>
@@ -236,13 +237,13 @@ int TetherController::setDnsForwarders(unsigned netId, char **servers, int numSe
     for (i = 0; i < numServers; i++) {
         ALOGD("setDnsForwarders(0x%x %d = '%s')", fwmark.intValue, i, servers[i]);
 
-        struct in_addr v4dns;
-        struct in6_addr v6dns;
-
-        if (!inet_aton(servers[i], &v4dns) &&
-            (inet_pton(AF_INET6, servers[i], &v6dns) != 1)) {
+        addrinfo *res, hints = { .ai_flags = AI_NUMERICHOST };
+        int ret = getaddrinfo(servers[i], NULL, &hints, &res);
+        freeaddrinfo(res);
+        if (ret) {
             ALOGE("Failed to parse DNS server '%s'", servers[i]);
             mDnsForwarders->clear();
+            errno = EINVAL;
             return -1;
         }
 
@@ -263,6 +264,7 @@ int TetherController::setDnsForwarders(unsigned netId, char **servers, int numSe
         if (write(mDaemonFd, daemonCmd, strlen(daemonCmd) +1) < 0) {
             ALOGE("Failed to send update command to dnsmasq (%s)", strerror(errno));
             mDnsForwarders->clear();
+            errno = EREMOTEIO;
             return -1;
         }
     }
