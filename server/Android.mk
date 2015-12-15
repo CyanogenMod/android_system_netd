@@ -115,10 +115,12 @@ LOCAL_SRC_FILES := \
 
 LOCAL_AIDL_INCLUDES := $(LOCAL_PATH)/binder
 
+ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
 ifeq ($(BOARD_HAS_QCOM_WLAN), true)
   LOCAL_CFLAGS += -DQSAP_WLAN
   LOCAL_SHARED_LIBRARIES += libqsap_sdk
   LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/sdk/softap/include
+endif
 endif
 
 include $(BUILD_EXECUTABLE)
