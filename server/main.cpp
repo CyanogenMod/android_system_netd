@@ -29,12 +29,26 @@
 #define LOG_TAG "Netd"
 
 #include "cutils/log.h"
+#include "utils/RWLock.h"
+
+#include <binder/IPCThreadState.h>
+#include <binder/IServiceManager.h>
+#include <binder/ProcessState.h>
 
 #include "CommandListener.h"
+#include "NetdConstants.h"
+#include "NetdNativeService.h"
 #include "NetlinkManager.h"
 #include "DnsProxyListener.h"
 #include "MDnsSdListener.h"
 #include "FwmarkServer.h"
+
+using android::status_t;
+using android::sp;
+using android::IPCThreadState;
+using android::ProcessState;
+using android::defaultServiceManager;
+using android::net::NetdNativeService;
 
 static void blockSigpipe();
 static void remove_pid_file();
@@ -43,6 +57,10 @@ static bool write_pid_file();
 const char* const PID_FILE_PATH = "/data/misc/net/netd_pid";
 const int PID_FILE_FLAGS = O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW | O_CLOEXEC;
 const mode_t PID_FILE_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;  // mode 0644, rw-r--r--
+
+
+android::RWLock android::net::gBigNetdLock;
+
 
 int main() {
 
@@ -99,17 +117,15 @@ int main() {
         exit(1);
     }
 
-    bool wrote_pid = write_pid_file();
+    write_pid_file();
 
-    while(1) {
-        sleep(30); // 30 sec
-        if (!wrote_pid) {
-            wrote_pid = write_pid_file();
-        }
-    }
+    IPCThreadState::self()->disableBackgroundScheduling(true);
+    NetdNativeService::publishAndJoinThreadPool();
 
     ALOGI("Netd exiting");
+
     remove_pid_file();
+
     exit(0);
 }
 

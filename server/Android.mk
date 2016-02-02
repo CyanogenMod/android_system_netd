@@ -16,6 +16,20 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
+LOCAL_CFLAGS := -Wall -Werror
+LOCAL_CLANG := true
+LOCAL_MODULE := libnetdaidl
+LOCAL_SHARED_LIBRARIES := \
+        libbinder \
+        libutils
+LOCAL_AIDL_INCLUDES := $(LOCAL_PATH)/binder
+LOCAL_SRC_FILES := binder/android/net/INetd.aidl
+
+include $(BUILD_SHARED_LIBRARY)
+
+
+include $(CLEAR_VARS)
+
 LOCAL_C_INCLUDES := \
         $(call include-path-for, libhardware_legacy)/hardware_legacy \
         bionic/libc/dns/include \
@@ -29,6 +43,7 @@ LOCAL_MODULE := netd
 LOCAL_INIT_RC := netd.rc
 
 LOCAL_SHARED_LIBRARIES := \
+        libbinder \
         libcrypto \
         libcutils \
         libdl \
@@ -36,6 +51,7 @@ LOCAL_SHARED_LIBRARIES := \
         liblog \
         liblogwrap \
         libmdnssd \
+        libnetdaidl \
         libnetutils \
         libnl \
         libsysutils \
@@ -60,6 +76,7 @@ LOCAL_SRC_FILES := \
         NatController.cpp \
         NetdCommand.cpp \
         NetdConstants.cpp \
+        NetdNativeService.cpp \
         NetlinkHandler.cpp \
         NetlinkManager.cpp \
         Network.cpp \

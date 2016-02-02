@@ -18,8 +18,10 @@
 #define _COMMANDLISTENER_H__
 
 #include <sysutils/FrameworkListener.h>
+#include "utils/RWLock.h"
 
 #include "NetdCommand.h"
+#include "NetdConstants.h"
 #include "NetworkController.h"
 #include "TetherController.h"
 #include "NatController.h"
@@ -32,6 +34,22 @@
 #include "FirewallController.h"
 #include "ClatdController.h"
 #include "StrictController.h"
+
+
+class LockingFrameworkCommand : public FrameworkCommand {
+public:
+    LockingFrameworkCommand(FrameworkCommand *wrappedCmd) :
+            FrameworkCommand(wrappedCmd->getCommand()),
+            mWrappedCmd(wrappedCmd) {}
+
+    int runCommand(SocketClient *c, int argc, char **argv) {
+        android::RWLock::AutoWLock lock(android::net::gBigNetdLock);
+        return mWrappedCmd->runCommand(c, argc, argv);
+    }
+
+private:
+    FrameworkCommand *mWrappedCmd;
+};
 
 class CommandListener : public FrameworkListener {
     static TetherController *sTetherCtrl;
@@ -53,6 +71,10 @@ public:
     virtual ~CommandListener() {}
 
 private:
+
+    void registerLockingCmd(FrameworkCommand *cmd) {
+        registerCmd(new LockingFrameworkCommand(cmd));
+    }
 
     class SoftapCmd : public NetdCommand {
     public:

@@ -21,6 +21,8 @@
 #include <list>
 #include <stdarg.h>
 
+#include "utils/RWLock.h"
+
 const int PROTECT_MARK = 0x1;
 
 extern const char * const IPTABLES_PATH;
@@ -49,4 +51,18 @@ int parsePrefix(const char *prefix, uint8_t *family, void *address, int size, ui
 
 const uid_t INVALID_UID = static_cast<uid_t>(-1);
 
-#endif
+namespace android {
+namespace net {
+
+/**
+ * This lock exists to make NetdNativeService RPCs (which come in on multiple Binder threads)
+ * coexist with the commands in CommandListener.cpp. These are presumed not thread-safe because
+ * CommandListener has only one user (NetworkManagementService), which is connected through a
+ * FrameworkListener that passes in commands one at a time.
+ */
+extern android::RWLock gBigNetdLock;
+
+}  // namespace net
+}  // namespace android
+
+#endif  // _NETD_CONSTANTS_H

@@ -171,20 +171,20 @@ static void createChildChains(IptablesTarget target, const char* table, const ch
 
 CommandListener::CommandListener() :
                  FrameworkListener("netd", true) {
-    registerCmd(new InterfaceCmd());
-    registerCmd(new IpFwdCmd());
-    registerCmd(new TetherCmd());
-    registerCmd(new NatCmd());
-    registerCmd(new ListTtysCmd());
-    registerCmd(new PppdCmd());
-    registerCmd(new SoftapCmd());
-    registerCmd(new BandwidthControlCmd());
-    registerCmd(new IdletimerControlCmd());
-    registerCmd(new ResolverCmd());
-    registerCmd(new FirewallCmd());
-    registerCmd(new ClatdCmd());
-    registerCmd(new NetworkCommand());
-    registerCmd(new StrictCmd());
+    registerLockingCmd(new InterfaceCmd());
+    registerLockingCmd(new IpFwdCmd());
+    registerLockingCmd(new TetherCmd());
+    registerLockingCmd(new NatCmd());
+    registerLockingCmd(new ListTtysCmd());
+    registerLockingCmd(new PppdCmd());
+    registerLockingCmd(new SoftapCmd());
+    registerLockingCmd(new BandwidthControlCmd());
+    registerLockingCmd(new IdletimerControlCmd());
+    registerLockingCmd(new ResolverCmd());
+    registerLockingCmd(new FirewallCmd());
+    registerLockingCmd(new ClatdCmd());
+    registerLockingCmd(new NetworkCommand());
+    registerLockingCmd(new StrictCmd());
 
     if (!sNetCtrl)
         sNetCtrl = new NetworkController();
