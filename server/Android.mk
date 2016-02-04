@@ -68,6 +68,7 @@ LOCAL_SRC_FILES := \
         PppController.cpp \
         ResolverController.cpp \
         RouteController.cpp \
+        SockDiag.cpp \
         SoftapController.cpp \
         StrictController.cpp \
         TetherController.cpp \
