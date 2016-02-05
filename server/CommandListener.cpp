@@ -357,18 +357,18 @@ int CommandListener::InterfaceCmd::runCommand(SocketClient *cli,
                 // Handle flags only case
                 index = 3;
             } else {
-                if (ifc_set_addr(argv[2], addr.s_addr)) {
-                    cli->sendMsg(ResponseCode::OperationFailed, "Failed to set address", true);
+                if (ifc_set_addr(argv[2], 0)) {
+                    cli->sendMsg(ResponseCode::OperationFailed, "Failed to clear address", true);
                     ifc_close();
                     return 0;
                 }
-
-                // Set prefix length on a non zero address
-                if (addr.s_addr != 0 && ifc_set_prefixLength(argv[2], atoi(argv[4]))) {
-                   cli->sendMsg(ResponseCode::OperationFailed, "Failed to set prefixLength", true);
-                   ifc_close();
-                   return 0;
-               }
+                if (addr.s_addr != 0) {
+                    if (ifc_add_address(argv[2], argv[3], atoi(argv[4]))) {
+                        cli->sendMsg(ResponseCode::OperationFailed, "Failed to set address", true);
+                        ifc_close();
+                        return 0;
+                    }
+                }
             }
 
             /* Process flags */
