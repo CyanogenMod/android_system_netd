@@ -26,7 +26,7 @@ enum FirewallRule { DENY, ALLOW };
 
 enum FirewallType { WHITELIST, BLACKLIST };
 
-enum ChildChain { NONE, DOZABLE, STANDBY, INVALID_CHAIN };
+enum ChildChain { NONE, DOZABLE, STANDBY, POWERSAVE, INVALID_CHAIN };
 
 #define PROTOCOL_TCP 6
 #define PROTOCOL_UDP 17
@@ -64,6 +64,7 @@ public:
 
     static const char* LOCAL_DOZABLE;
     static const char* LOCAL_STANDBY;
+    static const char* LOCAL_POWERSAVE;
 
     static const char* ICMPV6_TYPES[];
 

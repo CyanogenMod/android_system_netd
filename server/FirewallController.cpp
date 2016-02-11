@@ -36,6 +36,7 @@ const char* FirewallController::LOCAL_FORWARD = "fw_FORWARD";
 
 const char* FirewallController::LOCAL_DOZABLE = "fw_dozable";
 const char* FirewallController::LOCAL_STANDBY = "fw_standby";
+const char* FirewallController::LOCAL_POWERSAVE = "fw_powersave";
 
 // ICMPv6 types that are required for any form of IPv6 connectivity to work. Note that because the
 // fw_dozable chain is called from both INPUT and OUTPUT, this includes both packets that we need
@@ -62,6 +63,9 @@ int FirewallController::setupIptablesHooks(void) {
 
     firewallType = getFirewallType(STANDBY);
     res |= createChain(LOCAL_STANDBY, LOCAL_INPUT, firewallType);
+
+    firewallType = getFirewallType(POWERSAVE);
+    res |= createChain(LOCAL_POWERSAVE, LOCAL_INPUT, firewallType);
 
     return res;
 }
@@ -107,6 +111,9 @@ int FirewallController::enableChildChains(ChildChain chain, bool enable) {
             break;
         case STANDBY:
             name = LOCAL_STANDBY;
+            break;
+        case POWERSAVE:
+            name = LOCAL_POWERSAVE;
             break;
         default:
             return res;
@@ -214,6 +221,8 @@ FirewallType FirewallController::getFirewallType(ChildChain chain) {
             return WHITELIST;
         case STANDBY:
             return BLACKLIST;
+        case POWERSAVE:
+            return WHITELIST;
         case NONE:
             return mFirewallType;
         default:
@@ -244,6 +253,10 @@ int FirewallController::setUidRule(ChildChain chain, int uid, FirewallRule rule)
             break;
         case STANDBY:
             res |= execIptables(V4V6, op, LOCAL_STANDBY, "-m", "owner", "--uid-owner",
+                    uidStr, "-j", target, NULL);
+            break;
+        case POWERSAVE:
+            res |= execIptables(V4V6, op, LOCAL_POWERSAVE, "-m", "owner", "--uid-owner",
                     uidStr, "-j", target, NULL);
             break;
         case NONE:
