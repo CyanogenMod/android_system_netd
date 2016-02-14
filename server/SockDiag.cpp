@@ -33,6 +33,8 @@
 #include "NetdConstants.h"
 #include "SockDiag.h"
 
+#include <chrono>
+
 #ifndef SOCK_DESTROY
 #define SOCK_DESTROY 21
 #endif
@@ -208,6 +210,10 @@ int SockDiag::readDiagMsg(uint8_t proto, SockDiag::DumpCallback callback) {
 }
 
 int SockDiag::sockDestroy(uint8_t proto, const inet_diag_msg *msg) {
+    if (msg == nullptr) {
+       return 0;
+    }
+
     DestroyRequest request = {
         .nlh = {
             .nlmsg_type = SOCK_DESTROY,
@@ -226,5 +232,47 @@ int SockDiag::sockDestroy(uint8_t proto, const inet_diag_msg *msg) {
         return -errno;
     }
 
-    return checkError(mWriteSock);
+    int ret = checkError(mWriteSock);
+    if (!ret) mSocketsDestroyed++;
+    return ret;
+}
+
+int SockDiag::destroySockets(uint8_t proto, int family, const char *addrstr) {
+    if (!hasSocks()) {
+        return -EBADFD;
+    }
+
+    if (int ret = sendDumpRequest(proto, family, addrstr)) {
+        return ret;
+    }
+
+    auto destroy = [this] (uint8_t proto, const inet_diag_msg *msg) {
+        return this->sockDestroy(proto, msg);
+    };
+
+    return readDiagMsg(proto, destroy);
+}
+
+int SockDiag::destroySockets(const char *addrstr) {
+    using ms = std::chrono::duration<float, std::ratio<1, 1000>>;
+
+    mSocketsDestroyed = 0;
+    const auto start = std::chrono::steady_clock::now();
+    if (!strchr(addrstr, ':')) {
+        if (int ret = destroySockets(IPPROTO_TCP, AF_INET, addrstr)) {
+            ALOGE("Failed to destroy IPv4 sockets on %s: %s", addrstr, strerror(-ret));
+            return ret;
+        }
+    }
+    if (int ret = destroySockets(IPPROTO_TCP, AF_INET6, addrstr)) {
+        ALOGE("Failed to destroy IPv6 sockets on %s: %s", addrstr, strerror(-ret));
+        return ret;
+    }
+    auto elapsed = std::chrono::duration_cast<ms>(std::chrono::steady_clock::now() - start);
+
+    if (mSocketsDestroyed > 0) {
+        ALOGI("Destroyed %d sockets on %s in %.1f ms", mSocketsDestroyed, addrstr, elapsed.count());
+    }
+
+    return mSocketsDestroyed;
 }
