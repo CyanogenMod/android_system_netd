@@ -29,6 +29,7 @@
 #include "NetlinkHandler.h"
 #include "NetlinkManager.h"
 #include "ResponseCode.h"
+#include "SockDiag.h"
 
 static const char *kUpdated = "updated";
 static const char *kRemoved = "removed";
@@ -78,14 +79,36 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
             const char *flags = evt->findParam("FLAGS");
             const char *scope = evt->findParam("SCOPE");
             if (action == NetlinkEvent::Action::kAddressRemoved && iface && address) {
-                int resetMask = strchr(address, ':') ? RESET_IPV6_ADDRESSES : RESET_IPV4_ADDRESSES;
-                resetMask |= RESET_IGNORE_INTERFACE_ADDRESS;
-                if (int ret = ifc_reset_connections(iface, resetMask)) {
-                    ALOGE("ifc_reset_connections failed on iface %s for address %s (%s)", iface,
-                          address, strerror(ret));
+                // Note: if this interface was deleted, iface is "" and we don't notify.
+                SockDiag sd;
+                if (sd.open()) {
+                    char addrstr[INET6_ADDRSTRLEN];
+                    strncpy(addrstr, address, sizeof(addrstr));
+                    char *slash = strchr(addrstr, '/');
+                    if (slash) {
+                        *slash = '\0';
+                    }
+
+                    int ret = sd.destroySockets(addrstr);
+                    if (ret < 0) {
+                        ALOGE("Error destroying sockets: %s", strerror(ret));
+                    }
+                } else {
+                    ALOGE("Error opening NETLINK_SOCK_DIAG socket: %s", strerror(errno));
+                }
+
+                // TODO: delete this once SOCK_DESTROY works everywhere.
+                if (iface[0]) {
+                    int resetMask = strchr(address, ':') ?
+                            RESET_IPV6_ADDRESSES : RESET_IPV4_ADDRESSES;
+                    resetMask |= RESET_IGNORE_INTERFACE_ADDRESS;
+                    if (int ret = ifc_reset_connections(iface, resetMask)) {
+                        ALOGE("ifc_reset_connections failed on iface %s for address %s (%s)", iface,
+                              address, strerror(ret));
+                    }
                 }
             }
-            if (iface && flags && scope) {
+            if (iface && iface[0] && address && flags && scope) {
                 notifyAddressChanged(action, address, iface, flags, scope);
             }
         } else if (action == NetlinkEvent::Action::kRdnss) {

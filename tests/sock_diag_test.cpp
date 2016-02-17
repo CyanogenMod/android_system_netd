@@ -213,18 +213,9 @@ TEST_F(SockDiagTest, TestMicroBenchmark) {
     SockDiag sd;
     ASSERT_TRUE(sd.open()) << "Failed to open SOCK_DIAG socket";
 
-    int ret = sd.sendDumpRequest(IPPROTO_TCP, AF_INET6, "::1");
-    ASSERT_EQ(0, ret) << "Failed to send IPv6 dump request: " << strerror(-ret);
-
-    auto closeMySockets = [&] (uint8_t proto, const inet_diag_msg *msg) {
-        if (msg && msg->id.idiag_dport == htons(port)) {
-            return sd.sockDestroy(proto, msg);
-        }
-        return 0;
-    };
-
     start = std::chrono::steady_clock::now();
-    sd.readDiagMsg(IPPROTO_TCP, closeMySockets);
+    int ret = sd.destroySockets("::1");
+    EXPECT_LE(0, ret) << ": Failed to destroy sockets on ::1: " << strerror(-ret);
     fprintf(stderr, "  Destroying: %6.1f ms\n",
             std::chrono::duration_cast<ms>(std::chrono::steady_clock::now() - start).count());
 
@@ -235,17 +226,17 @@ TEST_F(SockDiagTest, TestMicroBenchmark) {
         err = errno;
         EXPECT_EQ(-1, ret) << "Client socket " << i << " not closed";
         if (ret == -1) {
-            EXPECT_EQ(ECONNABORTED, errno)
+            // Since we're connected to ourselves, the error might be ECONNABORTED (if we destroyed
+            // the socket) or ECONNRESET (if the other end was destroyed and sent a RST).
+            EXPECT_TRUE(errno == ECONNABORTED || errno == ECONNRESET)
                 << "Client socket: unexpected error: " << strerror(errno);
         }
 
-        // Check that the server sockets have been closed too (because closing the client sockets
-        // sends RSTs).
         ret = send(serversockets[i], "foo", sizeof("foo"), 0);
         err = errno;
         EXPECT_EQ(-1, ret) << "Server socket " << i << " not closed";
         if (ret == -1) {
-            EXPECT_EQ(ECONNRESET, errno)
+            EXPECT_TRUE(errno == ECONNABORTED || errno == ECONNRESET)
                 << "Server socket: unexpected error: " << strerror(errno);
         }
     }
