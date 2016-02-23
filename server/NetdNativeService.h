@@ -26,7 +26,7 @@ namespace net {
 
 class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd {
   public:
-    static char const* getServiceName() { return "android.net.INetd"; }
+    static char const* getServiceName() { return "netd"; }
     binder::Status isAlive(bool *alive) override;
 };
 
