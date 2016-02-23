@@ -126,8 +126,8 @@ int main() {
 }
 
 static bool write_pid_file() {
-    char pid_buf[20];  // current pid_max is 32768, so plenty of room
-    snprintf(pid_buf, sizeof(pid_buf), "%ld\n", (long)getpid());
+    char pid_buf[INT32_STRLEN];
+    snprintf(pid_buf, sizeof(pid_buf), "%d\n", (int) getpid());
 
     int fd = open(PID_FILE_PATH, PID_FILE_FLAGS, PID_FILE_MODE);
     if (fd == -1) {

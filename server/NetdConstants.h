@@ -44,6 +44,7 @@ int parsePrefix(const char *prefix, uint8_t *family, void *address, int size, ui
 
 #define __INT_STRLEN(i) sizeof(#i)
 #define _INT_STRLEN(i) __INT_STRLEN(i)
+#define INT32_STRLEN _INT_STRLEN(INT32_MIN)
 #define UINT32_STRLEN _INT_STRLEN(UINT32_MAX)
 #define UINT32_HEX_STRLEN sizeof("0x12345678")
 
