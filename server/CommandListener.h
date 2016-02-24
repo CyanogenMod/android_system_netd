@@ -35,7 +35,6 @@
 #include "ClatdController.h"
 #include "StrictController.h"
 
-
 class LockingFrameworkCommand : public FrameworkCommand {
 public:
     LockingFrameworkCommand(FrameworkCommand *wrappedCmd) :
@@ -52,26 +51,11 @@ private:
 };
 
 class CommandListener : public FrameworkListener {
-    static TetherController *sTetherCtrl;
-    static NatController *sNatCtrl;
-    static PppController *sPppCtrl;
-    static SoftapController *sSoftapCtrl;
-    static BandwidthController *sBandwidthCtrl;
-    static IdletimerController *sIdletimerCtrl;
-    static InterfaceController *sInterfaceCtrl;
-    static ResolverController *sResolverCtrl;
-    static FirewallController *sFirewallCtrl;
-    static ClatdController *sClatdCtrl;
-    static StrictController *sStrictCtrl;
-
 public:
-    static NetworkController *sNetCtrl;
-
     CommandListener();
     virtual ~CommandListener() {}
 
 private:
-
     void registerLockingCmd(FrameworkCommand *cmd) {
         registerCmd(new LockingFrameworkCommand(cmd));
     }

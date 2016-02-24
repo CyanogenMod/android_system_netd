@@ -35,6 +35,7 @@
 #include <binder/IServiceManager.h>
 #include <binder/ProcessState.h>
 
+#include "Controllers.h"
 #include "CommandListener.h"
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
@@ -58,30 +59,25 @@ const char* const PID_FILE_PATH = "/data/misc/net/netd_pid";
 const int PID_FILE_FLAGS = O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW | O_CLOEXEC;
 const mode_t PID_FILE_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;  // mode 0644, rw-r--r--
 
-
 android::RWLock android::net::gBigNetdLock;
 
-
 int main() {
-
-    CommandListener *cl;
-    NetlinkManager *nm;
-    DnsProxyListener *dpl;
-    MDnsSdListener *mdnsl;
-    FwmarkServer* fwmarkServer;
+    using android::net::gCtls;
 
     ALOGI("Netd 1.0 starting");
     remove_pid_file();
 
     blockSigpipe();
 
-    if (!(nm = NetlinkManager::Instance())) {
+    NetlinkManager *nm = NetlinkManager::Instance();
+    if (nm == nullptr) {
         ALOGE("Unable to create NetlinkManager");
         exit(1);
     };
 
-    cl = new CommandListener();
-    nm->setBroadcaster((SocketListener *) cl);
+    gCtls = new android::net::Controllers();
+    CommandListener cl;
+    nm->setBroadcaster((SocketListener *) &cl);
 
     if (nm->start()) {
         ALOGE("Unable to start NetlinkManager (%s)", strerror(errno));
@@ -91,20 +87,20 @@ int main() {
     // Set local DNS mode, to prevent bionic from proxying
     // back to this service, recursively.
     setenv("ANDROID_DNS_MODE", "local", 1);
-    dpl = new DnsProxyListener(CommandListener::sNetCtrl);
-    if (dpl->startListener()) {
+    DnsProxyListener dpl(&gCtls->netCtrl);
+    if (dpl.startListener()) {
         ALOGE("Unable to start DnsProxyListener (%s)", strerror(errno));
         exit(1);
     }
 
-    mdnsl = new MDnsSdListener();
-    if (mdnsl->startListener()) {
+    MDnsSdListener mdnsl;
+    if (mdnsl.startListener()) {
         ALOGE("Unable to start MDnsSdListener (%s)", strerror(errno));
         exit(1);
     }
 
-    fwmarkServer = new FwmarkServer(CommandListener::sNetCtrl);
-    if (fwmarkServer->startListener()) {
+    FwmarkServer fwmarkServer(&gCtls->netCtrl);
+    if (fwmarkServer.startListener()) {
         ALOGE("Unable to start FwmarkServer (%s)", strerror(errno));
         exit(1);
     }
@@ -112,7 +108,7 @@ int main() {
     /*
      * Now that we're up, we can respond to commands
      */
-    if (cl->startListener()) {
+    if (cl.startListener()) {
         ALOGE("Unable to start CommandListener (%s)", strerror(errno));
         exit(1);
     }

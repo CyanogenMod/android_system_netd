@@ -65,6 +65,7 @@ LOCAL_SRC_FILES := \
         BandwidthController.cpp \
         ClatdController.cpp \
         CommandListener.cpp \
+        Controllers.cpp \
         DnsProxyListener.cpp \
         DummyNetwork.cpp \
         FirewallController.cpp \
