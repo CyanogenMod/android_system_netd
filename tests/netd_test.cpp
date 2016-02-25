@@ -37,17 +37,16 @@
 #define TEST_OEM_NETWORK "oem29"
 #define TEST_NETID 30
 
-class ResponseCode {
-public:
+enum class ResponseCode : int {
     // Keep in sync with
     // frameworks/base/services/java/com/android/server/NetworkManagementService.java
-    static const int CommandOkay               = 200;
-    static const int DnsProxyQueryResult       = 222;
+    CommandOkay               = 200,
+    DnsProxyQueryResult       = 222,
 
-    static const int DnsProxyOperationFailed   = 401;
+    DnsProxyOperationFailed   = 401,
 
-    static const int CommandSyntaxError        = 500;
-    static const int CommandParameterError     = 501;
+    CommandSyntaxError        = 500,
+    CommandParameterError     = 501
 };
 
 
@@ -81,15 +80,16 @@ int netdCommand(const char* sockname, const char* command) {
 }
 
 
-bool expectNetdResult(int code, const char* sockname, const char* format, ...) {
+bool expectNetdResult(ResponseCode code, const char* sockname, const char* format, ...) {
     char command[256];
     va_list args;
     va_start(args, format);
     vsnprintf(command, sizeof(command), format, args);
     va_end(args);
     int result = netdCommand(sockname, command);
-    EXPECT_EQ(code, result) << command;
-    return (200 <= code && code < 300);
+    int rc = static_cast<int>(code);
+    EXPECT_EQ(rc, result) << command;
+    return (200 <= rc && rc < 300);
 }
 
 
@@ -138,18 +138,16 @@ protected:
                                 "resolver flushnet %d", oemNetId);
     }
 
-    const char* ToString(const addrinfo* result) const {
+    std::string ToString(const hostent* result) const {
+        if (result == nullptr) return std::string();
+        return std::string(result->h_name);
+    }
+
+    std::string ToString(const addrinfo* result) const {
         if (!result)
             return "<null>";
         sockaddr_in* addr = reinterpret_cast<sockaddr_in*>(result->ai_addr);
-        return inet_ntoa(addr->sin_addr);
-    }
-
-    const char* ToString(const hostent* result) const {
-        in_addr addr;
-        memcpy(reinterpret_cast<char*>(&addr), result->h_addr_list[0],
-               sizeof(addr));
-        return inet_ntoa(addr);
+        return std::string(inet_ntoa(addr->sin_addr));
     }
 
     int pid;
@@ -180,7 +178,7 @@ TEST_F(ResolverTest, GetHostByName) {
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(4, result->h_length);
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
-    EXPECT_STREQ("1.2.3.3", ToString(result));
+    EXPECT_EQ("hello.example.com", ToString(result));
     EXPECT_TRUE(result->h_addr_list[1] == nullptr);
     resp.stopServer();
 }
@@ -214,7 +212,16 @@ TEST_F(ResolverTest, GetAddrInfo) {
     result = nullptr;
 
     // Verify that it's cached.
+    size_t old_found = found;
     EXPECT_EQ(0, getaddrinfo("howdie", nullptr, nullptr, &result));
+    queries = resp.queries();
+    found = 0;
+    for (const auto& p : queries) {
+        if (p.first == "howdie.example.com.") {
+            ++found;
+        }
+    }
+    EXPECT_EQ(old_found, found);
     result_str = ToString(result);
     EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4");
     if (result) freeaddrinfo(result);
@@ -264,6 +271,6 @@ TEST_F(ResolverTest, GetAddrInfoV4) {
         }
     }
     EXPECT_LE(1, found);
-    EXPECT_STREQ("1.2.3.5", ToString(result));
+    EXPECT_EQ("1.2.3.5", ToString(result));
     if (result) freeaddrinfo(result);
 }
