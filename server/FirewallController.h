@@ -19,6 +19,8 @@
 
 #include <string>
 
+#include <utils/RWLock.h>
+
 enum FirewallRule { DENY, ALLOW };
 
 // WHITELIST means the firewall denies all by default, uids must be explicitly ALLOWed
@@ -34,6 +36,10 @@ enum ChildChain { NONE, DOZABLE, STANDBY, INVALID_CHAIN };
 /*
  * Simple firewall that drops all packets except those matching explicitly
  * defined ALLOW rules.
+ *
+ * Methods in this class must be called when holding a write lock on |lock|, and may not call
+ * any other controller without explicitly managing that controller's lock. There are currently
+ * no such methods.
  */
 class FirewallController {
 public:
@@ -66,6 +72,8 @@ public:
     static const char* LOCAL_STANDBY;
 
     static const char* ICMPV6_TYPES[];
+
+    android::RWLock lock;
 
 private:
     FirewallType mFirewallType;

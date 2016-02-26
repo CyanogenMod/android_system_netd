@@ -35,29 +35,15 @@
 #include "ClatdController.h"
 #include "StrictController.h"
 
-class LockingFrameworkCommand : public FrameworkCommand {
-public:
-    LockingFrameworkCommand(FrameworkCommand *wrappedCmd) :
-            FrameworkCommand(wrappedCmd->getCommand()),
-            mWrappedCmd(wrappedCmd) {}
-
-    int runCommand(SocketClient *c, int argc, char **argv) {
-        android::RWLock::AutoWLock lock(android::net::gBigNetdLock);
-        return mWrappedCmd->runCommand(c, argc, argv);
-    }
-
-private:
-    FrameworkCommand *mWrappedCmd;
-};
-
 class CommandListener : public FrameworkListener {
 public:
     CommandListener();
     virtual ~CommandListener() {}
 
 private:
+    void registerLockingCmd(FrameworkCommand *cmd, android::RWLock& lock);
     void registerLockingCmd(FrameworkCommand *cmd) {
-        registerCmd(new LockingFrameworkCommand(cmd));
+        registerLockingCmd(cmd, android::net::gBigNetdLock);
     }
 
     class SoftapCmd : public NetdCommand {

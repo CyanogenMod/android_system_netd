@@ -82,6 +82,24 @@ unsigned stringToNetId(const char* arg) {
     return strtoul(arg, NULL, 0);
 }
 
+class LockingFrameworkCommand : public FrameworkCommand {
+public:
+    LockingFrameworkCommand(FrameworkCommand *wrappedCmd, android::RWLock& lock) :
+            FrameworkCommand(wrappedCmd->getCommand()),
+            mWrappedCmd(wrappedCmd),
+            mLock(lock) {}
+
+    int runCommand(SocketClient *c, int argc, char **argv) {
+        android::RWLock::AutoWLock lock(mLock);
+        return mWrappedCmd->runCommand(c, argc, argv);
+    }
+
+private:
+    FrameworkCommand *mWrappedCmd;
+    android::RWLock& mLock;
+};
+
+
 }  // namespace
 
 /**
@@ -159,6 +177,10 @@ static void createChildChains(IptablesTarget target, const char* table, const ch
     } while (*(++childChain) != NULL);
 }
 
+void CommandListener::registerLockingCmd(FrameworkCommand *cmd, android::RWLock& lock) {
+    registerCmd(new LockingFrameworkCommand(cmd, lock));
+}
+
 CommandListener::CommandListener() :
                  FrameworkListener("netd", true) {
     registerLockingCmd(new InterfaceCmd());
@@ -171,7 +193,7 @@ CommandListener::CommandListener() :
     registerLockingCmd(new BandwidthControlCmd());
     registerLockingCmd(new IdletimerControlCmd());
     registerLockingCmd(new ResolverCmd());
-    registerLockingCmd(new FirewallCmd());
+    registerLockingCmd(new FirewallCmd(), gCtls->firewallCtrl.lock);
     registerLockingCmd(new ClatdCmd());
     registerLockingCmd(new NetworkCommand());
     registerLockingCmd(new StrictCmd());
