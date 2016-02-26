@@ -16,6 +16,8 @@
 
 #define LOG_TAG "Netd"
 
+#include <vector>
+
 #include <android-base/stringprintf.h>
 #include <cutils/log.h>
 #include <utils/Errors.h>
@@ -24,6 +26,7 @@
 #include <binder/IServiceManager.h>
 #include "android/net/BnNetd.h"
 
+#include "Controllers.h"
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
 
@@ -55,19 +58,31 @@ binder::Status checkPermission(const char *permission) {
     }                                                       \
 }
 
-#define NETD_LOCKING_RPC(permission)               \
-    ENFORCE_PERMISSION(permission);                \
-    android::RWLock::AutoWLock lock(gBigNetdLock);
+#define NETD_LOCKING_RPC(permission, lock)                  \
+    ENFORCE_PERMISSION(permission);                         \
+    android::RWLock::AutoWLock _lock(lock);
+
+#define NETD_BIG_LOCK_RPC(permission) NETD_LOCKING_RPC((permission), gBigNetdLock)
 
 }  // namespace
 
 
 binder::Status NetdNativeService::isAlive(bool *alive) {
-    NETD_LOCKING_RPC(CONNECTIVITY_INTERNAL);
+    NETD_BIG_LOCK_RPC(CONNECTIVITY_INTERNAL);
 
     *alive = true;
     return binder::Status::ok();
 }
 
+binder::Status NetdNativeService::firewallReplaceUidChain(const android::String16& chainName,
+        bool isWhitelist, const std::vector<int32_t>& uids, bool *ret) {
+    NETD_LOCKING_RPC(CONNECTIVITY_INTERNAL, gCtls->firewallCtrl.lock);
+
+    android::String8 name = android::String8(chainName);
+    int err = gCtls->firewallCtrl.replaceUidChain(name.string(), isWhitelist, uids);
+    *ret = (err == 0);
+    return binder::Status::ok();
+
+}
 }  // namespace net
 }  // namespace android

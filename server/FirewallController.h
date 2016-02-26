@@ -18,6 +18,7 @@
 #define _FIREWALL_CONTROLLER_H
 
 #include <string>
+#include <vector>
 
 #include <utils/RWLock.h>
 
@@ -62,6 +63,8 @@ public:
 
     int enableChildChains(ChildChain, bool);
 
+    int replaceUidChain(const char*, bool, const std::vector<int32_t>&);
+
     static const char* TABLE;
 
     static const char* LOCAL_INPUT;
@@ -74,6 +77,10 @@ public:
     static const char* ICMPV6_TYPES[];
 
     android::RWLock lock;
+
+protected:
+    friend class FirewallControllerTest;
+    std::string makeUidRules(const char *name, bool isWhitelist, const std::vector<int32_t>& uids);
 
 private:
     FirewallType mFirewallType;

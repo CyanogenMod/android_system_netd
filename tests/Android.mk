@@ -15,6 +15,8 @@
 #
 LOCAL_PATH := $(call my-dir)
 
+# Unit tests for SockDiag.cpp.
+# TODO: move from tests/ to server/
 include $(CLEAR_VARS)
 LOCAL_MODULE := sock_diag_test
 LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
@@ -24,6 +26,7 @@ LOCAL_MODULE_TAGS := tests
 LOCAL_SHARED_LIBRARIES := liblog
 include $(BUILD_NATIVE_TEST)
 
+# DNS responder tests.
 include $(CLEAR_VARS)
 LOCAL_MODULE := netd_test
 EXTRA_LDLIBS := -lpthread
@@ -34,3 +37,12 @@ LOCAL_SRC_FILES := netd_test.cpp dns_responder.cpp
 LOCAL_MODULE_TAGS := eng tests
 include $(BUILD_NATIVE_TEST)
 
+# netd binder interface tests.
+include $(CLEAR_VARS)
+LOCAL_MODULE := netd_binder_test
+LOCAL_SHARED_LIBRARIES += libbase libbinder liblogwrap libutils libnetdaidl
+LOCAL_C_INCLUDES += system/netd/include system/netd/binder/include system/netd/server system/core/logwrapper/include
+LOCAL_AIDL_INCLUDES := system/netd/server/binder
+LOCAL_SRC_FILES := binder_test.cpp ../server/NetdConstants.cpp
+LOCAL_MODULE_TAGS := tests
+include $(BUILD_NATIVE_TEST)
