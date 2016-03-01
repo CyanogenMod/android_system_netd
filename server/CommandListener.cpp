@@ -1259,6 +1259,8 @@ ChildChain CommandListener::FirewallCmd::parseChildChain(const char* arg) {
         return DOZABLE;
     } else if (!strcmp(arg, "standby")) {
         return STANDBY;
+    } else if (!strcmp(arg, "powersave")) {
+        return POWERSAVE;
     } else if (!strcmp(arg, "none")) {
         return NONE;
     } else {
