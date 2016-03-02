@@ -18,5 +18,23 @@ package android.net;
 
 /** {@hide} */
 interface INetd {
+    /**
+     * Returns true if the service is responding.
+     */
     boolean isAlive();
+
+    /**
+     * Replaces the contents of the specified UID-based firewall chain.
+     *
+     * The chain may be a whitelist chain or a blacklist chain. A blacklist chain contains DROP
+     * rules for the specified UIDs and a RETURN rule at the end. A whitelist chain contains RETURN
+     * rules for the system UID range (0 to {@code UID_APP} - 1), RETURN rules for for the specified
+     * UIDs, and a DROP rule at the end. The chain will be created if it does not exist.
+     *
+     * @param chainName The name of the chain to replace.
+     * @param isWhitelist Whether this is a whitelist or blacklist chain.
+     * @param uids The list of UIDs to allow/deny.
+     * @return true if the chain was successfully replaced, false otherwise.
+     */
+    boolean firewallReplaceUidChain(String chainName, boolean isWhitelist, in int[] uids);
 }

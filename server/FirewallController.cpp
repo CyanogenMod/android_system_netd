@@ -22,11 +22,14 @@
 #define LOG_TAG "FirewallController"
 #define LOG_NDEBUG 0
 
+#include <android-base/stringprintf.h>
 #include <cutils/log.h>
 #include <private/android_filesystem_config.h>
 
 #include "NetdConstants.h"
 #include "FirewallController.h"
+
+using android::base::StringAppendF;
 
 const char* FirewallController::TABLE = "filter";
 
@@ -49,6 +52,8 @@ const char* FirewallController::ICMPV6_TYPES[] = {
     "neighbour-advertisement",
     "redirect",
 };
+
+const int MAX_SYSTEM_UID = AID_APP - 1;
 
 FirewallController::FirewallController(void) {
     // If no rules are set, it's in BLACKLIST mode
@@ -297,7 +302,7 @@ int FirewallController::createChain(const char* childChain,
 
         // create default white list for system uid range
         char uidStr[16];
-        sprintf(uidStr, "0-%d", AID_APP - 1);
+        sprintf(uidStr, "0-%d", MAX_SYSTEM_UID);
         res |= execIptables(V4V6, "-A", childChain, "-m", "owner", "--uid-owner",
                 uidStr, "-j", "RETURN", NULL);
 
@@ -305,4 +310,39 @@ int FirewallController::createChain(const char* childChain,
         res |= execIptables(V4V6, "-A", childChain, "-j", "DROP", NULL);
     }
     return res;
+}
+
+std::string FirewallController::makeUidRules(
+        const char *name, bool isWhitelist, const std::vector<int32_t>& uids) {
+    const char *action = isWhitelist ? "RETURN" : "DROP";
+    const char *defaultAction = isWhitelist ? "DROP" : "RETURN";
+
+    std::string commands;
+
+    StringAppendF(&commands, "*filter\n:%s -\n", name);
+
+    if (isWhitelist) {
+        // Always whitelist system UIDs.
+        StringAppendF(&commands,
+                "-A %s -m owner --uid-owner %d-%d -j %s\n", name, 0, MAX_SYSTEM_UID, action);
+    }
+
+    for (auto uid : uids) {
+        StringAppendF(&commands, "-A %s -m owner --uid-owner %d -j %s\n", name, uid, action);
+    }
+
+    // If it's a blacklist chain that blacklists nothing, then don't add a default action.
+    if (isWhitelist || uids.size() > 0) {
+        StringAppendF(&commands, "-A %s -j %s\n", name, defaultAction);
+    }
+
+    StringAppendF(&commands, "COMMIT\n\x04");  // EOT.
+
+    return commands;
+}
+
+int FirewallController::replaceUidChain(
+        const char *name, bool isWhitelist, const std::vector<int32_t>& uids) {
+   std::string commands = makeUidRules(name, isWhitelist, uids);
+   return execIptablesRestore(V4V6, commands.c_str());
 }

@@ -34,6 +34,8 @@
 const char * const OEM_SCRIPT_PATH = "/system/bin/oem-iptables-init.sh";
 const char * const IPTABLES_PATH = "/system/bin/iptables";
 const char * const IP6TABLES_PATH = "/system/bin/ip6tables";
+const char * const IPTABLES_RESTORE_PATH = "/system/bin/iptables-restore";
+const char * const IP6TABLES_RESTORE_PATH = "/system/bin/ip6tables-restore";
 const char * const TC_PATH = "/system/bin/tc";
 const char * const IP_PATH = "/system/bin/ip";
 const char * const ADD = "add";
@@ -114,6 +116,43 @@ int execIptablesSilently(IptablesTarget target, ...) {
     va_start(args, target);
     int res = execIptables(target, true, args);
     va_end(args);
+    return res;
+}
+
+static int execIptablesRestoreCommand(const char *cmd, const std::string& commands) {
+    const char *argv[] = {
+        cmd,
+        "--noflush",  // Don't flush the whole table.
+        "-w",         // Wait instead of failing if the lock is held.
+    };
+    AndroidForkExecvpOption opt[1] = {
+        {
+            .opt_type = FORK_EXECVP_OPTION_INPUT,
+            .opt_input.input = reinterpret_cast<const uint8_t*>(commands.c_str()),
+            .opt_input.input_len = commands.size(),
+        }
+    };
+
+    int status = 0;
+    int res = android_fork_execvp_ext(
+            ARRAY_SIZE(argv), (char**)argv, &status, false /* ignore_int_quit */, LOG_NONE,
+            false /* abbreviated */, NULL /* file_path */, opt, ARRAY_SIZE(opt));
+    if (res || status) {
+        ALOGE("%s failed with res=%d, status=%d", argv[0], res, status);
+        return -1;
+    }
+
+    return 0;
+}
+
+int execIptablesRestore(IptablesTarget target, const std::string& commands) {
+    int res = 0;
+    if (target == V4 || target == V4V6) {
+        res |= execIptablesRestoreCommand(IPTABLES_RESTORE_PATH, commands);
+    }
+    if (target == V6 || target == V4V6) {
+        res |= execIptablesRestoreCommand(IP6TABLES_RESTORE_PATH, commands);
+    }
     return res;
 }
 

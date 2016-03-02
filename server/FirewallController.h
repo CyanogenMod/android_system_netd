@@ -18,6 +18,9 @@
 #define _FIREWALL_CONTROLLER_H
 
 #include <string>
+#include <vector>
+
+#include <utils/RWLock.h>
 
 enum FirewallRule { DENY, ALLOW };
 
@@ -34,6 +37,10 @@ enum ChildChain { NONE, DOZABLE, STANDBY, POWERSAVE, INVALID_CHAIN };
 /*
  * Simple firewall that drops all packets except those matching explicitly
  * defined ALLOW rules.
+ *
+ * Methods in this class must be called when holding a write lock on |lock|, and may not call
+ * any other controller without explicitly managing that controller's lock. There are currently
+ * no such methods.
  */
 class FirewallController {
 public:
@@ -56,6 +63,8 @@ public:
 
     int enableChildChains(ChildChain, bool);
 
+    int replaceUidChain(const char*, bool, const std::vector<int32_t>&);
+
     static const char* TABLE;
 
     static const char* LOCAL_INPUT;
@@ -67,6 +76,12 @@ public:
     static const char* LOCAL_POWERSAVE;
 
     static const char* ICMPV6_TYPES[];
+
+    android::RWLock lock;
+
+protected:
+    friend class FirewallControllerTest;
+    std::string makeUidRules(const char *name, bool isWhitelist, const std::vector<int32_t>& uids);
 
 private:
     FirewallType mFirewallType;

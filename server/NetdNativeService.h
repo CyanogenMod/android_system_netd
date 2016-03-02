@@ -17,6 +17,8 @@
 #ifndef _NETD_NATIVE_SERVICE_H_
 #define _NETD_NATIVE_SERVICE_H_
 
+#include <vector>
+
 #include <binder/BinderService.h>
 
 #include "android/net/BnNetd.h"
@@ -28,6 +30,10 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
   public:
     static char const* getServiceName() { return "netd"; }
     binder::Status isAlive(bool *alive) override;
+    binder::Status firewallReplaceUidChain(
+        const String16& chainName, bool isWhitelist,
+        const std::vector<int32_t>& uids, bool *ret) override;
+
 };
 
 }  // namespace net
