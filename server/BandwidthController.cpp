@@ -811,7 +811,6 @@ int BandwidthController::removeInterfaceQuota(const char *iface) {
     char ifn[MAX_IFACENAME_LEN];
     int res = 0;
     std::string ifaceName;
-    const char *costName;
     std::list<QuotaInfo>::iterator it;
 
     if (!isIfaceName(iface))
@@ -821,7 +820,6 @@ int BandwidthController::removeInterfaceQuota(const char *iface) {
         return -1;
     }
     ifaceName = ifn;
-    costName = iface;
 
     for (it = quotaIfaces.begin(); it != quotaIfaces.end(); it++) {
         if (it->ifaceName == ifaceName)
