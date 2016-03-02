@@ -127,3 +127,13 @@ LOCAL_SRC_FILES := FirewallControllerTest.cpp FirewallController.cpp
 LOCAL_MODULE_TAGS := tests
 LOCAL_SHARED_LIBRARIES := liblog libbase
 include $(BUILD_NATIVE_TEST)
+
+# Unit tests for SockDiag.cpp.
+include $(CLEAR_VARS)
+LOCAL_MODULE := SockDiagTest
+LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
+LOCAL_C_INCLUDES := system/netd/server
+LOCAL_SRC_FILES := SockDiagTest.cpp SockDiag.cpp
+LOCAL_MODULE_TAGS := tests
+LOCAL_SHARED_LIBRARIES := liblog
+include $(BUILD_NATIVE_TEST)
