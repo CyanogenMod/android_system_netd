@@ -82,11 +82,11 @@ public:
     int setInterfaceAlert(const char *iface, int64_t bytes);
     int removeInterfaceAlert(const char *iface);
 
-    int addRestrictAppsOnData(int numUids, char *appUids[]);
-    int removeRestrictAppsOnData(int numUids, char *appUids[]);
+    int addRestrictAppsOnData(const char *iface, int numUids, char *appUids[]);
+    int removeRestrictAppsOnData(const char *iface, int numUids, char *appUids[]);
 
-    int addRestrictAppsOnWlan(int numUids, char *appUids[]);
-    int removeRestrictAppsOnWlan(int numUids, char *appUids[]);
+    int addRestrictAppsOnWlan(const char *iface, int numUids, char *appUids[]);
+    int removeRestrictAppsOnWlan(const char *iface, int numUids, char *appUids[]);
 
     /*
      * For single pair of ifaces, stats should have ifaceIn and ifaceOut initialized.
@@ -134,8 +134,10 @@ protected:
     int manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
     int manipulateNiceApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
 
-    int manipulateRestrictAppsOnData(int numUids, char* appStrUids[], RestrictAppOp appOp);
-    int manipulateRestrictAppsOnWlan(int numUids, char* appStrUids[], RestrictAppOp appOp);
+    int manipulateRestrictAppsOnData(const char *iface, int numUids, char* appStrUids[],
+                                     RestrictAppOp appOp);
+    int manipulateRestrictAppsOnWlan(const char *iface, int numUids, char* appStrUids[],
+                                     RestrictAppOp appOp);
     int manipulateRestrictApps(int numUids, char *appStrUids[],
                                const char *chain,
                                std::list<int /*appUid*/> &restrictAppUids,
