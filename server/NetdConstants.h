@@ -20,10 +20,12 @@
 #include <string>
 #include <list>
 #include <stdarg.h>
+#include <private/android_filesystem_config.h>
 
 #include "utils/RWLock.h"
 
 const int PROTECT_MARK = 0x1;
+const int MAX_SYSTEM_UID = AID_APP - 1;
 
 extern const char * const IPTABLES_PATH;
 extern const char * const IP6TABLES_PATH;

@@ -24,7 +24,6 @@
 
 #include <android-base/stringprintf.h>
 #include <cutils/log.h>
-#include <private/android_filesystem_config.h>
 
 #include "NetdConstants.h"
 #include "FirewallController.h"
@@ -52,8 +51,6 @@ const char* FirewallController::ICMPV6_TYPES[] = {
     "neighbour-advertisement",
     "redirect",
 };
-
-const int MAX_SYSTEM_UID = AID_APP - 1;
 
 FirewallController::FirewallController(void) {
     // If no rules are set, it's in BLACKLIST mode
