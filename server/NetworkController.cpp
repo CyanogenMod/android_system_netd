@@ -247,11 +247,29 @@ void NetworkController::getNetworkContext(
             .uid = uid,
     };
 
-    if (nc.app_netid == NETID_UNSET) {
+    // |netId| comes directly (via dnsproxyd) from the value returned by netIdForResolv() in the
+    // client process. This value is nonzero iff.:
+    //
+    // 1. The app specified a netid/nethandle to a DNS resolution method such as:
+    //        - [Java] android.net.Network#getAllByName()
+    //        - [C/++] android_getaddrinfofornetwork()
+    // 2. The app specified a netid/nethandle to be used as a process default via:
+    //        - [Java] android.net.ConnectivityManager#bindProcessToNetwork()
+    //        - [C/++] android_setprocnetwork()
+    // 3. The app called android.net.ConnectivityManager#startUsingNetworkFeature().
+    //
+    // In all these cases (with the possible exception of #3), the right thing to do is to treat
+    // such cases as explicitlySelected.
+    const bool explicitlySelected = (nc.app_netid != NETID_UNSET);
+    if (!explicitlySelected) {
         nc.app_netid = getNetworkForConnect(uid);
     }
+
     Fwmark fwmark;
     fwmark.netId = nc.app_netid;
+    fwmark.explicitlySelected = explicitlySelected;
+    fwmark.protectedFromVpn = canProtect(uid);
+    fwmark.permission = getPermissionForUser(uid);
     nc.app_mark = fwmark.intValue;
 
     nc.dns_mark = getNetworkForDns(&(nc.dns_netid), uid);
