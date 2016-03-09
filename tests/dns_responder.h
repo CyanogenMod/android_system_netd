@@ -27,13 +27,7 @@
 #include <unordered_map>
 #include <vector>
 
-// TODO(imaipi): This doesn't belong here.
-#if defined(__clang__) && (!defined(SWIG))
-#define THREAD_ANNOTATION_ATTRIBUTE__(x)   __attribute__((x))
-#else
-#define THREAD_ANNOTATION_ATTRIBUTE__(x)   // no-op
-#endif
-#define GUARDED_BY(x) THREAD_ANNOTATION_ATTRIBUTE__(guarded_by(x))
+#include <android-base/thread_annotations.h>
 
 namespace test {
 
@@ -49,10 +43,12 @@ struct DNSRecord;
 class DNSResponder {
 public:
     DNSResponder(const char* listen_address, const char* listen_service,
-                 int poll_timeout_ms, uint16_t error_rcode);
+                 int poll_timeout_ms, uint16_t error_rcode,
+                 double response_probability);
     ~DNSResponder();
     void addMapping(const char* name, ns_type type, const char* addr);
     void removeMapping(const char* name, ns_type type);
+    void setResponseProbability(double response_probability);
     bool running() const;
     bool startServer();
     bool stopServer();
@@ -106,6 +102,9 @@ private:
     const int poll_timeout_ms_;
     // Error code to return for requests for an unknown name.
     const uint16_t error_rcode_;
+    // Probability that a valid response is being sent instead of being sent
+    // instead of returning error_rcode_.
+    std::atomic<double> response_probability_;
 
     // Mappings from (name, type) to registered response and the
     // mutex protecting them.

@@ -25,21 +25,21 @@
 //       declarations for _resolv_set_nameservers_for_net and
 //       _resolv_flush_cache_for_net
 #include <resolv_netid.h>
+#include <resolv_params.h>
 
 #include "ResolverController.h"
 
-int ResolverController::setDnsServers(unsigned netId, const char* domains,
-        const char** servers, int numservers) {
+int ResolverController::setDnsServers(unsigned netId, const char* searchDomains,
+        const char** servers, int numservers, const __res_params* params) {
     if (DBG) {
         ALOGD("setDnsServers netId = %u\n", netId);
     }
-    _resolv_set_nameservers_for_net(netId, servers, numservers, domains);
-
+    _resolv_set_nameservers_for_net(netId, servers, numservers, searchDomains, params);
     return 0;
 }
 
 int ResolverController::clearDnsServers(unsigned netId) {
-    _resolv_set_nameservers_for_net(netId, NULL, 0, "");
+    _resolv_set_nameservers_for_net(netId, NULL, 0, "", NULL);
     if (DBG) {
         ALOGD("clearDnsServers netId = %u\n", netId);
     }

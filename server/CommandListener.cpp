@@ -26,6 +26,7 @@
 #include <string.h>
 #include <linux/if.h>
 #include <resolv_netid.h>
+#include <resolv_params.h>
 
 #define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
@@ -811,12 +812,9 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
     // and making that check here.
 
     if (!strcmp(argv[1], "setnetdns")) {
-        // "resolver setnetdns <netId> <domains> <dns1> <dns2> ..."
-        if (argc >= 5) {
-            rc = gCtls->resolverCtrl.setDnsServers(netId, argv[3], &argv[4], argc - 4);
-        } else {
+        if (!parseAndExecuteSetNetDns(netId, argc, argv)) {
             cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver setnetdns", false);
+                    "Wrong number of or invalid arguments to resolver setnetdns", false);
             return 0;
         }
     } else if (!strcmp(argv[1], "clearnetdns")) { // "resolver clearnetdns <netId>"
@@ -847,6 +845,28 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
     }
 
     return 0;
+}
+
+bool CommandListener::ResolverCmd::parseAndExecuteSetNetDns(int netId, int argc,
+        const char** argv) {
+    // "resolver setnetdns <netId> <domains> <dns1> [<dns2> ...] [--params <params>]"
+    // TODO: This code has to be replaced by a Binder call ASAP
+    if (argc < 5) {
+        return false;
+    }
+    int end = argc;
+    __res_params params;
+    const __res_params* paramsPtr = nullptr;
+    if (end > 6 && !strcmp(argv[end - 2], "--params")) {
+        const char* paramsStr = argv[end - 1];
+        end -= 2;
+        if (sscanf(paramsStr, "%hu %hhu %hhu %hhu", &params.sample_validity,
+                &params.success_threshold, &params.min_samples, &params.max_samples) != 4) {
+            return false;
+        }
+        paramsPtr = &params;
+    }
+    return gCtls->resolverCtrl.setDnsServers(netId, argv[3], &argv[4], end - 4, paramsPtr) == 0;
 }
 
 CommandListener::BandwidthControlCmd::BandwidthControlCmd() :

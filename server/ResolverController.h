@@ -20,13 +20,14 @@
 #include <netinet/in.h>
 #include <linux/in.h>
 
+struct __res_params;
+
 class ResolverController {
 public:
     ResolverController() {};
     virtual ~ResolverController() {};
-
-    int setDnsServers(unsigned netid, const char * domains, const char** servers,
-            int numservers);
+    int setDnsServers(unsigned netId, const char* searchDomains, const char** servers,
+            int numservers, const __res_params* params);
     int clearDnsServers(unsigned netid);
     int flushDnsCache(unsigned netid);
     // TODO: Add deleteDnsCache(unsigned netId)

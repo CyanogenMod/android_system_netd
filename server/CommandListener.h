@@ -118,6 +118,9 @@ private:
         ResolverCmd();
         virtual ~ResolverCmd() {}
         int runCommand(SocketClient *c, int argc, char ** argv);
+
+    private:
+        bool parseAndExecuteSetNetDns(int netId, int argc, const char** argv);
     };
 
     class FirewallCmd: public NetdCommand {
