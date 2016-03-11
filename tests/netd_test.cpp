@@ -174,7 +174,7 @@ TEST_F(ResolverTest, GetHostByName) {
             ++found;
         }
     }
-    EXPECT_EQ(1, found);
+    EXPECT_EQ(1U, found);
     ASSERT_FALSE(result == nullptr);
     ASSERT_EQ(4, result->h_length);
     ASSERT_FALSE(result->h_addr_list[0] == nullptr);
@@ -204,7 +204,7 @@ TEST_F(ResolverTest, GetAddrInfo) {
             ++found;
         }
     }
-    EXPECT_LE(1, found);
+    EXPECT_LE(1U, found);
     // Could be A or AAAA
     std::string result_str = ToString(result);
     EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4");
@@ -241,7 +241,7 @@ TEST_F(ResolverTest, GetAddrInfo) {
             ++found;
         }
     }
-    EXPECT_LE(1, found);
+    EXPECT_LE(1U, found);
     // Could be A or AAAA
     result_str = ToString(result);
     EXPECT_TRUE(result_str == "1.2.3.44" || result_str == "::1.2.3.44");
@@ -270,7 +270,7 @@ TEST_F(ResolverTest, GetAddrInfoV4) {
             ++found;
         }
     }
-    EXPECT_LE(1, found);
+    EXPECT_LE(1U, found);
     EXPECT_EQ("1.2.3.5", ToString(result));
     if (result) freeaddrinfo(result);
 }

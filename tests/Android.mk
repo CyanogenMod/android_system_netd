@@ -15,23 +15,18 @@
 #
 LOCAL_PATH := $(call my-dir)
 
-# DNS responder tests.
+# APCT build target
 include $(CLEAR_VARS)
-LOCAL_MODULE := netd_test
+LOCAL_MODULE := netd_integration_test
+LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
 EXTRA_LDLIBS := -lpthread
-LOCAL_SHARED_LIBRARIES += libcutils libutils liblog libnetd_client
+LOCAL_SHARED_LIBRARIES += libbase libbinder libcutils liblog liblogwrap libnetdaidl libnetd_client \
+			  libutils
 LOCAL_STATIC_LIBRARIES += libtestUtil
-LOCAL_C_INCLUDES += system/netd/include system/extras/tests/include
-LOCAL_SRC_FILES := netd_test.cpp dns_responder.cpp
+LOCAL_AIDL_INCLUDES := system/netd/server/binder
+LOCAL_C_INCLUDES += system/netd/include system/extras/tests/include system/netd/binder/include \
+		    system/netd/server system/core/logwrapper/include
+LOCAL_SRC_FILES := netd_test.cpp dns_responder.cpp binder_test.cpp ../server/NetdConstants.cpp
 LOCAL_MODULE_TAGS := eng tests
 include $(BUILD_NATIVE_TEST)
 
-# netd binder interface tests.
-include $(CLEAR_VARS)
-LOCAL_MODULE := netd_binder_test
-LOCAL_SHARED_LIBRARIES += libbase libbinder liblogwrap libutils libnetdaidl
-LOCAL_C_INCLUDES += system/netd/include system/netd/binder/include system/netd/server system/core/logwrapper/include
-LOCAL_AIDL_INCLUDES := system/netd/server/binder
-LOCAL_SRC_FILES := binder_test.cpp ../server/NetdConstants.cpp
-LOCAL_MODULE_TAGS := tests
-include $(BUILD_NATIVE_TEST)

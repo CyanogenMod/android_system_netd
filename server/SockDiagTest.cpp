@@ -66,11 +66,11 @@ const char *tcpStateName(uint8_t state) {
 
 TEST_F(SockDiagTest, TestDump) {
     int v4socket = socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_NE(-1, v4socket) << "Failed to open IPv4 socket: " << strerror(errno);
     int v6socket = socket(AF_INET6, SOCK_STREAM, 0);
+    ASSERT_NE(-1, v6socket) << "Failed to open IPv6 socket: " << strerror(errno);
     int listensocket = socket(AF_INET6, SOCK_STREAM, 0);
-    ASSERT_NE(-1, v4socket) << "Failed to open IPv4 socket";
-    ASSERT_NE(-1, v6socket) << "Failed to open IPv6 socket";
-    ASSERT_NE(-1, listensocket) << "Failed to open listen socket";
+    ASSERT_NE(-1, listensocket) << "Failed to open listen socket: " << strerror(errno);
 
     uint16_t port = bindAndListen(listensocket);
     ASSERT_NE(0, port) << "Can't bind to server port";
