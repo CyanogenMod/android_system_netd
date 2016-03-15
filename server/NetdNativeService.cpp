@@ -27,6 +27,7 @@
 #include "android/net/BnNetd.h"
 
 #include "Controllers.h"
+#include "DumpWriter.h"
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
 
@@ -38,6 +39,7 @@ namespace net {
 namespace {
 
 const char CONNECTIVITY_INTERNAL[] = "android.permission.CONNECTIVITY_INTERNAL";
+const char DUMP[] = "android.permission.DUMP";
 
 binder::Status checkPermission(const char *permission) {
     pid_t pid;
@@ -77,6 +79,24 @@ status_t NetdNativeService::start() {
     ps->startThreadPool();
     ps->giveThreadPoolName();
     return android::OK;
+}
+
+status_t NetdNativeService::dump(int fd, const Vector<String16> & /* args */) {
+    const binder::Status dump_permission = checkPermission(DUMP);
+    if (!dump_permission.isOk()) {
+        const String8 msg(dump_permission.toString8());
+        write(fd, msg.string(), msg.size());
+        return PERMISSION_DENIED;
+    }
+
+    // This method does not grab any locks. If individual classes need locking
+    // their dump() methods MUST handle locking appropriately.
+    DumpWriter dw(fd);
+    dw.blankline();
+    gCtls->netCtrl.dump(dw);
+    dw.blankline();
+
+    return NO_ERROR;
 }
 
 binder::Status NetdNativeService::isAlive(bool *alive) {

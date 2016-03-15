@@ -30,10 +30,12 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
   public:
     static status_t start();
     static char const* getServiceName() { return "netd"; }
+    virtual status_t dump(int fd, const Vector<String16> &args) override;
+
     binder::Status isAlive(bool *alive) override;
     binder::Status firewallReplaceUidChain(
-        const String16& chainName, bool isWhitelist,
-        const std::vector<int32_t>& uids, bool *ret) override;
+            const String16& chainName, bool isWhitelist,
+            const std::vector<int32_t>& uids, bool *ret) override;
 
 };
 

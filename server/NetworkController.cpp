@@ -32,17 +32,19 @@
 
 #include "NetworkController.h"
 
+#define LOG_TAG "Netd"
+#include "log/log.h"
+
+#include "cutils/misc.h"
+#include "resolv_netid.h"
+
 #include "DummyNetwork.h"
+#include "DumpWriter.h"
 #include "Fwmark.h"
 #include "LocalNetwork.h"
 #include "PhysicalNetwork.h"
 #include "RouteController.h"
 #include "VirtualNetwork.h"
-
-#include "cutils/misc.h"
-#define LOG_TAG "Netd"
-#include "log/log.h"
-#include "resolv_netid.h"
 
 namespace {
 
@@ -506,6 +508,28 @@ void NetworkController::denyProtect(const std::vector<uid_t>& uids) {
     for (uid_t uid : uids) {
         mProtectableUsers.erase(uid);
     }
+}
+
+void NetworkController::dump(DumpWriter& dw) {
+    android::RWLock::AutoRLock lock(mRWLock);
+
+    dw.incIndent();
+    dw.println("NetworkController");
+
+    dw.incIndent();
+    dw.println("Default network: %u", mDefaultNetId);
+
+    dw.blankline();
+    dw.println("Networks:");
+    dw.incIndent();
+    for (const auto& i : mNetworks) {
+        dw.println(i.second->toString().c_str());
+    }
+    dw.decIndent();
+
+    dw.decIndent();
+
+    dw.decIndent();
 }
 
 bool NetworkController::isValidNetwork(unsigned netId) const {

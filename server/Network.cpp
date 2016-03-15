@@ -19,6 +19,9 @@
 #define LOG_TAG "Netd"
 #include "log/log.h"
 
+#include <android-base/strings.h>
+#include <sstream>
+
 Network::~Network() {
     if (!mInterfaces.empty()) {
         ALOGE("deleting network with netId %u without clearing its interfaces", mNetId);
@@ -48,6 +51,38 @@ int Network::clearInterfaces() {
     }
     return 0;
 }
+
+std::string Network::toString() const {
+    const char kSeparator[] = " ";
+    std::stringstream repr;
+
+    repr << mNetId;
+
+    repr << kSeparator;
+    switch (getType()) {
+        case DUMMY:
+            repr << "DUMMY";
+            break;
+        case LOCAL:
+            repr << "LOCAL";
+            break;
+        case PHYSICAL:
+            repr << "PHYSICAL";
+            break;
+        case VIRTUAL:
+            repr << "VIRTUAL";
+            break;
+        default:
+            repr << "unknown";
+    }
+
+    if (mInterfaces.size() > 0) {
+        repr << kSeparator << android::base::Join(mInterfaces, ",");
+    }
+
+    return repr.str();
+}
+
 
 Network::Network(unsigned netId) : mNetId(netId) {
 }

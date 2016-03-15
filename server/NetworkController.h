@@ -28,6 +28,7 @@
 #include <sys/types.h>
 #include <vector>
 
+class DumpWriter;
 class Network;
 class UidRanges;
 class VirtualNetwork;
@@ -89,6 +90,8 @@ public:
     bool canProtect(uid_t uid) const;
     void allowProtect(const std::vector<uid_t>& uids);
     void denyProtect(const std::vector<uid_t>& uids);
+
+    void dump(DumpWriter& dw);
 
 private:
     bool isValidNetwork(unsigned netId) const;

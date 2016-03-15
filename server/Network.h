@@ -48,6 +48,8 @@ public:
     virtual int removeInterface(const std::string& interface) WARN_UNUSED_RESULT = 0;
     int clearInterfaces() WARN_UNUSED_RESULT;
 
+    std::string toString() const;
+
 protected:
     explicit Network(unsigned netId);
 
