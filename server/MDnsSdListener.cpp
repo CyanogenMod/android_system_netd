@@ -26,6 +26,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <string.h>
+#include <resolv.h>
 
 #define LOG_TAG "MDnsDS"
 #define DBG 1
@@ -40,6 +41,8 @@
 
 #define MDNS_SERVICE_NAME "mdnsd"
 #define MDNS_SERVICE_STATUS "init.svc.mdnsd"
+
+#define CEIL(x, y) (((x) + (y) - 1) / (y))
 
 MDnsSdListener::MDnsSdListener() :
                  FrameworkListener("mdns", true) {
@@ -243,7 +246,7 @@ void MDnsSdListener::Handler::resolveService(SocketClient *cli, int requestId,
 void MDnsSdListenerResolveCallback(DNSServiceRef /* sdRef */, DNSServiceFlags /* flags */,
         uint32_t /* interface */, DNSServiceErrorType errorCode, const char *fullname,
         const char *hosttarget, uint16_t port, uint16_t txtLen,
-        const unsigned char * /* txtRecord */, void *inContext) {
+        const unsigned char *txtRecord , void *inContext) {
     MDnsSdListener::Context *context = reinterpret_cast<MDnsSdListener::Context *>(inContext);
     char *msg;
     int refNumber = context->mRefNumber;
@@ -255,9 +258,19 @@ void MDnsSdListenerResolveCallback(DNSServiceRef /* sdRef */, DNSServiceFlags /*
     } else {
         char *quotedFullName = SocketClient::quoteArg(fullname);
         char *quotedHostTarget = SocketClient::quoteArg(hosttarget);
-        asprintf(&msg, "%d %s %s %d %d", refNumber, quotedFullName, quotedHostTarget, port, txtLen);
+
+        // Base 64 encodes every 3 bytes into 4 characters, but then adds padding to the next
+        // multiple of 4 and a \0
+        size_t dstLength = CEIL(CEIL(txtLen * 4, 3), 4) * 4 + 1;
+
+        char *dst = (char *)malloc(dstLength);
+        b64_ntop(txtRecord, txtLen, dst, dstLength);
+
+        asprintf(&msg, "%d %s %s %d %d \"%s\"", refNumber, quotedFullName, quotedHostTarget, port,
+                 txtLen, dst);
         free(quotedFullName);
         free(quotedHostTarget);
+        free(dst);
         context->mListener->sendBroadcast(ResponseCode::ServiceResolveSuccess, msg, false);
         if (VDBG) {
             ALOGD("resolve succeeded for %d finding %s at %s:%d with txtLen %d",
@@ -416,7 +429,7 @@ int MDnsSdListener::Handler::runCommand(SocketClient *cli,
     } else if (strcmp(cmd, "stop-discover") == 0) {
         stop(cli, argc, argv, "discover");
     } else if (strcmp(cmd, "register") == 0) {
-        if (argc < 6) {
+        if (argc != 7) {
             cli->sendMsg(ResponseCode::CommandParameterError,
                     "Invalid number of arguments to mdnssd register", false);
             return 0;
@@ -428,29 +441,20 @@ int MDnsSdListener::Handler::runCommand(SocketClient *cli,
         char *interfaceName = NULL; // will use all
         char *domain = NULL;        // will use default
         char *host = NULL;          // will use default hostname
-        unsigned char txtRecord[2048] = "";
-        unsigned char *ptr = txtRecord;
-        for (int i = 6; i < argc; ++i) {
-          int dataLength = strlen(argv[i]);
-          if (dataLength < 1) {
-            continue;
-          }
-          if (dataLength > 255) {
-            cli->sendMsg(ResponseCode::CommandParameterError,
-                    "TXT record fields must not be longer than 255 characters", false);
-            return 0;
-          }
-          if (ptr + dataLength + 1 > txtRecord + sizeof(txtRecord)) {
-            cli->sendMsg(ResponseCode::CommandParameterError,
-                    "Total length of TXT record must be smaller than 2048 bytes", false);
-            return 0;
-          }
-          *ptr++ = dataLength;
-          strcpy( (char*) ptr, argv[i]);
-          ptr += dataLength;
+
+        // TXT record length is <= 1300, see NsdServiceInfo.setAttribute
+        char dst[1300];
+
+        int length = b64_pton(argv[6], (u_char *)dst, 1300);
+
+        if (length < 0) {
+           cli->sendMsg(ResponseCode::CommandParameterError,
+                    "Could not decode txtRecord", false);
+           return 0;
         }
+
         serviceRegister(cli, requestId, interfaceName, serviceName,
-                serviceType, domain, host, port, ptr - txtRecord, txtRecord);
+                serviceType, domain, host, port, length, dst);
     } else if (strcmp(cmd, "stop-register") == 0) {
         stop(cli, argc, argv, "register");
     } else if (strcmp(cmd, "resolve") == 0) {
