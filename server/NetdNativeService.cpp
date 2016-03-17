@@ -67,6 +67,18 @@ binder::Status checkPermission(const char *permission) {
 }  // namespace
 
 
+status_t NetdNativeService::start() {
+    IPCThreadState::self()->disableBackgroundScheduling(true);
+    status_t ret = BinderService<NetdNativeService>::publish();
+    if (ret != android::OK) {
+        return ret;
+    }
+    sp<ProcessState> ps(ProcessState::self());
+    ps->startThreadPool();
+    ps->giveThreadPoolName();
+    return android::OK;
+}
+
 binder::Status NetdNativeService::isAlive(bool *alive) {
     NETD_BIG_LOCK_RPC(CONNECTIVITY_INTERNAL);
 

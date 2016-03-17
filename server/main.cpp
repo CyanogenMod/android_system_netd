@@ -105,8 +105,15 @@ int main() {
         exit(1);
     }
 
+    status_t ret;
+    if ((ret = NetdNativeService::start()) != android::OK) {
+        ALOGE("Unable to start NetdNativeService: %d", ret);
+        exit(1);
+    }
+
     /*
-     * Now that we're up, we can respond to commands
+     * Now that we're up, we can respond to commands. Starting the listener also tells
+     * NetworkManagementService that we are up and that our binder interface is ready.
      */
     if (cl.startListener()) {
         ALOGE("Unable to start CommandListener (%s)", strerror(errno));
@@ -115,8 +122,7 @@ int main() {
 
     write_pid_file();
 
-    IPCThreadState::self()->disableBackgroundScheduling(true);
-    NetdNativeService::publishAndJoinThreadPool();
+    IPCThreadState::self()->joinThreadPool();
 
     ALOGI("Netd exiting");
 

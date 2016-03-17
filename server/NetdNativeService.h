@@ -28,6 +28,7 @@ namespace net {
 
 class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd {
   public:
+    static status_t start();
     static char const* getServiceName() { return "netd"; }
     binder::Status isAlive(bool *alive) override;
     binder::Status firewallReplaceUidChain(
