@@ -64,8 +64,6 @@ public:
     int getInterfaceQuota(const char *iface, int64_t *bytes);
     int removeInterfaceQuota(const char *iface);
 
-    int enableHappyBox(void);
-    int disableHappyBox(void);
     int addNaughtyApps(int numUids, char *appUids[]);
     int removeNaughtyApps(int numUids, char *appUids[]);
     int addNiceApps(int numUids, char *appUids[]);

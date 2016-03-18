@@ -326,54 +326,6 @@ std::string BandwidthController::makeIptablesSpecialAppCmd(IptOp op, int uid, co
     return res;
 }
 
-int BandwidthController::enableHappyBox(void) {
-    char cmd[MAX_CMD_LEN];
-    int res = 0;
-
-    /*
-     * We tentatively delete before adding, which helps recovering
-     * from bad states (e.g. netd died).
-     */
-
-    /* Should not exist, but ignore result if already there. */
-    snprintf(cmd, sizeof(cmd), "-N bw_happy_box");
-    runIpxtablesCmd(cmd, IptJumpNoAdd);
-
-    /* Should be empty, but clear in case something was wrong. */
-    snprintf(cmd, sizeof(cmd), "-F bw_happy_box");
-    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
-
-    snprintf(cmd, sizeof(cmd), "-D bw_penalty_box -j bw_happy_box");
-    runIpxtablesCmd(cmd, IptJumpNoAdd);
-    snprintf(cmd, sizeof(cmd), "-A bw_penalty_box -j bw_happy_box");
-    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
-
-    /* Whitelist all system apps. */
-    snprintf(cmd, sizeof(cmd),
-            "-A bw_happy_box -m owner --uid-owner %d-%d -j RETURN", 0, MAX_SYSTEM_UID);
-    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
-
-    /* Reject. Defaulting to prot-unreachable */
-    snprintf(cmd, sizeof(cmd), "-A bw_happy_box -j REJECT");
-    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
-
-    return res;
-}
-
-int BandwidthController::disableHappyBox(void) {
-    char cmd[MAX_CMD_LEN];
-
-    /* Best effort */
-    snprintf(cmd, sizeof(cmd), "-D bw_penalty_box -j bw_happy_box");
-    runIpxtablesCmd(cmd, IptJumpNoAdd);
-    snprintf(cmd, sizeof(cmd), "-F bw_happy_box");
-    runIpxtablesCmd(cmd, IptJumpNoAdd);
-    snprintf(cmd, sizeof(cmd), "-X bw_happy_box");
-    runIpxtablesCmd(cmd, IptJumpNoAdd);
-
-    return 0;
-}
-
 int BandwidthController::addNaughtyApps(int numUids, char *appUids[]) {
     return manipulateNaughtyApps(numUids, appUids, SpecialAppOpAdd);
 }
