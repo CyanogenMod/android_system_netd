@@ -264,8 +264,6 @@ int BandwidthController::enableBandwidthControl(bool force) {
     /* Let's pretend we started from scratch ... */
     sharedQuotaIfaces.clear();
     quotaIfaces.clear();
-    naughtyAppUids.clear();
-    niceAppUids.clear();
     globalAlertBytes = 0;
     globalAlertTetherCount = 0;
     sharedQuotaBytes = sharedAlertBytes = 0;
@@ -342,7 +340,6 @@ int BandwidthController::enableHappyBox(void) {
     runIpxtablesCmd(cmd, IptJumpNoAdd);
 
     /* Should be empty, but clear in case something was wrong. */
-    niceAppUids.clear();
     snprintf(cmd, sizeof(cmd), "-F bw_happy_box");
     res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
 
@@ -369,7 +366,6 @@ int BandwidthController::disableHappyBox(void) {
     /* Best effort */
     snprintf(cmd, sizeof(cmd), "-D bw_penalty_box -j bw_happy_box");
     runIpxtablesCmd(cmd, IptJumpNoAdd);
-    niceAppUids.clear();
     snprintf(cmd, sizeof(cmd), "-F bw_happy_box");
     runIpxtablesCmd(cmd, IptJumpNoAdd);
     snprintf(cmd, sizeof(cmd), "-X bw_happy_box");
@@ -395,17 +391,16 @@ int BandwidthController::removeNiceApps(int numUids, char *appUids[]) {
 }
 
 int BandwidthController::manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp) {
-    return manipulateSpecialApps(numUids, appStrUids, "bw_penalty_box", naughtyAppUids, IptJumpReject, appOp);
+    return manipulateSpecialApps(numUids, appStrUids, "bw_penalty_box", IptJumpReject, appOp);
 }
 
 int BandwidthController::manipulateNiceApps(int numUids, char *appStrUids[], SpecialAppOp appOp) {
-    return manipulateSpecialApps(numUids, appStrUids, "bw_happy_box", niceAppUids, IptJumpReturn, appOp);
+    return manipulateSpecialApps(numUids, appStrUids, "bw_happy_box", IptJumpReturn, appOp);
 }
 
 
 int BandwidthController::manipulateSpecialApps(int numUids, char *appStrUids[],
                                                const char *chain,
-                                               std::list<int /*appUid*/> &specialAppUids,
                                                IptJumpOp jumpHandling, SpecialAppOp appOp) {
 
     int uidNum;
@@ -413,7 +408,6 @@ int BandwidthController::manipulateSpecialApps(int numUids, char *appStrUids[],
     IptOp op;
     int appUids[numUids];
     std::string iptCmd;
-    std::list<int /*uid*/>::iterator it;
 
     switch (appOp) {
     case SpecialAppOpAdd:
@@ -440,25 +434,6 @@ int BandwidthController::manipulateSpecialApps(int numUids, char *appStrUids[],
 
     for (uidNum = 0; uidNum < numUids; uidNum++) {
         int uid = appUids[uidNum];
-        for (it = specialAppUids.begin(); it != specialAppUids.end(); it++) {
-            if (*it == uid)
-                break;
-        }
-        bool found = (it != specialAppUids.end());
-
-        if (appOp == SpecialAppOpRemove) {
-            if (!found) {
-                ALOGE("No such appUid %d to remove", uid);
-                return -1;
-            }
-            specialAppUids.erase(it);
-        } else {
-            if (found) {
-                ALOGE("appUid %d exists already", uid);
-                return -1;
-            }
-            specialAppUids.push_front(uid);
-        }
 
         iptCmd = makeIptablesSpecialAppCmd(op, uid, chain);
         if (runIpxtablesCmd(iptCmd.c_str(), jumpHandling)) {

@@ -122,7 +122,6 @@ protected:
 
     int manipulateSpecialApps(int numUids, char *appStrUids[],
                                const char *chain,
-                               std::list<int /*appUid*/> &specialAppUids,
                                IptJumpOp jumpHandling, SpecialAppOp appOp);
     int manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
     int manipulateNiceApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
@@ -198,8 +197,6 @@ protected:
     int globalAlertTetherCount;
 
     std::list<QuotaInfo> quotaIfaces;
-    std::list<int /*appUid*/> naughtyAppUids;
-    std::list<int /*appUid*/> niceAppUids;
 
 private:
     static const char *IPT_FLUSH_COMMANDS[];
