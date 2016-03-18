@@ -60,6 +60,9 @@ const char* BandwidthController::LOCAL_OUTPUT = "bw_OUTPUT";
 const char* BandwidthController::LOCAL_RAW_PREROUTING = "bw_raw_PREROUTING";
 const char* BandwidthController::LOCAL_MANGLE_POSTROUTING = "bw_mangle_POSTROUTING";
 
+auto BandwidthController::execFunction = android_fork_execvp;
+auto BandwidthController::popenFunction = popen;
+
 namespace {
 
 const char ALERT_GLOBAL_NAME[] = "globalAlert";
@@ -235,7 +238,7 @@ int BandwidthController::runIptablesCmd(const char *cmd, IptJumpOp jumpHandling,
     }
 
     argv[argc] = NULL;
-    res = android_fork_execvp(argc, (char **)argv, &status, false,
+    res = execFunction(argc, (char **)argv, &status, false,
             failureHandling == IptFailShow);
     res = res || !WIFEXITED(status) || WEXITSTATUS(status);
     if (res && failureHandling == IptFailShow) {
@@ -1218,7 +1221,7 @@ int BandwidthController::getTetherStats(SocketClient *cli, TetherStats &stats, s
     fullCmd = IPTABLES_PATH;
     fullCmd += " -nvx -w -L ";
     fullCmd += NatController::LOCAL_TETHER_COUNTERS_CHAIN;
-    iptOutput = popen(fullCmd.c_str(), "r");
+    iptOutput = popenFunction(fullCmd.c_str(), "r");
     if (!iptOutput) {
             ALOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
             extraProcessingInfo += "Failed to run iptables.";
@@ -1238,7 +1241,7 @@ void BandwidthController::flushExistingCostlyTables(bool doClean) {
     /* Only lookup ip4 table names as ip6 will have the same tables ... */
     fullCmd = IPTABLES_PATH;
     fullCmd += " -w -S";
-    iptOutput = popen(fullCmd.c_str(), "r");
+    iptOutput = popenFunction(fullCmd.c_str(), "r");
     if (!iptOutput) {
             ALOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
         return;

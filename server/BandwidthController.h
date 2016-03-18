@@ -197,6 +197,10 @@ protected:
 
     std::list<QuotaInfo> quotaIfaces;
 
+    // For testing.
+    friend class BandwidthControllerTest;
+    static int (*execFunction)(int, char **, int *, bool, bool);
+    static FILE *(*popenFunction)(const char *, const char *);
 };
 
 #endif
