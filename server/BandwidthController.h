@@ -55,6 +55,7 @@ public:
 
     int enableBandwidthControl(bool force);
     int disableBandwidthControl(void);
+    int enableDataSaver(bool enable);
 
     int setInterfaceSharedQuota(const char *iface, int64_t bytes);
     int getInterfaceSharedQuota(int64_t *bytes);
@@ -196,18 +197,6 @@ protected:
 
     std::list<QuotaInfo> quotaIfaces;
 
-private:
-    static const char *IPT_FLUSH_COMMANDS[];
-    static const char *IPT_CLEANUP_COMMANDS[];
-    static const char *IPT_SETUP_COMMANDS[];
-    static const char *IPT_BASIC_ACCOUNTING_COMMANDS[];
-
-    /* Alphabetical */
-    static const char ALERT_GLOBAL_NAME[];
-    static const int  MAX_CMD_ARGS;
-    static const int  MAX_CMD_LEN;
-    static const int  MAX_IFACENAME_LEN;
-    static const int  MAX_IPT_OUTPUT_LINE_LEN;
 };
 
 #endif

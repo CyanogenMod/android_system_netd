@@ -41,6 +41,7 @@
 #include <linux/rtnetlink.h>
 #include <linux/pkt_sched.h>
 
+#include "android-base/stringprintf.h"
 #define LOG_TAG "BandwidthController"
 #include <cutils/log.h>
 #include <cutils/properties.h>
@@ -53,16 +54,19 @@
 
 /* Alphabetical */
 #define ALERT_IPT_TEMPLATE "%s %s -m quota2 ! --quota %" PRId64" --name %s"
-const char BandwidthController::ALERT_GLOBAL_NAME[] = "globalAlert";
 const char* BandwidthController::LOCAL_INPUT = "bw_INPUT";
 const char* BandwidthController::LOCAL_FORWARD = "bw_FORWARD";
 const char* BandwidthController::LOCAL_OUTPUT = "bw_OUTPUT";
 const char* BandwidthController::LOCAL_RAW_PREROUTING = "bw_raw_PREROUTING";
 const char* BandwidthController::LOCAL_MANGLE_POSTROUTING = "bw_mangle_POSTROUTING";
-const int  BandwidthController::MAX_CMD_ARGS = 32;
-const int  BandwidthController::MAX_CMD_LEN = 1024;
-const int  BandwidthController::MAX_IFACENAME_LEN = 64;
-const int  BandwidthController::MAX_IPT_OUTPUT_LINE_LEN = 256;
+
+namespace {
+
+const char ALERT_GLOBAL_NAME[] = "globalAlert";
+const int  MAX_CMD_ARGS = 32;
+const int  MAX_CMD_LEN = 1024;
+const int  MAX_IFACENAME_LEN = 64;
+const int  MAX_IPT_OUTPUT_LINE_LEN = 256;
 
 /**
  * Some comments about the rules:
@@ -82,8 +86,7 @@ const int  BandwidthController::MAX_IPT_OUTPUT_LINE_LEN = 256;
  *      iptables -I bw_costly_shared -m quota \! --quota 500000 \
  *          --jump REJECT --reject-with icmp-net-prohibited
  *      iptables -A bw_costly_shared --jump bw_penalty_box
- *      If the happy box is enabled,
- *        iptables -A bw_penalty_box --jump bw_happy_box
+ *      iptables -A bw_penalty_box --jump bw_happy_box
  *
  *    . adding a new iface to this, E.g.:
  *      iptables -I bw_INPUT -i iface1 --jump bw_costly_shared
@@ -100,17 +103,23 @@ const int  BandwidthController::MAX_IPT_OUTPUT_LINE_LEN = 256;
  *
  * * bw_penalty_box handling:
  *  - only one bw_penalty_box for all interfaces
- *   E.g  Adding an app, it has to preserve the appened bw_happy_box, so "-I":
+ *   E.g  Adding an app:
  *    iptables -I bw_penalty_box -m owner --uid-owner app_3 \
  *        --jump REJECT --reject-with icmp-port-unreachable
  *
  * * bw_happy_box handling:
- *  - The bw_happy_box goes at the end of the penalty box.
+ *  - The bw_happy_box comes after the penalty box.
  *   E.g  Adding a happy app,
  *    iptables -I bw_happy_box -m owner --uid-owner app_3 \
  *        --jump RETURN
+ *
+ * * Turning data saver on and off:
+ *  - Adds or removes a REJECT at the end of the bw_costly_shared chain
+ *    iptables -A bw_costly_shared --jump REJECT --reject-with icmp-port-unreachable
+ *    iptables -D bw_costly_shared --jump REJECT --reject-with icmp-port-unreachable
  */
-const char *BandwidthController::IPT_FLUSH_COMMANDS[] = {
+
+const char *IPT_FLUSH_COMMANDS[] = {
     /*
      * Cleanup rules.
      * Should normally include bw_costly_<iface>, but we rely on the way they are setup
@@ -128,28 +137,37 @@ const char *BandwidthController::IPT_FLUSH_COMMANDS[] = {
 };
 
 /* The cleanup commands assume flushing has been done. */
-const char *BandwidthController::IPT_CLEANUP_COMMANDS[] = {
+const char *IPT_CLEANUP_COMMANDS[] = {
     "-X bw_happy_box",
     "-X bw_penalty_box",
     "-X bw_costly_shared",
 };
 
-const char *BandwidthController::IPT_SETUP_COMMANDS[] = {
+const char *IPT_SETUP_COMMANDS[] = {
     "-N bw_happy_box",
     "-N bw_penalty_box",
     "-N bw_costly_shared",
 };
 
-const char *BandwidthController::IPT_BASIC_ACCOUNTING_COMMANDS[] = {
+const char *IPT_BASIC_ACCOUNTING_COMMANDS[] = {
     "-A bw_INPUT -m owner --socket-exists", /* This is a tracking rule. */
 
     "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
 
-    "-A bw_costly_shared --jump bw_penalty_box",
-
     "-t raw -A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
     "-t mangle -A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
 };
+
+const char *COSTLY_SHARED_COMMANDS[] = {
+    "-A bw_costly_shared --jump bw_penalty_box",
+    "-A bw_costly_shared --jump bw_happy_box",
+    "-A bw_costly_shared --jump RETURN",
+};
+
+const std::string kDataSaverEnableCommand = android::base::StringPrintf(
+        "-R bw_costly_shared %zu", ARRAY_SIZE(COSTLY_SHARED_COMMANDS));
+
+}  // namespace
 
 BandwidthController::BandwidthController(void) {
 }
@@ -269,8 +287,16 @@ int BandwidthController::enableBandwidthControl(bool force) {
     sharedQuotaBytes = sharedAlertBytes = 0;
 
     flushCleanTables(false);
-    res = runCommands(sizeof(IPT_BASIC_ACCOUNTING_COMMANDS) / sizeof(char*),
+    res = runCommands(ARRAY_SIZE(IPT_BASIC_ACCOUNTING_COMMANDS),
             IPT_BASIC_ACCOUNTING_COMMANDS, RunCmdFailureBad);
+
+    res |= runCommands(ARRAY_SIZE(COSTLY_SHARED_COMMANDS),
+            COSTLY_SHARED_COMMANDS, RunCmdFailureBad);
+
+    char cmd[MAX_CMD_LEN];
+    snprintf(cmd, sizeof(cmd),
+            "-A bw_happy_box -m owner --uid-owner %d-%d", 0, MAX_SYSTEM_UID);
+    runIpxtablesCmd(cmd, IptJumpReturn);
 
     return res;
 
@@ -280,6 +306,11 @@ int BandwidthController::disableBandwidthControl(void) {
 
     flushCleanTables(false);
     return 0;
+}
+
+int BandwidthController::enableDataSaver(bool enable) {
+    return runIpxtablesCmd(kDataSaverEnableCommand.c_str(),
+                           enable ? IptJumpReject : IptJumpReturn, IptFailShow);
 }
 
 int BandwidthController::runCommands(int numCommands, const char *commands[],
