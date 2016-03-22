@@ -36,6 +36,7 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
     binder::Status firewallReplaceUidChain(
             const String16& chainName, bool isWhitelist,
             const std::vector<int32_t>& uids, bool *ret) override;
+    binder::Status bandwidthEnableDataSaver(bool enable, bool *ret) override;
 
 };
 

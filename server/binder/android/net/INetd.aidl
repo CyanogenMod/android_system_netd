@@ -37,4 +37,22 @@ interface INetd {
      * @return true if the chain was successfully replaced, false otherwise.
      */
     boolean firewallReplaceUidChain(String chainName, boolean isWhitelist, in int[] uids);
+
+    /**
+     * Enables or disables data saver mode on costly network interfaces.
+     *
+     * - When disabled, all packets to/from apps in the penalty box chain are rejected on costly
+     *   interfaces. Traffic to/from other apps or on other network interfaces is allowed.
+     * - When enabled, only apps that are in the happy box chain and not in the penalty box chain
+     *   are allowed network connectivity on costly interfaces. All other packets on these
+     *   interfaces are rejected. The happy box chain always contains all system UIDs; to disallow
+     *   traffic from system UIDs, place them in the penalty box chain.
+     *
+     * By default, data saver mode is disabled. This command has no effect but might still return an
+     * error) if {@code enable} is the same as the current value.
+     *
+     * @param enable whether to enable or disable data saver mode.
+     * @return true if the if the operation was successful, false otherwise.
+     */
+    boolean bandwidthEnableDataSaver(boolean enable);
 }

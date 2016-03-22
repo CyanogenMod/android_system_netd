@@ -190,7 +190,7 @@ CommandListener::CommandListener() :
     registerLockingCmd(new ListTtysCmd());
     registerLockingCmd(new PppdCmd());
     registerLockingCmd(new SoftapCmd());
-    registerLockingCmd(new BandwidthControlCmd());
+    registerLockingCmd(new BandwidthControlCmd(), gCtls->bandwidthCtrl.lock);
     registerLockingCmd(new IdletimerControlCmd());
     registerLockingCmd(new ResolverCmd());
     registerLockingCmd(new FirewallCmd(), gCtls->firewallCtrl.lock);

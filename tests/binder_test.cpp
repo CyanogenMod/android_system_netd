@@ -16,11 +16,13 @@
  * binder_test.cpp - unit tests for netd binder RPCs.
  */
 
-#include <cstdlib>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <gtest/gtest.h>
 #include <logwrap/logwrap.h>
 
@@ -78,30 +80,30 @@ static int randomUid() {
     return 100000 * arc4random_uniform(7) + 10000 + arc4random_uniform(5000);
 }
 
-static int countNewlines(FILE *f) {
-    char buf[4096];
-    int numNewlines = 0;
-    size_t bytesread;
-    while ((bytesread = fread(buf, 1, sizeof(buf), f)) > 0) {
-        for (size_t i = 0; i < bytesread; i++) {
-            if (buf[i] == '\n') {
-                numNewlines++;
-            }
-        }
+static std::vector<std::string> listIptablesRule(const char *binary, const char *chainName) {
+    std::vector<std::string> lines;
+    FILE *f;
+
+    std::string command = StringPrintf("%s -n -L %s", binary, chainName);
+    if ((f = popen(command.c_str(), "r")) == nullptr) {
+        perror("popen");
+        return lines;
     }
-    return numNewlines;
+
+    char *line = nullptr;
+    size_t linelen = 0;
+    while (getline(&line, &linelen, f) >= 0) {
+        lines.push_back(std::string(line, linelen));
+        free(line);
+        line = nullptr;
+    }
+
+    pclose(f);
+    return lines;
 }
 
-static int ruleLineLength(const char *binary, const char *chainName) {
-    FILE *f;
-    std::string command = StringPrintf("%s -n -L %s", binary, chainName);
-    if ((f = popen(command.c_str(), "r")) == NULL) {
-        perror("popen");
-        return -1;
-    }
-    int numLines = countNewlines(f);
-    pclose(f);
-    return numLines;
+static int iptablesRuleLineLength(const char *binary, const char *chainName) {
+    return listIptablesRule(binary, chainName).size();
 }
 
 
@@ -120,34 +122,98 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), true, uids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ((int) uids.size() + 4, ruleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ((int) uids.size() + 4, ruleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 4, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 4, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
     {
         TimedOperation op("Clearing whitelist chain");
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, noUids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ(2, ruleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ(2, ruleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(2, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(2, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
 
     {
         TimedOperation op(StringPrintf("Programming %d-UID blacklist chain", kNumUids));
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, uids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ((int) uids.size() + 3, ruleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ((int) uids.size() + 3, ruleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 3, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 3, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
 
     {
         TimedOperation op("Clearing blacklist chain");
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, noUids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ(2, ruleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ(2, ruleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(2, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(2, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
 
     // Check that the call fails if iptables returns an error.
     std::string veryLongStringName = "netd_binder_test_UnacceptablyLongIptablesChainName";
     mNetd->firewallReplaceUidChain(String16(veryLongStringName.c_str()), true, noUids, &ret);
     EXPECT_EQ(false, ret);
+}
+
+static int bandwidthDataSaverEnabled(const char *binary) {
+    std::vector<std::string> lines = listIptablesRule(binary, "bw_costly_shared");
+
+    // Output looks like this:
+    //
+    // Chain bw_costly_shared (0 references)
+    // target     prot opt source               destination
+    // bw_penalty_box  all  --  0.0.0.0/0            0.0.0.0/0
+    // bw_happy_box  all  --  0.0.0.0/0            0.0.0.0/0
+    // RETURN     all  --  0.0.0.0/0            0.0.0.0/0
+    EXPECT_EQ(5U, lines.size());
+    if (lines.size() != 5) return -1;
+
+    EXPECT_TRUE(android::base::StartsWith(lines[2], "bw_penalty_box "));
+    EXPECT_TRUE(android::base::StartsWith(lines[3], "bw_happy_box "));
+    EXPECT_TRUE(android::base::StartsWith(lines[4], "RETURN ") ||
+                android::base::StartsWith(lines[4], "REJECT "));
+
+    return android::base::StartsWith(lines[4], "REJECT");
+}
+
+bool enableDataSaver(sp<INetd>& netd, bool enable) {
+    TimedOperation op(enable ? " Enabling data saver" : "Disabling data saver");
+    bool ret;
+    netd->bandwidthEnableDataSaver(enable, &ret);
+    return ret;
+}
+
+int getDataSaverState() {
+    const int enabled4 = bandwidthDataSaverEnabled(IPTABLES_PATH);
+    const int enabled6 = bandwidthDataSaverEnabled(IP6TABLES_PATH);
+    EXPECT_EQ(enabled4, enabled6);
+    EXPECT_NE(-1, enabled4);
+    EXPECT_NE(-1, enabled6);
+    if (enabled4 != enabled6 || (enabled6 != 0 && enabled6 != 1)) {
+        return -1;
+    }
+    return enabled6;
+}
+
+TEST_F(BinderTest, TestBandwidthEnableDataSaver) {
+    const int wasEnabled = getDataSaverState();
+    ASSERT_NE(-1, wasEnabled);
+
+    if (wasEnabled) {
+        ASSERT_TRUE(enableDataSaver(mNetd, false));
+        EXPECT_EQ(0, getDataSaverState());
+    }
+
+    ASSERT_TRUE(enableDataSaver(mNetd, false));
+    EXPECT_EQ(0, getDataSaverState());
+
+    ASSERT_TRUE(enableDataSaver(mNetd, true));
+    EXPECT_EQ(1, getDataSaverState());
+
+    ASSERT_TRUE(enableDataSaver(mNetd, true));
+    EXPECT_EQ(1, getDataSaverState());
+
+    if (!wasEnabled) {
+        ASSERT_TRUE(enableDataSaver(mNetd, false));
+        EXPECT_EQ(0, getDataSaverState());
+    }
 }

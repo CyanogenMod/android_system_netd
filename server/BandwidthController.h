@@ -21,9 +21,12 @@
 #include <utility>  // for pair
 
 #include <sysutils/SocketClient.h>
+#include <utils/RWLock.h>
 
 class BandwidthController {
 public:
+    android::RWLock lock;
+
     class TetherStats {
     public:
         TetherStats(void)

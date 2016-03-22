@@ -114,7 +114,15 @@ binder::Status NetdNativeService::firewallReplaceUidChain(const android::String1
     int err = gCtls->firewallCtrl.replaceUidChain(name.string(), isWhitelist, uids);
     *ret = (err == 0);
     return binder::Status::ok();
-
 }
+
+binder::Status NetdNativeService::bandwidthEnableDataSaver(bool enable, bool *ret) {
+    NETD_LOCKING_RPC(CONNECTIVITY_INTERNAL, gCtls->bandwidthCtrl.lock);
+
+    int err = gCtls->bandwidthCtrl.enableDataSaver(enable);
+    *ret = (err == 0);
+    return binder::Status::ok();
+}
+
 }  // namespace net
 }  // namespace android
