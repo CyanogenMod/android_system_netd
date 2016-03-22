@@ -96,17 +96,6 @@ void NetlinkHandler::onEvent(NetlinkEvent *evt) {
                 } else {
                     ALOGE("Error opening NETLINK_SOCK_DIAG socket: %s", strerror(errno));
                 }
-
-                // TODO: delete this once SOCK_DESTROY works everywhere.
-                if (iface[0]) {
-                    int resetMask = strchr(address, ':') ?
-                            RESET_IPV6_ADDRESSES : RESET_IPV4_ADDRESSES;
-                    resetMask |= RESET_IGNORE_INTERFACE_ADDRESS;
-                    if (int ret = ifc_reset_connections(iface, resetMask)) {
-                        ALOGE("ifc_reset_connections failed on iface %s for address %s (%s)", iface,
-                              address, strerror(ret));
-                    }
-                }
             }
             if (iface && iface[0] && address && flags && scope) {
                 notifyAddressChanged(action, address, iface, flags, scope);

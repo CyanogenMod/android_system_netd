@@ -1033,25 +1033,6 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         sendGenericOkFail(cli, rc);
         return 0;
     }
-    if (!strcmp(argv[1], "happybox")) {
-        if (argc < 3) {
-            sendGenericSyntaxError(cli, "happybox (enable | disable)");
-            return 0;
-        }
-        if (!strcmp(argv[2], "enable")) {
-            int rc = gCtls->bandwidthCtrl.enableHappyBox();
-            sendGenericOkFail(cli, rc);
-            return 0;
-
-        }
-        if (!strcmp(argv[2], "disable")) {
-            int rc = gCtls->bandwidthCtrl.disableHappyBox();
-            sendGenericOkFail(cli, rc);
-            return 0;
-        }
-        sendGenericSyntaxError(cli, "happybox (enable | disable)");
-        return 0;
-    }
     if (!strcmp(argv[1], "addniceapps") || !strcmp(argv[1], "aha")) {
         if (argc < 3) {
             sendGenericSyntaxError(cli, "addniceapps <appUid> ...");

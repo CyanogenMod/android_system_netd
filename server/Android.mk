@@ -123,9 +123,13 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 LOCAL_MODULE := netd_unit_test
 LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
-LOCAL_C_INCLUDES := system/netd/server
-LOCAL_SRC_FILES := FirewallControllerTest.cpp FirewallController.cpp SockDiagTest.cpp SockDiag.cpp
+LOCAL_C_INCLUDES := system/netd/server system/core/logwrapper/include
+LOCAL_SRC_FILES := \
+        NetdConstants.cpp \
+        BandwidthController.cpp BandwidthControllerTest.cpp \
+        FirewallControllerTest.cpp FirewallController.cpp \
+        SockDiagTest.cpp SockDiag.cpp
 LOCAL_MODULE_TAGS := tests
-LOCAL_SHARED_LIBRARIES := liblog libbase
+LOCAL_SHARED_LIBRARIES := liblog libbase libcutils liblogwrap
 include $(BUILD_NATIVE_TEST)
 
