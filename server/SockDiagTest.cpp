@@ -178,7 +178,48 @@ TEST_F(SockDiagTest, TestDump) {
     close(accepted6);
 }
 
-TEST_F(SockDiagTest, TestMicroBenchmark) {
+
+class SockDiagMicroBenchmarkTest : public ::testing::Test {
+
+public:
+    void SetUp() {
+        ASSERT_TRUE(mSd.open()) << "Failed to open SOCK_DIAG socket";
+    }
+
+protected:
+    SockDiag mSd;
+
+    int destroySockets() {
+        const int ret = mSd.destroySockets("::1");
+        EXPECT_LE(0, ret) << ": Failed to destroy sockets on ::1: " << strerror(-ret);
+        return ret;
+    }
+
+    bool shouldHaveClosedSocket(int) {
+        return true;
+    }
+
+    void checkSocketState(int i, int sock, const char *msg) {
+        const char data[] = "foo";
+        const int ret = send(sock, data, sizeof(data), 0);
+        const int err = errno;
+        if (shouldHaveClosedSocket(i)) {
+            EXPECT_EQ(-1, ret) << msg << " " << i << " not closed";
+            if (ret == -1) {
+                // Since we're connected to ourselves, the error might be ECONNABORTED (if we
+                // destroyed the socket) or ECONNRESET (if the other end was destroyed and sent a
+                // RST).
+                EXPECT_TRUE(err == ECONNABORTED || err == ECONNRESET)
+                    << msg << ": unexpected error: " << strerror(err);
+            }
+        } else {
+            EXPECT_EQ((ssize_t) sizeof(data), ret) <<
+                    "Write on open socket failed: " << strerror(err);
+        }
+    }
+};
+
+TEST_F(SockDiagMicroBenchmarkTest, TestMicroBenchmark) {
     fprintf(stderr, "Benchmarking closing %d sockets\n", NUM_SOCKETS);
 
     int listensocket = socket(AF_INET6, SOCK_STREAM, 0);
@@ -210,40 +251,18 @@ TEST_F(SockDiagTest, TestMicroBenchmark) {
     fprintf(stderr, "  Connecting: %6.1f ms\n",
             std::chrono::duration_cast<ms>(std::chrono::steady_clock::now() - start).count());
 
-    SockDiag sd;
-    ASSERT_TRUE(sd.open()) << "Failed to open SOCK_DIAG socket";
-
     start = std::chrono::steady_clock::now();
-    int ret = sd.destroySockets("::1");
-    EXPECT_LE(0, ret) << ": Failed to destroy sockets on ::1: " << strerror(-ret);
+    destroySockets();
     fprintf(stderr, "  Destroying: %6.1f ms\n",
             std::chrono::duration_cast<ms>(std::chrono::steady_clock::now() - start).count());
 
-    int err;
     start = std::chrono::steady_clock::now();
     for (int i = 0; i < NUM_SOCKETS; i++) {
-        ret = send(clientsockets[i], "foo", sizeof("foo"), 0);
-        err = errno;
-        EXPECT_EQ(-1, ret) << "Client socket " << i << " not closed";
-        if (ret == -1) {
-            // Since we're connected to ourselves, the error might be ECONNABORTED (if we destroyed
-            // the socket) or ECONNRESET (if the other end was destroyed and sent a RST).
-            EXPECT_TRUE(errno == ECONNABORTED || errno == ECONNRESET)
-                << "Client socket: unexpected error: " << strerror(errno);
-        }
-
-        ret = send(serversockets[i], "foo", sizeof("foo"), 0);
-        err = errno;
-        EXPECT_EQ(-1, ret) << "Server socket " << i << " not closed";
-        if (ret == -1) {
-            EXPECT_TRUE(errno == ECONNABORTED || errno == ECONNRESET)
-                << "Server socket: unexpected error: " << strerror(errno);
-        }
+        checkSocketState(i, clientsockets[i], "Client socket");
+        checkSocketState(i, serversockets[i], "Server socket");
     }
     fprintf(stderr, "   Verifying: %6.1f ms\n",
             std::chrono::duration_cast<ms>(std::chrono::steady_clock::now() - start).count());
-
-
 
     start = std::chrono::steady_clock::now();
     for (int i = 0; i < NUM_SOCKETS; i++) {
