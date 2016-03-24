@@ -27,6 +27,8 @@
 
 
 #define NUM_SOCKETS 500
+#define START_UID 8000  // START_UID + NUM_SOCKETS must be <= 9999.
+#define CLOSE_UID (START_UID + NUM_SOCKETS - 42) // Close to the end
 
 
 class SockDiagTest : public ::testing::Test {
@@ -178,8 +180,21 @@ TEST_F(SockDiagTest, TestDump) {
     close(accepted6);
 }
 
+enum MicroBenchmarkTestType {
+    ADDRESS,
+    UID,
+};
 
-class SockDiagMicroBenchmarkTest : public ::testing::Test {
+const char *testTypeName(MicroBenchmarkTestType mode) {
+#define TO_STRING_TYPE(x) case ((x)): return #x;
+    switch((mode)) {
+        TO_STRING_TYPE(ADDRESS);
+        TO_STRING_TYPE(UID);
+    }
+#undef TO_STRING_TYPE
+}
+
+class SockDiagMicroBenchmarkTest : public ::testing::TestWithParam<MicroBenchmarkTestType> {
 
 public:
     void SetUp() {
@@ -190,13 +205,27 @@ protected:
     SockDiag mSd;
 
     int destroySockets() {
-        const int ret = mSd.destroySockets("::1");
-        EXPECT_LE(0, ret) << ": Failed to destroy sockets on ::1: " << strerror(-ret);
+        MicroBenchmarkTestType mode = GetParam();
+        int ret;
+        if (mode == ADDRESS) {
+            ret = mSd.destroySockets("::1");
+            EXPECT_LE(0, ret) << ": Failed to destroy sockets on ::1: " << strerror(-ret);
+        } else {
+            ret = mSd.destroySockets(IPPROTO_TCP, CLOSE_UID);
+            EXPECT_LE(0, ret) << ": Failed to destroy sockets for UID " << CLOSE_UID << ": " <<
+                    strerror(-ret);
+        }
         return ret;
     }
 
-    bool shouldHaveClosedSocket(int) {
-        return true;
+    bool shouldHaveClosedSocket(int i) {
+        MicroBenchmarkTestType mode = GetParam();
+        switch (mode) {
+        case ADDRESS:
+            return true;
+        case UID:
+            return i == CLOSE_UID - START_UID;
+        }
     }
 
     void checkSocketState(int i, int sock, const char *msg) {
@@ -219,8 +248,11 @@ protected:
     }
 };
 
-TEST_F(SockDiagMicroBenchmarkTest, TestMicroBenchmark) {
-    fprintf(stderr, "Benchmarking closing %d sockets\n", NUM_SOCKETS);
+TEST_P(SockDiagMicroBenchmarkTest, TestMicroBenchmark) {
+    MicroBenchmarkTestType mode = GetParam();
+
+    fprintf(stderr, "Benchmarking closing %d sockets based on %s\n",
+            NUM_SOCKETS, testTypeName(mode));
 
     int listensocket = socket(AF_INET6, SOCK_STREAM, 0);
     ASSERT_NE(-1, listensocket) << "Failed to open listen socket";
@@ -239,6 +271,8 @@ TEST_F(SockDiagMicroBenchmarkTest, TestMicroBenchmark) {
     auto start = std::chrono::steady_clock::now();
     for (int i = 0; i < NUM_SOCKETS; i++) {
         int s = socket(AF_INET6, SOCK_STREAM, 0);
+        uid_t uid = START_UID + i;
+        ASSERT_EQ(0, fchown(s, uid, -1));
         clientlen = sizeof(client);
         ASSERT_EQ(0, connect(s, (sockaddr *) &server, sizeof(server)))
             << "Connecting socket " << i << " failed " << strerror(errno);
@@ -274,3 +308,5 @@ TEST_F(SockDiagMicroBenchmarkTest, TestMicroBenchmark) {
 
     close(listensocket);
 }
+
+INSTANTIATE_TEST_CASE_P(Address, SockDiagMicroBenchmarkTest, testing::Values(ADDRESS, UID));
