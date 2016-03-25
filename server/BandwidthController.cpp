@@ -77,7 +77,6 @@ const int  MAX_IPT_OUTPUT_LINE_LEN = 256;
  *    - when an interface is marked as costly it should be INSERTED into the INPUT/OUTPUT chains.
  *      E.g. "-I bw_INPUT -i rmnet0 --jump costly"
  *    - quota'd rules in the costly chain should be before bw_penalty_box lookups.
- *    - bw_happy_box rejects everything by default.
  *    - the qtaguid counting is done at the end of the bw_INPUT/bw_OUTPUT user chains.
  *
  * * global quota vs per interface quota
@@ -90,6 +89,7 @@ const int  MAX_IPT_OUTPUT_LINE_LEN = 256;
  *          --jump REJECT --reject-with icmp-net-prohibited
  *      iptables -A bw_costly_shared --jump bw_penalty_box
  *      iptables -A bw_penalty_box --jump bw_happy_box
+ *      iptables -A bw_happy_box --jump bw_data_saver
  *
  *    . adding a new iface to this, E.g.:
  *      iptables -I bw_INPUT -i iface1 --jump bw_costly_shared
@@ -104,6 +104,15 @@ const int  MAX_IPT_OUTPUT_LINE_LEN = 256;
  *          --jump REJECT --reject-with icmp-port-unreachable
  *      iptables -A bw_costly_iface0 --jump bw_penalty_box
  *
+ * * Penalty box, happy box and data saver.
+ *   - bw_penalty box is a blacklist of apps that are rejected.
+ *   - bw_happy_box is a whitelist of apps. It always includes all system apps
+ *   - bw_data_saver implements data usage restrictions.
+ *   - Via the UI the user can add and remove apps from the whitelist and
+ *     blacklist, and turn on/off data saver.
+ *   - The blacklist takes precedence over the whitelist and the whitelist
+ *     takes precedence over data saver.
+ *
  * * bw_penalty_box handling:
  *  - only one bw_penalty_box for all interfaces
  *   E.g  Adding an app:
@@ -116,10 +125,12 @@ const int  MAX_IPT_OUTPUT_LINE_LEN = 256;
  *    iptables -I bw_happy_box -m owner --uid-owner app_3 \
  *        --jump RETURN
  *
- * * Turning data saver on and off:
- *  - Adds or removes a REJECT at the end of the bw_costly_shared chain
- *    iptables -A bw_costly_shared --jump REJECT --reject-with icmp-port-unreachable
- *    iptables -D bw_costly_shared --jump REJECT --reject-with icmp-port-unreachable
+ * * bw_data_saver handling:
+ *  - The bw_data_saver comes after the happy box.
+ *    Enable data saver:
+ *      iptables -R 1 bw_data_saver --jump REJECT --reject-with icmp-port-unreachable
+ *    Disable data saver:
+ *      iptables -R 1 bw_data_saver --jump RETURN
  */
 
 const char *IPT_FLUSH_COMMANDS[] = {
@@ -133,6 +144,7 @@ const char *IPT_FLUSH_COMMANDS[] = {
     "-F bw_FORWARD",
     "-F bw_happy_box",
     "-F bw_penalty_box",
+    "-F bw_data_saver",
     "-F bw_costly_shared",
 
     "-t raw -F bw_raw_PREROUTING",
@@ -143,12 +155,14 @@ const char *IPT_FLUSH_COMMANDS[] = {
 const char *IPT_CLEANUP_COMMANDS[] = {
     "-X bw_happy_box",
     "-X bw_penalty_box",
+    "-X bw_data_saver",
     "-X bw_costly_shared",
 };
 
 const char *IPT_SETUP_COMMANDS[] = {
     "-N bw_happy_box",
     "-N bw_penalty_box",
+    "-N bw_data_saver",
     "-N bw_costly_shared",
 };
 
@@ -159,16 +173,15 @@ const char *IPT_BASIC_ACCOUNTING_COMMANDS[] = {
 
     "-t raw -A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
     "-t mangle -A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
-};
 
-const char *COSTLY_SHARED_COMMANDS[] = {
     "-A bw_costly_shared --jump bw_penalty_box",
-    "-A bw_costly_shared --jump bw_happy_box",
-    "-A bw_costly_shared --jump RETURN",
+
+    "-A bw_penalty_box --jump bw_happy_box",
+    "-A bw_happy_box --jump bw_data_saver",
+    "-A bw_data_saver -j RETURN",
 };
 
-const std::string kDataSaverEnableCommand = android::base::StringPrintf(
-        "-R bw_costly_shared %zu", ARRAY_SIZE(COSTLY_SHARED_COMMANDS));
+const std::string kDataSaverEnableCommand = "-R bw_data_saver 1";
 
 }  // namespace
 
@@ -293,12 +306,9 @@ int BandwidthController::enableBandwidthControl(bool force) {
     res = runCommands(ARRAY_SIZE(IPT_BASIC_ACCOUNTING_COMMANDS),
             IPT_BASIC_ACCOUNTING_COMMANDS, RunCmdFailureBad);
 
-    res |= runCommands(ARRAY_SIZE(COSTLY_SHARED_COMMANDS),
-            COSTLY_SHARED_COMMANDS, RunCmdFailureBad);
-
     char cmd[MAX_CMD_LEN];
     snprintf(cmd, sizeof(cmd),
-            "-A bw_happy_box -m owner --uid-owner %d-%d", 0, MAX_SYSTEM_UID);
+            "-I bw_happy_box -m owner --uid-owner %d-%d", 0, MAX_SYSTEM_UID);
     runIpxtablesCmd(cmd, IptJumpReturn);
 
     return res;

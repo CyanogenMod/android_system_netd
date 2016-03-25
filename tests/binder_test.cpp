@@ -155,24 +155,20 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
 }
 
 static int bandwidthDataSaverEnabled(const char *binary) {
-    std::vector<std::string> lines = listIptablesRule(binary, "bw_costly_shared");
+    std::vector<std::string> lines = listIptablesRule(binary, "bw_data_saver");
 
     // Output looks like this:
     //
-    // Chain bw_costly_shared (0 references)
+    // Chain bw_data_saver (1 references)
     // target     prot opt source               destination
-    // bw_penalty_box  all  --  0.0.0.0/0            0.0.0.0/0
-    // bw_happy_box  all  --  0.0.0.0/0            0.0.0.0/0
     // RETURN     all  --  0.0.0.0/0            0.0.0.0/0
-    EXPECT_EQ(5U, lines.size());
-    if (lines.size() != 5) return -1;
+    EXPECT_EQ(3U, lines.size());
+    if (lines.size() != 3) return -1;
 
-    EXPECT_TRUE(android::base::StartsWith(lines[2], "bw_penalty_box "));
-    EXPECT_TRUE(android::base::StartsWith(lines[3], "bw_happy_box "));
-    EXPECT_TRUE(android::base::StartsWith(lines[4], "RETURN ") ||
-                android::base::StartsWith(lines[4], "REJECT "));
+    EXPECT_TRUE(android::base::StartsWith(lines[2], "RETURN ") ||
+                android::base::StartsWith(lines[2], "REJECT "));
 
-    return android::base::StartsWith(lines[4], "REJECT");
+    return android::base::StartsWith(lines[2], "REJECT");
 }
 
 bool enableDataSaver(sp<INetd>& netd, bool enable) {

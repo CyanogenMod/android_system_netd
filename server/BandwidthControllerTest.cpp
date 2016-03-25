@@ -26,7 +26,7 @@
 
 std::vector<std::string> gCmds = {};
 
-extern "C" int fake_android_fork_exec(int argc, char* argv[], int *status, bool, bool) {
+int fake_android_fork_exec(int argc, char* argv[], int *status, bool, bool) {
     std::string cmd = argv[0];
     for (int i = 1; i < argc; i++) {
         cmd += " ";
@@ -72,6 +72,7 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
         "-F bw_FORWARD",
         "-F bw_happy_box",
         "-F bw_penalty_box",
+        "-F bw_data_saver",
         "-F bw_costly_shared",
         "-t raw -F bw_raw_PREROUTING",
         "-t mangle -F bw_mangle_POSTROUTING",
@@ -80,9 +81,10 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
         "-t raw -A bw_raw_PREROUTING -m owner --socket-exists",
         "-t mangle -A bw_mangle_POSTROUTING -m owner --socket-exists",
         "-A bw_costly_shared --jump bw_penalty_box",
-        "-A bw_costly_shared --jump bw_happy_box",
-        "-A bw_costly_shared --jump RETURN",
-        "-A bw_happy_box -m owner --uid-owner 0-9999 --jump RETURN",
+        "-A bw_penalty_box --jump bw_happy_box",
+        "-A bw_happy_box --jump bw_data_saver",
+        "-A bw_data_saver -j RETURN",
+        "-I bw_happy_box -m owner --uid-owner 0-9999 --jump RETURN",
     };
     expectIptablesCommands(expected);
 }
@@ -90,13 +92,13 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
 TEST_F(BandwidthControllerTest, TestEnableDataSaver) {
     mBw.enableDataSaver(true);
     std::vector<std::string> expected = {
-        "-R bw_costly_shared 3 --jump REJECT",
+        "-R bw_data_saver 1 --jump REJECT",
     };
     expectIptablesCommands(expected);
 
     mBw.enableDataSaver(false);
     expected = {
-        "-R bw_costly_shared 3 --jump RETURN",
+        "-R bw_data_saver 1 --jump RETURN",
     };
     expectIptablesCommands(expected);
 }
