@@ -64,6 +64,30 @@ public:
 };
 
 
+TEST_F(BandwidthControllerTest, TestSetupIptablesHooks) {
+    mBw.setupIptablesHooks();
+    std::vector<std::string> expected = {
+        "-F bw_INPUT",
+        "-F bw_OUTPUT",
+        "-F bw_FORWARD",
+        "-F bw_happy_box",
+        "-F bw_penalty_box",
+        "-F bw_data_saver",
+        "-F bw_costly_shared",
+        "-t raw -F bw_raw_PREROUTING",
+        "-t mangle -F bw_mangle_POSTROUTING",
+        "-X bw_happy_box",
+        "-X bw_penalty_box",
+        "-X bw_data_saver",
+        "-X bw_costly_shared",
+        "-N bw_happy_box",
+        "-N bw_penalty_box",
+        "-N bw_data_saver",
+        "-N bw_costly_shared",
+    };
+    expectIptablesCommands(expected);
+}
+
 TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
     mBw.enableBandwidthControl(false);
     std::vector<std::string> expected = {
@@ -85,6 +109,22 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
         "-A bw_happy_box --jump bw_data_saver",
         "-A bw_data_saver -j RETURN",
         "-I bw_happy_box -m owner --uid-owner 0-9999 --jump RETURN",
+    };
+    expectIptablesCommands(expected);
+}
+
+TEST_F(BandwidthControllerTest, TestDisableBandwidthControl) {
+    mBw.disableBandwidthControl();
+    std::vector<std::string> expected = {
+        "-F bw_INPUT",
+        "-F bw_OUTPUT",
+        "-F bw_FORWARD",
+        "-F bw_happy_box",
+        "-F bw_penalty_box",
+        "-F bw_data_saver",
+        "-F bw_costly_shared",
+        "-t raw -F bw_raw_PREROUTING",
+        "-t mangle -F bw_mangle_POSTROUTING",
     };
     expectIptablesCommands(expected);
 }
