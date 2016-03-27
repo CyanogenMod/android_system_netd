@@ -18,64 +18,24 @@
 
 #include <string>
 #include <vector>
-#include <stdio.h>
 
 #include <gtest/gtest.h>
 
 #include <android-base/strings.h>
 
 #include "BandwidthController.h"
-
-std::vector<std::string> gCmds = {};
-std::vector<std::string> gRestoreCmds = {};
-
-int fake_android_fork_exec(int argc, char* argv[], int *status, bool, bool) {
-    std::string cmd = argv[0];
-    for (int i = 1; i < argc; i++) {
-        cmd += " ";
-        cmd += argv[i];
-    }
-    gCmds.push_back(cmd);
-    *status = 0;
-    return 0;
-}
+#include "IptablesBaseTest.h"
 
 FILE *fake_popen(const char *, const char *) {
     return NULL;
 };
 
-int fakeExecIptablesRestore(IptablesTarget target, const std::string& commands) {
-    EXPECT_EQ(V4V6, target);
-    gRestoreCmds.push_back(commands);
-    return 0;
-}
-
-void expectIptablesCommands(std::vector<std::string> expectedCmds) {
-    EXPECT_EQ(expectedCmds.size() * 2, gCmds.size());
-    if (expectedCmds.size() * 2 != gCmds.size()) return;
-
-    for (size_t i = 0; i < expectedCmds.size(); i ++) {
-        EXPECT_EQ("/system/bin/iptables -w " + expectedCmds[i], gCmds[2 * i]);
-        EXPECT_EQ("/system/bin/ip6tables -w " + expectedCmds[i], gCmds[2 * i + 1]);
-    }
-
-    gCmds.clear();
-}
-
-void expectIptablesRestoreCommands(std::vector<std::string> expectedCmds) {
-    EXPECT_EQ(expectedCmds.size(), gRestoreCmds.size());
-    EXPECT_EQ(expectedCmds, gRestoreCmds);
-    gRestoreCmds.clear();
-}
-
-class BandwidthControllerTest : public ::testing::Test {
+class BandwidthControllerTest : public IptablesBaseTest {
 public:
     BandwidthControllerTest() {
         BandwidthController::execFunction = fake_android_fork_exec;
         BandwidthController::popenFunction = fake_popen;
         BandwidthController::iptablesRestoreFunction = fakeExecIptablesRestore;
-        gCmds.clear();
-        gRestoreCmds.clear();
     }
     BandwidthController mBw;
 };

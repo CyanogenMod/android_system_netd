@@ -125,7 +125,7 @@ LOCAL_MODULE := netd_unit_test
 LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
 LOCAL_C_INCLUDES := system/netd/server system/core/logwrapper/include
 LOCAL_SRC_FILES := \
-        NetdConstants.cpp \
+        NetdConstants.cpp IptablesBaseTest.cpp \
         BandwidthController.cpp BandwidthControllerTest.cpp \
         FirewallControllerTest.cpp FirewallController.cpp \
         SockDiagTest.cpp SockDiag.cpp
