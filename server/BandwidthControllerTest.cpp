@@ -22,9 +22,12 @@
 
 #include <gtest/gtest.h>
 
+#include <android-base/strings.h>
+
 #include "BandwidthController.h"
 
 std::vector<std::string> gCmds = {};
+std::vector<std::string> gRestoreCmds = {};
 
 int fake_android_fork_exec(int argc, char* argv[], int *status, bool, bool) {
     std::string cmd = argv[0];
@@ -41,6 +44,12 @@ FILE *fake_popen(const char *, const char *) {
     return NULL;
 };
 
+int fakeExecIptablesRestore(IptablesTarget target, const std::string& commands) {
+    EXPECT_EQ(V4V6, target);
+    gRestoreCmds.push_back(commands);
+    return 0;
+}
+
 void expectIptablesCommands(std::vector<std::string> expectedCmds) {
     EXPECT_EQ(expectedCmds.size() * 2, gCmds.size());
     if (expectedCmds.size() * 2 != gCmds.size()) return;
@@ -53,80 +62,103 @@ void expectIptablesCommands(std::vector<std::string> expectedCmds) {
     gCmds.clear();
 }
 
+void expectIptablesRestoreCommands(std::vector<std::string> expectedCmds) {
+    EXPECT_EQ(expectedCmds.size(), gRestoreCmds.size());
+    EXPECT_EQ(expectedCmds, gRestoreCmds);
+    gRestoreCmds.clear();
+}
+
 class BandwidthControllerTest : public ::testing::Test {
 public:
     BandwidthControllerTest() {
         BandwidthController::execFunction = fake_android_fork_exec;
         BandwidthController::popenFunction = fake_popen;
+        BandwidthController::iptablesRestoreFunction = fakeExecIptablesRestore;
         gCmds.clear();
+        gRestoreCmds.clear();
     }
     BandwidthController mBw;
 };
 
-
 TEST_F(BandwidthControllerTest, TestSetupIptablesHooks) {
     mBw.setupIptablesHooks();
     std::vector<std::string> expected = {
-        "-F bw_INPUT",
-        "-F bw_OUTPUT",
-        "-F bw_FORWARD",
-        "-F bw_happy_box",
-        "-F bw_penalty_box",
-        "-F bw_data_saver",
-        "-F bw_costly_shared",
-        "-t raw -F bw_raw_PREROUTING",
-        "-t mangle -F bw_mangle_POSTROUTING",
-        "-X bw_happy_box",
-        "-X bw_penalty_box",
-        "-X bw_data_saver",
-        "-X bw_costly_shared",
-        "-N bw_happy_box",
-        "-N bw_penalty_box",
-        "-N bw_data_saver",
-        "-N bw_costly_shared",
+        "*filter\n"
+        ":bw_INPUT -\n"
+        ":bw_OUTPUT -\n"
+        ":bw_FORWARD -\n"
+        ":bw_happy_box -\n"
+        ":bw_penalty_box -\n"
+        ":bw_data_saver -\n"
+        ":bw_costly_shared -\n"
+        "COMMIT\n"
+        "*raw\n"
+        ":bw_raw_PREROUTING -\n"
+        "COMMIT\n"
+        "*mangle\n"
+        ":bw_mangle_POSTROUTING -\n"
+        "COMMIT\n\x04"
     };
-    expectIptablesCommands(expected);
+    expectIptablesRestoreCommands(expected);
 }
 
 TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
     mBw.enableBandwidthControl(false);
-    std::vector<std::string> expected = {
-        "-F bw_INPUT",
-        "-F bw_OUTPUT",
-        "-F bw_FORWARD",
-        "-F bw_happy_box",
-        "-F bw_penalty_box",
-        "-F bw_data_saver",
-        "-F bw_costly_shared",
-        "-t raw -F bw_raw_PREROUTING",
-        "-t mangle -F bw_mangle_POSTROUTING",
-        "-A bw_INPUT -m owner --socket-exists",
-        "-A bw_OUTPUT -m owner --socket-exists",
-        "-t raw -A bw_raw_PREROUTING -m owner --socket-exists",
-        "-t mangle -A bw_mangle_POSTROUTING -m owner --socket-exists",
-        "-A bw_costly_shared --jump bw_penalty_box",
-        "-A bw_penalty_box --jump bw_happy_box",
-        "-A bw_happy_box --jump bw_data_saver",
-        "-A bw_data_saver -j RETURN",
-        "-I bw_happy_box -m owner --uid-owner 0-9999 --jump RETURN",
-    };
-    expectIptablesCommands(expected);
+    std::string expectedFlush =
+        "*filter\n"
+        ":bw_INPUT -\n"
+        ":bw_OUTPUT -\n"
+        ":bw_FORWARD -\n"
+        ":bw_happy_box -\n"
+        ":bw_penalty_box -\n"
+        ":bw_data_saver -\n"
+        ":bw_costly_shared -\n"
+        "COMMIT\n"
+        "*raw\n"
+        ":bw_raw_PREROUTING -\n"
+        "COMMIT\n"
+        "*mangle\n"
+        ":bw_mangle_POSTROUTING -\n"
+        "COMMIT\n\x04";
+     std::string expectedAccounting =
+        "*filter\n"
+        "-A bw_INPUT -m owner --socket-exists\n"
+        "-A bw_OUTPUT -m owner --socket-exists\n"
+        "-A bw_costly_shared --jump bw_penalty_box\n"
+        "-A bw_penalty_box --jump bw_happy_box\n"
+        "-A bw_happy_box --jump bw_data_saver\n"
+        "-A bw_data_saver -j RETURN\n"
+        "-I bw_happy_box -m owner --uid-owner 0-9999 --jump RETURN\n"
+        "COMMIT\n"
+        "*raw\n"
+        "-A bw_raw_PREROUTING -m owner --socket-exists\n"
+        "COMMIT\n"
+        "*mangle\n"
+        "-A bw_mangle_POSTROUTING -m owner --socket-exists\n"
+        "COMMIT\n\x04";
+
+    expectIptablesRestoreCommands({ expectedFlush, expectedAccounting });
 }
 
 TEST_F(BandwidthControllerTest, TestDisableBandwidthControl) {
     mBw.disableBandwidthControl();
-    std::vector<std::string> expected = {
-        "-F bw_INPUT",
-        "-F bw_OUTPUT",
-        "-F bw_FORWARD",
-        "-F bw_happy_box",
-        "-F bw_penalty_box",
-        "-F bw_data_saver",
-        "-F bw_costly_shared",
-        "-t raw -F bw_raw_PREROUTING",
-        "-t mangle -F bw_mangle_POSTROUTING",
-    };
-    expectIptablesCommands(expected);
+    const std::string expected =
+        "*filter\n"
+        ":bw_INPUT -\n"
+        ":bw_OUTPUT -\n"
+        ":bw_FORWARD -\n"
+        ":bw_happy_box -\n"
+        ":bw_penalty_box -\n"
+        ":bw_data_saver -\n"
+        ":bw_costly_shared -\n"
+        "COMMIT\n"
+        "*raw\n"
+        ":bw_raw_PREROUTING -\n"
+        "COMMIT\n"
+        "*mangle\n"
+        ":bw_mangle_POSTROUTING -\n"
+        "COMMIT\n\x04";
+    expectIptablesRestoreCommands({ expected });
 }
 
 TEST_F(BandwidthControllerTest, TestEnableDataSaver) {

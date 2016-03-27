@@ -22,6 +22,9 @@
  * If they ever were to allow it, then netd/ would need some tweaking.
  */
 
+#include <string>
+#include <vector>
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -42,6 +45,7 @@
 #include <linux/pkt_sched.h>
 
 #include "android-base/stringprintf.h"
+#include "android-base/strings.h"
 #define LOG_TAG "BandwidthController"
 #include <cutils/log.h>
 #include <cutils/properties.h>
@@ -62,6 +66,7 @@ const char* BandwidthController::LOCAL_MANGLE_POSTROUTING = "bw_mangle_POSTROUTI
 
 auto BandwidthController::execFunction = android_fork_execvp;
 auto BandwidthController::popenFunction = popen;
+auto BandwidthController::iptablesRestoreFunction = execIptablesRestore;
 
 namespace {
 
@@ -133,55 +138,54 @@ const int  MAX_IPT_OUTPUT_LINE_LEN = 256;
  *      iptables -R 1 bw_data_saver --jump RETURN
  */
 
-const char *IPT_FLUSH_COMMANDS[] = {
+const std::string COMMIT_AND_CLOSE = "COMMIT\n\x04";
+const std::string DATA_SAVER_ENABLE_COMMAND = "-R bw_data_saver 1";
+const std::string HAPPY_BOX_WHITELIST_COMMAND = android::base::StringPrintf(
+    "-I bw_happy_box -m owner --uid-owner %d-%d --jump RETURN", 0, MAX_SYSTEM_UID);
+
+static const std::vector<std::string> IPT_FLUSH_COMMANDS = {
     /*
      * Cleanup rules.
      * Should normally include bw_costly_<iface>, but we rely on the way they are setup
      * to allow coexistance.
      */
-    "-F bw_INPUT",
-    "-F bw_OUTPUT",
-    "-F bw_FORWARD",
-    "-F bw_happy_box",
-    "-F bw_penalty_box",
-    "-F bw_data_saver",
-    "-F bw_costly_shared",
-
-    "-t raw -F bw_raw_PREROUTING",
-    "-t mangle -F bw_mangle_POSTROUTING",
+    "*filter",
+    ":bw_INPUT -",
+    ":bw_OUTPUT -",
+    ":bw_FORWARD -",
+    ":bw_happy_box -",
+    ":bw_penalty_box -",
+    ":bw_data_saver -",
+    ":bw_costly_shared -",
+    "COMMIT",
+    "*raw",
+    ":bw_raw_PREROUTING -",
+    "COMMIT",
+    "*mangle",
+    ":bw_mangle_POSTROUTING -",
+    COMMIT_AND_CLOSE
 };
 
-/* The cleanup commands assume flushing has been done. */
-const char *IPT_CLEANUP_COMMANDS[] = {
-    "-X bw_happy_box",
-    "-X bw_penalty_box",
-    "-X bw_data_saver",
-    "-X bw_costly_shared",
-};
-
-const char *IPT_SETUP_COMMANDS[] = {
-    "-N bw_happy_box",
-    "-N bw_penalty_box",
-    "-N bw_data_saver",
-    "-N bw_costly_shared",
-};
-
-const char *IPT_BASIC_ACCOUNTING_COMMANDS[] = {
+static const std::vector<std::string> IPT_BASIC_ACCOUNTING_COMMANDS = {
+    "*filter",
     "-A bw_INPUT -m owner --socket-exists", /* This is a tracking rule. */
-
     "-A bw_OUTPUT -m owner --socket-exists", /* This is a tracking rule. */
-
-    "-t raw -A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
-    "-t mangle -A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
-
     "-A bw_costly_shared --jump bw_penalty_box",
-
     "-A bw_penalty_box --jump bw_happy_box",
     "-A bw_happy_box --jump bw_data_saver",
     "-A bw_data_saver -j RETURN",
+    HAPPY_BOX_WHITELIST_COMMAND,
+    "COMMIT",
+
+    "*raw",
+    "-A bw_raw_PREROUTING -m owner --socket-exists", /* This is a tracking rule. */
+    "COMMIT",
+
+    "*mangle",
+    "-A bw_mangle_POSTROUTING -m owner --socket-exists", /* This is a tracking rule. */
+    COMMIT_AND_CLOSE
 };
 
-const std::string kDataSaverEnableCommand = "-R bw_data_saver 1";
 
 }  // namespace
 
@@ -265,28 +269,17 @@ void BandwidthController::flushCleanTables(bool doClean) {
     /* Flush and remove the bw_costly_<iface> tables */
     flushExistingCostlyTables(doClean);
 
-    /* Some of the initialCommands are allowed to fail */
-    runCommands(sizeof(IPT_FLUSH_COMMANDS) / sizeof(char*),
-            IPT_FLUSH_COMMANDS, RunCmdFailureOk);
-
-    if (doClean) {
-        runCommands(sizeof(IPT_CLEANUP_COMMANDS) / sizeof(char*),
-                IPT_CLEANUP_COMMANDS, RunCmdFailureOk);
-    }
+    std::string commands = android::base::Join(IPT_FLUSH_COMMANDS, '\n');
+    iptablesRestoreFunction(V4V6, commands);
 }
 
 int BandwidthController::setupIptablesHooks(void) {
-
     /* flush+clean is allowed to fail */
     flushCleanTables(true);
-    runCommands(sizeof(IPT_SETUP_COMMANDS) / sizeof(char*),
-            IPT_SETUP_COMMANDS, RunCmdFailureBad);
-
     return 0;
 }
 
 int BandwidthController::enableBandwidthControl(bool force) {
-    int res;
     char value[PROPERTY_VALUE_MAX];
 
     if (!force) {
@@ -303,16 +296,8 @@ int BandwidthController::enableBandwidthControl(bool force) {
     sharedQuotaBytes = sharedAlertBytes = 0;
 
     flushCleanTables(false);
-    res = runCommands(ARRAY_SIZE(IPT_BASIC_ACCOUNTING_COMMANDS),
-            IPT_BASIC_ACCOUNTING_COMMANDS, RunCmdFailureBad);
-
-    char cmd[MAX_CMD_LEN];
-    snprintf(cmd, sizeof(cmd),
-            "-I bw_happy_box -m owner --uid-owner %d-%d", 0, MAX_SYSTEM_UID);
-    runIpxtablesCmd(cmd, IptJumpReturn);
-
-    return res;
-
+    std::string commands = android::base::Join(IPT_BASIC_ACCOUNTING_COMMANDS, '\n');
+    return iptablesRestoreFunction(V4V6, commands);
 }
 
 int BandwidthController::disableBandwidthControl(void) {
@@ -322,7 +307,7 @@ int BandwidthController::disableBandwidthControl(void) {
 }
 
 int BandwidthController::enableDataSaver(bool enable) {
-    return runIpxtablesCmd(kDataSaverEnableCommand.c_str(),
+    return runIpxtablesCmd(DATA_SAVER_ENABLE_COMMAND.c_str(),
                            enable ? IptJumpReject : IptJumpReturn, IptFailShow);
 }
 

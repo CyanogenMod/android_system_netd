@@ -23,6 +23,8 @@
 #include <sysutils/SocketClient.h>
 #include <utils/RWLock.h>
 
+#include "NetdConstants.h"
+
 class BandwidthController {
 public:
     android::RWLock lock;
@@ -204,6 +206,7 @@ protected:
     friend class BandwidthControllerTest;
     static int (*execFunction)(int, char **, int *, bool, bool);
     static FILE *(*popenFunction)(const char *, const char *);
+    static int (*iptablesRestoreFunction)(IptablesTarget, const std::string&);
 };
 
 #endif
