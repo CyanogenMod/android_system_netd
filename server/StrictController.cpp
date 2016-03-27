@@ -28,6 +28,8 @@
 #include "NetdConstants.h"
 #include "StrictController.h"
 
+auto StrictController::execIptables = ::execIptables;
+
 const char* StrictController::LOCAL_OUTPUT = "st_OUTPUT";
 const char* StrictController::LOCAL_CLEAR_DETECT = "st_clear_detect";
 const char* StrictController::LOCAL_CLEAR_CAUGHT = "st_clear_caught";

@@ -128,7 +128,8 @@ LOCAL_SRC_FILES := \
         NetdConstants.cpp IptablesBaseTest.cpp \
         BandwidthController.cpp BandwidthControllerTest.cpp \
         FirewallControllerTest.cpp FirewallController.cpp \
-        SockDiagTest.cpp SockDiag.cpp
+        SockDiagTest.cpp SockDiag.cpp \
+        StrictController.cpp StrictControllerTest.cpp
 LOCAL_MODULE_TAGS := tests
 LOCAL_SHARED_LIBRARIES := liblog libbase libcutils liblogwrap
 include $(BUILD_NATIVE_TEST)

@@ -19,6 +19,8 @@
 
 #include <string>
 
+#include "NetdConstants.h"
+
 enum StrictPenalty { INVALID, ACCEPT, LOG, REJECT };
 
 /*
@@ -39,6 +41,11 @@ public:
     static const char* LOCAL_CLEAR_CAUGHT;
     static const char* LOCAL_PENALTY_LOG;
     static const char* LOCAL_PENALTY_REJECT;
+
+protected:
+    // For testing.
+    friend class StrictControllerTest;
+    static int (*execIptables)(IptablesTarget target, ...);
 };
 
 #endif

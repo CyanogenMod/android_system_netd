@@ -22,13 +22,18 @@ class IptablesBaseTest : public ::testing::Test {
 public:
     IptablesBaseTest();
 
+    typedef std::vector<std::pair<IptablesTarget, std::string>> ExpectedIptablesCommands;
+
     static int fake_android_fork_exec(int argc, char* argv[], int *status, bool, bool);
+    static int fakeExecIptables(IptablesTarget target, ...);
     static int fakeExecIptablesRestore(IptablesTarget target, const std::string& commands);
     void expectIptablesCommands(const std::vector<std::string>& expectedCmds);
+    void expectIptablesCommands(const ExpectedIptablesCommands& expectedCmds);
     void expectIptablesRestoreCommands(const std::vector<std::string>& expectedCmds);
 
 protected:
     static std::vector<std::string> sCmds;
     static std::vector<std::string> sRestoreCmds;
+    int expectIptablesCommand(IptablesTarget target, int pos, const std::string& cmd);
 };
 
