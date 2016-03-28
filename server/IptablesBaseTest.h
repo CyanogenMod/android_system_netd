@@ -30,10 +30,10 @@ public:
     void expectIptablesCommands(const std::vector<std::string>& expectedCmds);
     void expectIptablesCommands(const ExpectedIptablesCommands& expectedCmds);
     void expectIptablesRestoreCommands(const std::vector<std::string>& expectedCmds);
+    void expectIptablesRestoreCommands(const ExpectedIptablesCommands& expectedCmds);
 
 protected:
     static std::vector<std::string> sCmds;
-    static std::vector<std::string> sRestoreCmds;
+    static ExpectedIptablesCommands sRestoreCmds;
     int expectIptablesCommand(IptablesTarget target, int pos, const std::string& cmd);
 };
-

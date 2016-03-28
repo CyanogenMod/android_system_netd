@@ -64,8 +64,7 @@ int IptablesBaseTest::fakeExecIptables(IptablesTarget target, ...) {
 }
 
 int IptablesBaseTest::fakeExecIptablesRestore(IptablesTarget target, const std::string& commands) {
-    EXPECT_EQ(V4V6, target);
-    sRestoreCmds.push_back(commands);
+    sRestoreCmds.push_back({ target, commands });
     return 0;
 }
 
@@ -101,10 +100,21 @@ void IptablesBaseTest::expectIptablesCommands(const ExpectedIptablesCommands& ex
 }
 
 void IptablesBaseTest::expectIptablesRestoreCommands(const std::vector<std::string>& expectedCmds) {
+    ExpectedIptablesCommands expected;
+    for (auto cmd : expectedCmds) {
+        expected.push_back({ V4V6, cmd });
+    }
+    expectIptablesRestoreCommands(expected);
+}
+
+void IptablesBaseTest::expectIptablesRestoreCommands(const ExpectedIptablesCommands& expectedCmds) {
     EXPECT_EQ(expectedCmds.size(), sRestoreCmds.size());
-    EXPECT_EQ(expectedCmds, sRestoreCmds);
+    for (size_t i = 0; i < expectedCmds.size(); i++) {
+        EXPECT_EQ(expectedCmds[i], sRestoreCmds[i]) <<
+            "iptables-restore command " << i << " differs";
+    }
     sRestoreCmds.clear();
 }
 
 std::vector<std::string> IptablesBaseTest::sCmds = {};
-std::vector<std::string> IptablesBaseTest::sRestoreCmds = {};
+IptablesBaseTest::ExpectedIptablesCommands IptablesBaseTest::sRestoreCmds = {};

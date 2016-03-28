@@ -46,6 +46,7 @@ protected:
     // For testing.
     friend class StrictControllerTest;
     static int (*execIptables)(IptablesTarget target, ...);
+    static int (*execIptablesRestore)(IptablesTarget target, const std::string& commands);
 };
 
 #endif
