@@ -61,6 +61,11 @@ public:
     static int removeUsersFromVirtualNetwork(unsigned netId, const char* interface, bool secure,
                                              const UidRanges& uidRanges) WARN_UNUSED_RESULT;
 
+    static int addUsersToRejectNonSecureNetworkRule(const UidRanges& uidRanges)
+                                                    WARN_UNUSED_RESULT;
+    static int removeUsersFromRejectNonSecureNetworkRule(const UidRanges& uidRanges)
+                                                         WARN_UNUSED_RESULT;
+
     static int addInterfaceToDefaultNetwork(const char* interface,
                                             Permission permission) WARN_UNUSED_RESULT;
     static int removeInterfaceFromDefaultNetwork(const char* interface,

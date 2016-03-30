@@ -16,6 +16,8 @@
  * binder_test.cpp - unit tests for netd binder RPCs.
  */
 
+#include <cerrno>
+#include <cinttypes>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -23,17 +25,23 @@
 
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <cutils/multiuser.h>
 #include <gtest/gtest.h>
 #include <logwrap/logwrap.h>
 
 #include "NetdConstants.h"
 #include "android/net/INetd.h"
+#include "android/net/UidRange.h"
 #include "binder/IServiceManager.h"
 
 using namespace android;
 using namespace android::base;
 using namespace android::binder;
 using android::net::INetd;
+using android::net::UidRange;
+
+static const char* IP_RULE_V4 = "-4";
+static const char* IP_RULE_V6 = "-6";
 
 class BinderTest : public ::testing::Test {
 
@@ -77,19 +85,19 @@ static int randomUid() {
     return 100000 * arc4random_uniform(7) + 10000 + arc4random_uniform(5000);
 }
 
-static std::vector<std::string> listIptablesRule(const char *binary, const char *chainName) {
+static std::vector<std::string> runCommand(const std::string& command) {
     std::vector<std::string> lines;
     FILE *f;
 
-    std::string command = StringPrintf("%s -n -L %s", binary, chainName);
     if ((f = popen(command.c_str(), "r")) == nullptr) {
         perror("popen");
         return lines;
     }
 
     char *line = nullptr;
-    size_t linelen = 0;
-    while (getline(&line, &linelen, f) >= 0) {
+    size_t bufsize = 0;
+    ssize_t linelen = 0;
+    while ((linelen = getline(&line, &bufsize, f)) >= 0) {
         lines.push_back(std::string(line, linelen));
         free(line);
         line = nullptr;
@@ -99,10 +107,19 @@ static std::vector<std::string> listIptablesRule(const char *binary, const char 
     return lines;
 }
 
+static std::vector<std::string> listIpRules(const char *ipVersion) {
+    std::string command = StringPrintf("%s %s rule list", IP_PATH, ipVersion);
+    return runCommand(command);
+}
+
+static std::vector<std::string> listIptablesRule(const char *binary, const char *chainName) {
+    std::string command = StringPrintf("%s -n -L %s", binary, chainName);
+    return runCommand(command);
+}
+
 static int iptablesRuleLineLength(const char *binary, const char *chainName) {
     return listIptablesRule(binary, chainName).size();
 }
-
 
 TEST_F(BinderTest, TestFirewallReplaceUidChain) {
     std::string chainName = StringPrintf("netd_binder_test_%u", arc4random_uniform(10000));
@@ -209,4 +226,68 @@ TEST_F(BinderTest, TestBandwidthEnableDataSaver) {
         ASSERT_TRUE(enableDataSaver(mNetd, false));
         EXPECT_EQ(0, getDataSaverState());
     }
+}
+
+static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
+        const std::string& action, const char* ipVersion) {
+    // Output looks like this:
+    //   "11500:\tfrom all fwmark 0x0/0x20000 iif lo uidrange 1000-2000 prohibit"
+    std::vector<std::string> rules = listIpRules(ipVersion);
+
+    std::string prefix = StringPrintf("%" PRIu32 ":", priority);
+    std::string suffix = StringPrintf(" iif lo uidrange %d-%d %s\n",
+            range.getStart(), range.getStop(), action.c_str());
+    for (std::string line : rules) {
+        if (android::base::StartsWith(line, prefix.c_str())
+                && android::base::EndsWith(line, suffix.c_str())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
+        const std::string& action) {
+    bool existsIp4 = ipRuleExistsForRange(priority, range, action, IP_RULE_V4);
+    bool existsIp6 = ipRuleExistsForRange(priority, range, action, IP_RULE_V6);
+    EXPECT_EQ(existsIp4, existsIp6);
+    return existsIp4;
+}
+
+TEST_F(BinderTest, TestNetworkRejectNonSecureVpn) {
+    constexpr uint32_t RULE_PRIORITY = 11500;
+
+    constexpr int baseUid = MULTIUSER_APP_PER_USER_RANGE * 5;
+    std::vector<UidRange> uidRanges = {
+        {baseUid + 150, baseUid + 224},
+        {baseUid + 226, baseUid + 300}
+    };
+
+    const std::vector<std::string> initialRulesV4 = listIpRules(IP_RULE_V4);
+    const std::vector<std::string> initialRulesV6 = listIpRules(IP_RULE_V6);
+
+    // Create two valid rules.
+    ASSERT_TRUE(mNetd->networkRejectNonSecureVpn(true, uidRanges).isOk());
+    EXPECT_EQ(initialRulesV4.size() + 2, listIpRules(IP_RULE_V4).size());
+    EXPECT_EQ(initialRulesV6.size() + 2, listIpRules(IP_RULE_V6).size());
+    for (auto const& range : uidRanges) {
+        EXPECT_TRUE(ipRuleExistsForRange(RULE_PRIORITY, range, "prohibit"));
+    }
+
+    // Remove the rules.
+    ASSERT_TRUE(mNetd->networkRejectNonSecureVpn(false, uidRanges).isOk());
+    EXPECT_EQ(initialRulesV4.size(), listIpRules(IP_RULE_V4).size());
+    EXPECT_EQ(initialRulesV6.size(), listIpRules(IP_RULE_V6).size());
+    for (auto const& range : uidRanges) {
+        EXPECT_FALSE(ipRuleExistsForRange(RULE_PRIORITY, range, "prohibit"));
+    }
+
+    // Fail to remove the rules a second time after they are already deleted.
+    binder::Status status = mNetd->networkRejectNonSecureVpn(false, uidRanges);
+    ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+    EXPECT_EQ(ENOENT, status.serviceSpecificErrorCode());
+
+    // All rules should be the same as before.
+    EXPECT_EQ(initialRulesV4, listIpRules(IP_RULE_V4));
+    EXPECT_EQ(initialRulesV6, listIpRules(IP_RULE_V6));
 }
