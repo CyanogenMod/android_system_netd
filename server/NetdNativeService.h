@@ -22,6 +22,7 @@
 #include <binder/BinderService.h>
 
 #include "android/net/BnNetd.h"
+#include "android/net/UidRange.h"
 
 namespace android {
 namespace net {
