@@ -18,13 +18,13 @@
 #define _TETHER_CONTROLLER_H
 
 #include <netinet/in.h>
+
+#include <list>
 #include <set>
 #include <string>
 
-#include "List.h"
-
-typedef android::netd::List<char *> InterfaceCollection;
-typedef android::netd::List<std::string> NetAddressCollection;
+typedef std::list<char *> InterfaceCollection;
+typedef std::list<std::string> NetAddressCollection;
 
 class TetherController {
     InterfaceCollection  *mInterfaces;

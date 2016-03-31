@@ -19,9 +19,9 @@
 
 #include <linux/in.h>
 
-#include "List.h"
+#include <list>
 
-typedef android::netd::List<char *> TtyCollection;
+typedef std::list<char *> TtyCollection;
 
 class PppController {
     TtyCollection *mTtys;
