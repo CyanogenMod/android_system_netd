@@ -251,10 +251,8 @@ int padInterfaceName(const char* input, char* name, size_t* length, uint16_t* pa
 
 // Adds or removes a routing rule for IPv4 and IPv6.
 //
-// + If |priority| is RULE_PRIORITY_UNREACHABLE, the rule returns ENETUNREACH (i.e., specifies an
-//   action of FR_ACT_UNREACHABLE). Otherwise, the rule specifies an action of FR_ACT_TO_TBL.
 // + If |table| is non-zero, the rule points at the specified routing table. Otherwise, the table is
-//   unspecified. An unspecified table is only allowed when deleting a rule.
+//   unspecified. An unspecified table is not allowed when creating an FR_ACT_TO_TBL rule.
 // + If |mask| is non-zero, the rule matches the specified fwmark and mask. Otherwise, |fwmark| is
 //   ignored.
 // + If |iif| is non-NULL, the rule matches the specified incoming interface.
@@ -263,8 +261,8 @@ int padInterfaceName(const char* input, char* name, size_t* length, uint16_t* pa
 //   range (inclusive). Otherwise, the rule matches packets from all UIDs.
 //
 // Returns 0 on success or negative errno on failure.
-WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table,
-                                    uint32_t fwmark, uint32_t mask, const char* iif,
+WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint8_t ruleType,
+                                    uint32_t table, uint32_t fwmark, uint32_t mask, const char* iif,
                                     const char* oif, uid_t uidStart, uid_t uidEnd) {
     // Ensure that if you set a bit in the fwmark, it's not being ignored by the mask.
     if (fwmark & ~mask) {
@@ -289,12 +287,12 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t
         ALOGE("incompatible start and end UIDs (%u vs %u)", uidStart, uidEnd);
         return -EUSERS;
     }
+
     bool isUidRule = (uidStart != INVALID_UID);
 
     // Assemble a rule request and put it in an array of iovec structures.
     fib_rule_hdr rule = {
-        .action = static_cast<uint8_t>(priority != RULE_PRIORITY_UNREACHABLE ? FR_ACT_TO_TBL :
-                                                                               FR_ACT_UNREACHABLE),
+        .action = ruleType,
         // Note that here we're implicitly setting rule.table to 0. When we want to specify a
         // non-zero table, we do this via the FRATTR_TABLE attribute.
     };
@@ -342,6 +340,13 @@ WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t
     }
 
     return 0;
+}
+
+WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table,
+                                    uint32_t fwmark, uint32_t mask, const char* iif,
+                                    const char* oif, uid_t uidStart, uid_t uidEnd) {
+    return modifyIpRule(action, priority, FR_ACT_TO_TBL, table, fwmark, mask, iif, oif, uidStart,
+                        uidEnd);
 }
 
 WARN_UNUSED_RESULT int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table,
