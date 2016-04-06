@@ -825,14 +825,6 @@ int CommandListener::ResolverCmd::runCommand(SocketClient *cli, int argc, char *
                     "Wrong number of arguments to resolver clearnetdns", false);
             return 0;
         }
-    } else if (!strcmp(argv[1], "flushnet")) { // "resolver flushnet <netId>"
-        if (argc == 3) {
-            rc = gCtls->resolverCtrl.flushDnsCache(netId);
-        } else {
-            cli->sendMsg(ResponseCode::CommandSyntaxError,
-                    "Wrong number of arguments to resolver flushnet", false);
-            return 0;
-        }
     } else {
         cli->sendMsg(ResponseCode::CommandSyntaxError,"Resolver unknown command", false);
         return 0;
