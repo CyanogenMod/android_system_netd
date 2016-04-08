@@ -25,21 +25,15 @@ LOCAL_SHARED_LIBRARIES += libbase libbinder libcutils liblog liblogwrap libnetda
 LOCAL_STATIC_LIBRARIES += libtestUtil
 LOCAL_AIDL_INCLUDES := system/netd/server/binder
 LOCAL_C_INCLUDES += system/netd/include system/extras/tests/include system/netd/binder/include \
-		    system/netd/server system/core/logwrapper/include \
+                    system/netd/server system/core/logwrapper/include \
                     system/extras/tests/include bionic/libc/dns/include
-LOCAL_SRC_FILES := netd_test.cpp dns_responder.cpp binder_test.cpp ../server/NetdConstants.cpp
+# netd_integration_test.cpp is currently empty and exists only so that we can do:
+# runtest -x system/netd/tests/netd_integration_test.cpp
+LOCAL_SRC_FILES := binder_test.cpp \
+                   dns_responder.cpp \
+                   netd_integration_test.cpp \
+                   netd_test.cpp \
+                   ../server/NetdConstants.cpp
 LOCAL_MODULE_TAGS := eng tests
 include $(BUILD_NATIVE_TEST)
 
-# netd_test build target, to enable using runtest -x system/netd/tests/netd_test.cpp
-include $(CLEAR_VARS)
-LOCAL_MODULE := netd_test
-LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
-EXTRA_LDLIBS := -lpthread
-LOCAL_SHARED_LIBRARIES += libbase libcutils liblog libnetd_client libutils
-LOCAL_STATIC_LIBRARIES += libtestUtil
-LOCAL_C_INCLUDES += system/core/base/include system/netd/include system/extras/tests/include \
-                    system/extras/tests/include bionic/libc/dns/include
-LOCAL_SRC_FILES := netd_test.cpp dns_responder.cpp
-LOCAL_MODULE_TAGS := eng tests
-include $(BUILD_NATIVE_TEST)
