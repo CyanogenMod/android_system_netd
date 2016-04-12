@@ -18,8 +18,10 @@
 #define _DNSPROXYLISTENER_H__
 
 #include <resolv_netid.h>  // struct android_net_context
+#include <binder/IServiceManager.h>
 #include <sysutils/FrameworkListener.h>
 
+#include "android/net/metrics/IDnsEventListener.h"
 #include "NetdCommand.h"
 
 class NetworkController;
@@ -29,15 +31,24 @@ public:
     explicit DnsProxyListener(const NetworkController* netCtrl);
     virtual ~DnsProxyListener() {}
 
+    // Returns the binder reference to the DNS listener service, attempting to fetch it if we do not
+    // have it already. This method mutates internal state without taking a lock and must only be
+    // called on one thread. This is safe because we only call this in the runCommand methods of our
+    // commands, which are only called by FrameworkListener::onDataAvailable, which is only called
+    // from SocketListener::runListener, which is a single-threaded select loop.
+    android::sp<android::net::metrics::IDnsEventListener> getDnsEventListener();
+
 private:
     const NetworkController *mNetCtrl;
+    android::sp<android::net::metrics::IDnsEventListener> mDnsEventListener;
+
     class GetAddrInfoCmd : public NetdCommand {
     public:
-        GetAddrInfoCmd(const DnsProxyListener* dnsProxyListener);
+        GetAddrInfoCmd(DnsProxyListener* dnsProxyListener);
         virtual ~GetAddrInfoCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
     private:
-        const DnsProxyListener* mDnsProxyListener;
+        DnsProxyListener* mDnsProxyListener;
     };
 
     class GetAddrInfoHandler {
@@ -47,7 +58,8 @@ private:
                            char* host,
                            char* service,
                            struct addrinfo* hints,
-                           const struct android_net_context& netcontext);
+                           const struct android_net_context& netcontext,
+                           const android::sp<android::net::metrics::IDnsEventListener>& listener);
         ~GetAddrInfoHandler();
 
         static void* threadStart(void* handler);
@@ -60,16 +72,17 @@ private:
         char* mService; // owned
         struct addrinfo* mHints;  // owned
         struct android_net_context mNetContext;
+        android::sp<android::net::metrics::IDnsEventListener> mDnsEventListener;
     };
 
     /* ------ gethostbyname ------*/
     class GetHostByNameCmd : public NetdCommand {
     public:
-        GetHostByNameCmd(const DnsProxyListener* dnsProxyListener);
+        GetHostByNameCmd(DnsProxyListener* dnsProxyListener);
         virtual ~GetHostByNameCmd() {}
         int runCommand(SocketClient *c, int argc, char** argv);
     private:
-        const DnsProxyListener* mDnsProxyListener;
+        DnsProxyListener* mDnsProxyListener;
     };
 
     class GetHostByNameHandler {
@@ -78,7 +91,8 @@ private:
                             char *name,
                             int af,
                             unsigned netId,
-                            uint32_t mark);
+                            uint32_t mark,
+                            const android::sp<android::net::metrics::IDnsEventListener>& listener);
         ~GetHostByNameHandler();
         static void* threadStart(void* handler);
         void start();
@@ -89,6 +103,7 @@ private:
         int mAf;
         unsigned mNetId;
         uint32_t mMark;
+        android::sp<android::net::metrics::IDnsEventListener> mDnsEventListener;
     };
 
     /* ------ gethostbyaddr ------*/

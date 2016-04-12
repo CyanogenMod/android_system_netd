@@ -18,6 +18,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <linux/if.h>
+#include <math.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <stdlib.h>
@@ -32,7 +33,11 @@
 #define DBG 0
 #define VDBG 0
 
+#include <chrono>
+
 #include <cutils/log.h>
+#include <binder/IServiceManager.h>
+#include <utils/String16.h>
 #include <sysutils/SocketClient.h>
 
 #include "Fwmark.h"
@@ -40,6 +45,11 @@
 #include "NetdConstants.h"
 #include "NetworkController.h"
 #include "ResponseCode.h"
+#include "android/net/metrics/IDnsEventListener.h"
+
+using android::String16;
+using android::interface_cast;
+using android::net::metrics::IDnsEventListener;
 
 DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl) :
         FrameworkListener("dnsproxyd"), mNetCtrl(netCtrl) {
@@ -50,12 +60,14 @@ DnsProxyListener::DnsProxyListener(const NetworkController* netCtrl) :
 
 DnsProxyListener::GetAddrInfoHandler::GetAddrInfoHandler(
         SocketClient *c, char* host, char* service, struct addrinfo* hints,
-        const struct android_net_context& netcontext)
+        const struct android_net_context& netcontext,
+        const android::sp<android::net::metrics::IDnsEventListener>& dnsEventListener)
         : mClient(c),
           mHost(host),
           mService(service),
           mHints(hints),
-          mNetContext(netcontext) {
+          mNetContext(netcontext),
+          mDnsEventListener(dnsEventListener) {
 }
 
 DnsProxyListener::GetAddrInfoHandler::~GetAddrInfoHandler() {
@@ -77,6 +89,25 @@ void* DnsProxyListener::GetAddrInfoHandler::threadStart(void* obj) {
     delete handler;
     pthread_exit(NULL);
     return NULL;
+}
+
+android::sp<IDnsEventListener> DnsProxyListener::getDnsEventListener() {
+    if (mDnsEventListener == nullptr) {
+        // Use checkService instead of getService because getService waits for 5 seconds for the
+        // service to become available. The DNS resolver inside netd is started much earlier in the
+        // boot sequence than the framework DNS listener, and we don't want to delay all DNS lookups
+        // for 5 seconds until the DNS listener starts up.
+        android::sp<android::IBinder> b = android::defaultServiceManager()->checkService(
+                android::String16("dns_listener"));
+        if (b != nullptr) {
+            mDnsEventListener = interface_cast<IDnsEventListener>(b);
+        }
+    }
+    // If the DNS listener service is dead, the binder call will just return an error, which should
+    // be fine because the only impact is that we can't log DNS events. In any case, this should
+    // only happen if the system server is going down, which means it will shortly be taking us down
+    // with it.
+    return mDnsEventListener;
 }
 
 static bool sendBE32(SocketClient* c, uint32_t data) {
@@ -163,7 +194,10 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     }
 
     struct addrinfo* result = NULL;
+    Stopwatch s;
     uint32_t rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, &result);
+    const int latencyMs = lround(s.timeTaken());
+
     if (rv) {
         // getaddrinfo failed
         mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, &rv, sizeof(rv));
@@ -183,9 +217,13 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
         freeaddrinfo(result);
     }
     mClient->decRef();
+    if (mDnsEventListener != nullptr) {
+        mDnsEventListener->onDnsEvent(mNetContext.dns_netid, IDnsEventListener::EVENT_GETADDRINFO,
+                                      (int32_t) rv, latencyMs);
+    }
 }
 
-DnsProxyListener::GetAddrInfoCmd::GetAddrInfoCmd(const DnsProxyListener* dnsProxyListener) :
+DnsProxyListener::GetAddrInfoCmd::GetAddrInfoCmd(DnsProxyListener* dnsProxyListener) :
     NetdCommand("getaddrinfo"),
     mDnsProxyListener(dnsProxyListener) {
 }
@@ -251,7 +289,8 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
 
     cli->incRef();
     DnsProxyListener::GetAddrInfoHandler* handler =
-            new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints, netcontext);
+            new DnsProxyListener::GetAddrInfoHandler(cli, name, service, hints, netcontext,
+                                                     mDnsProxyListener->getDnsEventListener());
     handler->start();
 
     return 0;
@@ -260,7 +299,7 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
 /*******************************************************
  *                  GetHostByName                      *
  *******************************************************/
-DnsProxyListener::GetHostByNameCmd::GetHostByNameCmd(const DnsProxyListener* dnsProxyListener) :
+DnsProxyListener::GetHostByNameCmd::GetHostByNameCmd(DnsProxyListener* dnsProxyListener) :
       NetdCommand("gethostbyname"),
       mDnsProxyListener(dnsProxyListener) {
 }
@@ -296,22 +335,22 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
 
     cli->incRef();
     DnsProxyListener::GetHostByNameHandler* handler =
-            new DnsProxyListener::GetHostByNameHandler(cli, name, af, netId, mark);
+            new DnsProxyListener::GetHostByNameHandler(cli, name, af, netId, mark,
+                                                       mDnsProxyListener->getDnsEventListener());
     handler->start();
 
     return 0;
 }
 
-DnsProxyListener::GetHostByNameHandler::GetHostByNameHandler(SocketClient* c,
-                                                             char* name,
-                                                             int af,
-                                                             unsigned netId,
-                                                             uint32_t mark)
+DnsProxyListener::GetHostByNameHandler::GetHostByNameHandler(
+        SocketClient* c, char* name, int af, unsigned netId, uint32_t mark,
+        const android::sp<android::net::metrics::IDnsEventListener>& dnsEventListener)
         : mClient(c),
           mName(name),
           mAf(af),
           mNetId(netId),
-          mMark(mark) {
+          mMark(mark),
+          mDnsEventListener(dnsEventListener) {
 }
 
 DnsProxyListener::GetHostByNameHandler::~GetHostByNameHandler() {
@@ -338,9 +377,9 @@ void DnsProxyListener::GetHostByNameHandler::run() {
         ALOGD("DnsProxyListener::GetHostByNameHandler::run\n");
     }
 
-    struct hostent* hp;
-
-    hp = android_gethostbynamefornet(mName, mAf, mNetId, mMark);
+    Stopwatch s;
+    struct hostent* hp = android_gethostbynamefornet(mName, mAf, mNetId, mMark);
+    const int latencyMs = lround(s.timeTaken());
 
     if (DBG) {
         ALOGD("GetHostByNameHandler::run gethostbyname errno: %s hp->h_name = %s, name_len = %zu\n",
@@ -361,6 +400,11 @@ void DnsProxyListener::GetHostByNameHandler::run() {
         ALOGW("GetHostByNameHandler: Error writing DNS result to client\n");
     }
     mClient->decRef();
+
+    if (mDnsEventListener != nullptr) {
+        mDnsEventListener->onDnsEvent(mNetId, IDnsEventListener::EVENT_GETHOSTBYNAME,
+                                      h_errno, latencyMs);
+    }
 }
 
 
