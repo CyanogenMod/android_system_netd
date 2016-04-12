@@ -151,15 +151,10 @@ protected:
         }
 
         int rv = netdCommand("netd", cmd.c_str());
-        std::cout << "command: '" << cmd << "', rv = " << rv << "\n";
         if (rv != ResponseCodeOK) {
             return false;
         }
         return true;
-    }
-
-    bool FlushCache() const {
-        return expectNetdResult(ResponseCodeOK, "netd", "resolver flushnet %d", oemNetId);
     }
 
     std::string ToString(const hostent* he) const {
@@ -243,6 +238,7 @@ TEST_F(ResolverTest, GetAddrInfo) {
     addrinfo* result = nullptr;
 
     const char* listen_addr = "127.0.0.4";
+    const char* listen_addr2 = "127.0.0.5";
     const char* listen_srv = "53";
     const char* host_name = "howdie.example.com.";
     test::DNSResponder dns(listen_addr, listen_srv, 250,
@@ -264,11 +260,10 @@ TEST_F(ResolverTest, GetAddrInfo) {
     if (result) freeaddrinfo(result);
     result = nullptr;
 
-    // Verify that it's cached.
+    // Verify that the name is cached.
     size_t old_found = found;
     EXPECT_EQ(0, getaddrinfo("howdie", nullptr, nullptr, &result));
     found = GetNumQueries(dns, host_name);
-    EXPECT_LE(1U, found);
     EXPECT_EQ(old_found, found);
     result_str = ToString(result);
     EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
@@ -276,19 +271,29 @@ TEST_F(ResolverTest, GetAddrInfo) {
     if (result) freeaddrinfo(result);
     result = nullptr;
 
-    // Verify that cache can be flushed.
+    // Change the DNS resolver, ensure that queries are no longer cached.
     dns.clearQueries();
-    ASSERT_TRUE(FlushCache());
-    dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.44");
-    dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.44");
-
+    test::DNSResponder dns2(listen_addr2, listen_srv, 250,
+                            ns_rcode::ns_r_servfail, 1.0);
+    dns2.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
+    dns2.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
+    ASSERT_TRUE(dns2.startServer());
+    servers = { listen_addr2 };
+    ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
     EXPECT_EQ(0, getaddrinfo("howdie", nullptr, nullptr, &result));
-    EXPECT_LE(1U, GetNumQueries(dns, host_name));
+    found = GetNumQueries(dns, host_name);
+    size_t found2 = GetNumQueries(dns2, host_name);
+    EXPECT_EQ(0U, found);
+    EXPECT_LE(1U, found2);
+
     // Could be A or AAAA
     result_str = ToString(result);
-    EXPECT_TRUE(result_str == "1.2.3.44" || result_str == "::1.2.3.44")
+    EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
         << ", result_str='" << result_str << "'";
     if (result) freeaddrinfo(result);
+    result = nullptr;
+    dns.stopServer();
+    dns2.stopServer();
 }
 
 TEST_F(ResolverTest, GetAddrInfoV4) {
