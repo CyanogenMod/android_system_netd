@@ -21,6 +21,7 @@
 #include <android-base/stringprintf.h>
 #include <cutils/log.h>
 #include <utils/Errors.h>
+#include <utils/String16.h>
 
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
@@ -169,7 +170,34 @@ binder::Status NetdNativeService::socketDestroy(const std::vector<UidRange>& uid
         return binder::Status::fromServiceSpecificError(-err,
                 String8::format("destroySockets: %s", strerror(-err)));
     }
+    return binder::Status::ok();
+}
 
+binder::Status NetdNativeService::setResolverConfiguration(int32_t netId,
+        const std::vector<std::string>& servers, const std::vector<std::string>& domains,
+        const std::vector<int32_t>& params) {
+    // This function intentionally does not lock within Netd, as Bionic is thread-safe.
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+
+    int err = gCtls->resolverCtrl.setResolverConfiguration(netId, servers, domains, params);
+    if (err != 0) {
+        return binder::Status::fromServiceSpecificError(-err,
+                String8::format("ResolverController error: %s", strerror(-err)));
+    }
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::getResolverInfo(int32_t netId,
+        std::vector<std::string>* servers, std::vector<std::string>* domains,
+        std::vector<int32_t>* params, std::vector<int32_t>* stats) {
+    // This function intentionally does not lock within Netd, as Bionic is thread-safe.
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+
+    int err = gCtls->resolverCtrl.getResolverInfo(netId, servers, domains, params, stats);
+    if (err != 0) {
+        return binder::Status::fromServiceSpecificError(-err,
+                String8::format("ResolverController error: %s", strerror(-err)));
+    }
     return binder::Status::ok();
 }
 

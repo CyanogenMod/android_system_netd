@@ -42,6 +42,11 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             override;
     binder::Status socketDestroy(const std::vector<UidRange>& uids,
             const std::vector<int32_t>& skipUids) override;
+    binder::Status setResolverConfiguration(int32_t netId, const std::vector<std::string>& servers,
+            const std::vector<std::string>& domains, const std::vector<int32_t>& params) override;
+    binder::Status getResolverInfo(int32_t netId, std::vector<std::string>* servers,
+            std::vector<std::string>* domains, std::vector<int32_t>* params,
+            std::vector<int32_t>* stats) override;
 };
 
 }  // namespace net

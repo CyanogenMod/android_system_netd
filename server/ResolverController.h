@@ -17,20 +17,44 @@
 #ifndef _RESOLVER_CONTROLLER_H_
 #define _RESOLVER_CONTROLLER_H_
 
+#include <vector>
 #include <netinet/in.h>
 #include <linux/in.h>
 
 struct __res_params;
 
+namespace android {
+namespace net {
+struct ResolverStats;
+}  // namespace net
+}  // namespace android
+
 class ResolverController {
 public:
     ResolverController() {};
+
     virtual ~ResolverController() {};
+
+    // TODO: delete this function
     int setDnsServers(unsigned netId, const char* searchDomains, const char** servers,
             int numservers, const __res_params* params);
+
     int clearDnsServers(unsigned netid);
+
     int flushDnsCache(unsigned netid);
-    // TODO: Add deleteDnsCache(unsigned netId)
+
+    int getDnsInfo(unsigned netId, std::vector<std::string>* servers,
+            std::vector<std::string>* domains, __res_params* params,
+            std::vector<android::net::ResolverStats>* stats);
+
+    // Binder specific functions, which convert between the binder int/string arrays and the
+    // actual data structures, and call setDnsServer() / getDnsInfo() for the actual processing.
+    int setResolverConfiguration(int32_t netId, const std::vector<std::string>& servers,
+            const std::vector<std::string>& domains, const std::vector<int32_t>& params);
+
+    int getResolverInfo(int32_t netId, std::vector<std::string>* servers,
+            std::vector<std::string>* domains, std::vector<int32_t>* params,
+            std::vector<int32_t>* stats);
 };
 
 #endif /* _RESOLVER_CONTROLLER_H_ */

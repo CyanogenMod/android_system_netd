@@ -85,4 +85,64 @@ interface INetd {
      * Administratively closes sockets belonging to the specified UIDs.
      */
     void socketDestroy(in UidRange[] uidRanges, in int[] exemptUids);
+
+    // Array indices for resolver parameters.
+    const int RESOLVER_PARAMS_SAMPLE_VALIDITY = 0;
+    const int RESOLVER_PARAMS_SUCCESS_THRESHOLD = 1;
+    const int RESOLVER_PARAMS_MIN_SAMPLES = 2;
+    const int RESOLVER_PARAMS_MAX_SAMPLES = 3;
+    const int RESOLVER_PARAMS_COUNT = 4;
+
+    /**
+     * Sets the name servers, search domains and resolver params for the given network. Flushes the
+     * cache as needed (i.e. when the servers or the number of samples to store changes).
+     *
+     * @param netId the network ID of the network for which information should be configured.
+     * @param servers the DNS servers to configure for the network.
+     * @param domains the search domains to configure.
+     * @param params the params to set. This array contains RESOLVER_PARAMS_COUNT integers that
+     *   encode the contents of Bionic's __res_params struct, i.e. sample_validity is stored at
+     *   position RESOLVER_PARAMS_SAMPLE_VALIDITY, etc.
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
+     */
+    void setResolverConfiguration(int netId, in @utf8InCpp String[] servers,
+            in @utf8InCpp String[] domains, in int[] params);
+
+    // Array indices for resolver stats.
+    const int RESOLVER_STATS_SUCCESSES = 0;
+    const int RESOLVER_STATS_ERRORS = 1;
+    const int RESOLVER_STATS_TIMEOUTS = 2;
+    const int RESOLVER_STATS_INTERNAL_ERRORS = 3;
+    const int RESOLVER_STATS_RTT_AVG = 4;
+    const int RESOLVER_STATS_LAST_SAMPLE_TIME = 5;
+    const int RESOLVER_STATS_USABLE = 6;
+    const int RESOLVER_STATS_COUNT = 7;
+
+    /**
+     * Retrieves the name servers, search domains and resolver stats associated with the given
+     * network ID.
+     *
+     * @param netId the network ID of the network for which information should be retrieved.
+     * @param servers the DNS servers that are currently configured for the network.
+     * @param domains the search domains currently configured.
+     * @param params the resolver parameters configured, i.e. the contents of __res_params in order.
+     * @param stats the stats for each server in the order specified by RESOLVER_STATS_XXX
+     *         constants, serialized as an int array. The contents of this array are the number of
+     *         <ul>
+     *           <li> successes,
+     *           <li> errors,
+     *           <li> timeouts,
+     *           <li> internal errors,
+     *           <li> the RTT average,
+     *           <li> the time of the last recorded sample,
+     *           <li> and an integer indicating whether the server is usable (1) or broken (0).
+     *         </ul>
+     *         in this order. For example, the timeout counter for server N is stored at position
+     *         RESOLVER_STATS_COUNT*N + RESOLVER_STATS_TIMEOUTS
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
+     */
+    void getResolverInfo(int netId, out @utf8InCpp String[] servers,
+            out @utf8InCpp String[] domains, out int[] params, out int[] stats);
 }

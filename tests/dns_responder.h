@@ -42,7 +42,7 @@ struct DNSRecord;
  */
 class DNSResponder {
 public:
-    DNSResponder(const char* listen_address, const char* listen_service,
+    DNSResponder(std::string listen_address, std::string listen_service,
                  int poll_timeout_ms, uint16_t error_rcode,
                  double response_probability);
     ~DNSResponder();
@@ -52,6 +52,12 @@ public:
     bool running() const;
     bool startServer();
     bool stopServer();
+    const std::string& listen_address() const {
+        return listen_address_;
+    }
+    const std::string& listen_service() const {
+        return listen_service_;
+    }
     std::vector<std::pair<std::string, ns_type>> queries() const;
     void clearQueries();
 
