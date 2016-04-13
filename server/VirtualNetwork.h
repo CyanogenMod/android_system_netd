@@ -17,6 +17,8 @@
 #ifndef NETD_SERVER_VIRTUAL_NETWORK_H
 #define NETD_SERVER_VIRTUAL_NETWORK_H
 
+#include <set>
+
 #include "Network.h"
 #include "UidRanges.h"
 
@@ -36,13 +38,17 @@ public:
     bool isSecure() const;
     bool appliesToUser(uid_t uid) const;
 
-    int addUsers(const UidRanges& uidRanges) WARN_UNUSED_RESULT;
-    int removeUsers(const UidRanges& uidRanges) WARN_UNUSED_RESULT;
+    int addUsers(const UidRanges& uidRanges,
+                 const std::set<uid_t>& protectableUsers) WARN_UNUSED_RESULT;
+    int removeUsers(const UidRanges& uidRanges,
+                    const std::set<uid_t>& protectableUsers) WARN_UNUSED_RESULT;
 
 private:
     Type getType() const override;
     int addInterface(const std::string& interface) override WARN_UNUSED_RESULT;
     int removeInterface(const std::string& interface) override WARN_UNUSED_RESULT;
+    int maybeCloseSockets(bool add, const UidRanges& uidRanges,
+                          const std::set<uid_t>& protectableUsers);
 
     const bool mHasDns;
     const bool mSecure;
