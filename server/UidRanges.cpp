@@ -20,6 +20,10 @@
 
 #include <stdlib.h>
 
+#include <android-base/stringprintf.h>
+
+using android::base::StringAppendF;
+
 bool UidRanges::hasUid(uid_t uid) const {
     auto iter = std::lower_bound(mRanges.begin(), mRanges.end(), Range(uid, uid));
     return (iter != mRanges.end() && iter->first == uid) ||
@@ -80,4 +84,17 @@ void UidRanges::remove(const UidRanges& other) {
     auto end = std::set_difference(mRanges.begin(), mRanges.end(), other.mRanges.begin(),
                                    other.mRanges.end(), mRanges.begin());
     mRanges.erase(end, mRanges.end());
+}
+
+std::string UidRanges::toString() const {
+    std::string s("UidRanges{ ");
+    for (Range range : mRanges) {
+        if (range.first != range.second) {
+            StringAppendF(&s, "%u-%u ", range.first, range.second);
+        } else {
+            StringAppendF(&s, "%u ", range.first);
+        }
+    }
+    StringAppendF(&s, "}");
+    return s;
 }

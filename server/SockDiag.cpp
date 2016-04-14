@@ -28,6 +28,7 @@
 
 #define LOG_TAG "Netd"
 
+#include <android-base/strings.h>
 #include <cutils/log.h>
 
 #include "NetdConstants.h"
@@ -239,7 +240,9 @@ int SockDiag::readDiagMsg(uint8_t proto, SockDiag::DumpCallback callback) {
               }
               default:
                 inet_diag_msg *msg = reinterpret_cast<inet_diag_msg *>(NLMSG_DATA(nlh));
-                callback(proto, msg);
+                if (callback(proto, msg)) {
+                    sockDestroy(proto, msg);
+                }
             }
         }
     } while (bytesread > 0);
@@ -284,11 +287,9 @@ int SockDiag::destroySockets(uint8_t proto, int family, const char *addrstr) {
         return ret;
     }
 
-    auto destroy = [this] (uint8_t proto, const inet_diag_msg *msg) {
-        return this->sockDestroy(proto, msg);
-    };
+    auto destroyAll = [] (uint8_t, const inet_diag_msg*) { return true; };
 
-    return readDiagMsg(proto, destroy);
+    return readDiagMsg(proto, destroyAll);
 }
 
 int SockDiag::destroySockets(const char *addrstr) {
@@ -313,16 +314,31 @@ int SockDiag::destroySockets(const char *addrstr) {
     return mSocketsDestroyed;
 }
 
+int SockDiag::destroyLiveSockets(DumpCallback destroyFilter) {
+    int proto = IPPROTO_TCP;
+
+    for (const int family : {AF_INET, AF_INET6}) {
+        const char *familyName = (family == AF_INET) ? "IPv4" : "IPv6";
+        uint32_t states = (1 << TCP_ESTABLISHED) | (1 << TCP_SYN_SENT) | (1 << TCP_SYN_RECV);
+        if (int ret = sendDumpRequest(proto, family, states)) {
+            ALOGE("Failed to dump %s sockets for UID: %s", familyName, strerror(-ret));
+            return ret;
+        }
+        if (int ret = readDiagMsg(proto, destroyFilter)) {
+            ALOGE("Failed to destroy %s sockets for UID: %s", familyName, strerror(-ret));
+            return ret;
+        }
+    }
+
+    return 0;
+}
+
 int SockDiag::destroySockets(uint8_t proto, const uid_t uid) {
     mSocketsDestroyed = 0;
     Stopwatch s;
 
-    auto destroy = [this, uid] (uint8_t proto, const inet_diag_msg *msg) {
-        if (msg != nullptr && msg->idiag_uid == uid) {
-            return this->sockDestroy(proto, msg);
-        } else {
-            return 0;
-        }
+    auto shouldDestroy = [uid] (uint8_t, const inet_diag_msg *msg) {
+        return (msg != nullptr && msg->idiag_uid == uid);
     };
 
     for (const int family : {AF_INET, AF_INET6}) {
@@ -332,7 +348,7 @@ int SockDiag::destroySockets(uint8_t proto, const uid_t uid) {
             ALOGE("Failed to dump %s sockets for UID: %s", familyName, strerror(-ret));
             return ret;
         }
-        if (int ret = readDiagMsg(proto, destroy)) {
+        if (int ret = readDiagMsg(proto, shouldDestroy)) {
             ALOGE("Failed to destroy %s sockets for UID: %s", familyName, strerror(-ret));
             return ret;
         }
@@ -340,6 +356,35 @@ int SockDiag::destroySockets(uint8_t proto, const uid_t uid) {
 
     if (mSocketsDestroyed > 0) {
         ALOGI("Destroyed %d sockets for UID in %.1f ms", mSocketsDestroyed, s.timeTaken());
+    }
+
+    return 0;
+}
+
+int SockDiag::destroySockets(const UidRanges& uidRanges, const std::set<uid_t>& skipUids) {
+    mSocketsDestroyed = 0;
+    Stopwatch s;
+
+    auto shouldDestroy = [&] (uint8_t, const inet_diag_msg *msg) {
+        return msg != nullptr &&
+               uidRanges.hasUid(msg->idiag_uid) &&
+               skipUids.find(msg->idiag_uid) == skipUids.end();
+    };
+
+    if (int ret = destroyLiveSockets(shouldDestroy)) {
+        return ret;
+    }
+
+    std::vector<uid_t> skipUidStrings;
+    for (uid_t uid : skipUids) {
+        skipUidStrings.push_back(uid);
+    }
+    std::sort(skipUidStrings.begin(), skipUidStrings.end());
+
+    if (mSocketsDestroyed > 0) {
+        ALOGI("Destroyed %d sockets for %s skip={%s} in %.1f ms",
+              mSocketsDestroyed, uidRanges.toString().c_str(),
+              android::base::Join(skipUidStrings, " ").c_str(), s.timeTaken());
     }
 
     return 0;

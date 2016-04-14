@@ -14,11 +14,17 @@
  * limitations under the License.
  */
 
-#include <functional>
+#include <unistd.h>
+#include <sys/socket.h>
 
 #include <linux/netlink.h>
 #include <linux/sock_diag.h>
 #include <linux/inet_diag.h>
+
+#include <functional>
+#include <set>
+
+#include "UidRanges.h"
 
 struct inet_diag_msg;
 class SockDiagTest;
@@ -27,7 +33,10 @@ class SockDiag {
 
   public:
     static const int kBufferSize = 4096;
-    typedef std::function<int(uint8_t proto, const inet_diag_msg *)> DumpCallback;
+
+    // Callback function that is called once for every socket in the dump. A return value of true
+    // means destroy the socket.
+    typedef std::function<bool(uint8_t proto, const inet_diag_msg *)> DumpCallback;
 
     struct DestroyRequest {
         nlmsghdr nlh;
@@ -44,6 +53,7 @@ class SockDiag {
     int sockDestroy(uint8_t proto, const inet_diag_msg *);
     int destroySockets(const char *addrstr);
     int destroySockets(uint8_t proto, uid_t uid);
+    int destroySockets(const UidRanges& uidRanges, const std::set<uid_t>& skipUids);
 
   private:
     int mSock;
@@ -51,6 +61,7 @@ class SockDiag {
     int mSocketsDestroyed;
     int sendDumpRequest(uint8_t proto, uint8_t family, uint32_t states, iovec *iov, int iovcnt);
     int destroySockets(uint8_t proto, int family, const char *addrstr);
+    int destroyLiveSockets(DumpCallback destroy);
     bool hasSocks() { return mSock != -1 && mWriteSock != -1; }
     void closeSocks() { close(mSock); close(mWriteSock); mSock = mWriteSock = -1; }
 };

@@ -129,7 +129,9 @@ LOCAL_SRC_FILES := \
         BandwidthController.cpp BandwidthControllerTest.cpp \
         FirewallControllerTest.cpp FirewallController.cpp \
         SockDiagTest.cpp SockDiag.cpp \
-        StrictController.cpp StrictControllerTest.cpp
+        StrictController.cpp StrictControllerTest.cpp \
+        UidRanges.cpp \
+
 LOCAL_MODULE_TAGS := tests
 LOCAL_SHARED_LIBRARIES := liblog libbase libcutils liblogwrap
 include $(BUILD_NATIVE_TEST)

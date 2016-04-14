@@ -29,6 +29,7 @@ public:
     const std::vector<Range>& getRanges() const;
 
     bool parseFrom(int argc, char* argv[]);
+    std::string toString() const;
 
     void add(const UidRanges& other);
     void remove(const UidRanges& other);
