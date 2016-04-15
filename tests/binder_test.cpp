@@ -55,17 +55,14 @@ protected:
 };
 
 
-class TimedOperation {
+class TimedOperation : public Stopwatch {
 public:
-    TimedOperation(std::string name): mStart(std::chrono::steady_clock::now()), mName(name) {}
+    TimedOperation(std::string name): mName(name) {}
     virtual ~TimedOperation() {
-        using ms = std::chrono::duration<float, std::ratio<1, 1000>>;
-        fprintf(stderr, "    %s: %6.1f ms\n", mName.c_str(),
-                std::chrono::duration_cast<ms>(std::chrono::steady_clock::now() - mStart).count());
+        fprintf(stderr, "    %s: %6.1f ms\n", mName.c_str(), timeTaken());
     }
 
 private:
-    std::chrono::time_point<std::chrono::steady_clock> mStart;
     std::string mName;
 };
 

@@ -48,20 +48,6 @@ struct AddrinfoDeleter {
 
 typedef std::unique_ptr<addrinfo, AddrinfoDeleter> ScopedAddrinfo;
 
-class Stopwatch {
-public:
-    Stopwatch(): mStart(std::chrono::steady_clock::now()) {}
-    float timeTaken() {
-        using ms = std::chrono::duration<float, std::ratio<1, 1000>>;
-        return (std::chrono::duration_cast<ms>(
-                std::chrono::steady_clock::now() - mStart)).count();
-    }
-
-private:
-    std::chrono::time_point<std::chrono::steady_clock> mStart;
-    std::string mName;
-};
-
 int checkError(int fd) {
     struct {
         nlmsghdr h;
