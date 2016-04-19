@@ -30,6 +30,8 @@
 #include "DumpWriter.h"
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
+#include "RouteController.h"
+#include "UidRanges.h"
 
 using android::base::StringPrintf;
 
@@ -121,6 +123,32 @@ binder::Status NetdNativeService::bandwidthEnableDataSaver(bool enable, bool *re
 
     int err = gCtls->bandwidthCtrl.enableDataSaver(enable);
     *ret = (err == 0);
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::networkRejectNonSecureVpn(bool add,
+        const std::vector<UidRange>& uidRangeArray) {
+    // TODO: elsewhere RouteController is only used from the tethering and network controllers, so
+    // it should be possible to use the same lock as NetworkController. However, every call through
+    // the CommandListener "network" command will need to hold this lock too, not just the ones that
+    // read/modify network internal state (that is sufficient for ::dump() because it doesn't
+    // look at routes, but it's not enough here).
+    NETD_BIG_LOCK_RPC(CONNECTIVITY_INTERNAL);
+
+    UidRanges uidRanges;
+    uidRanges.createFrom(uidRangeArray);
+
+    int err;
+    if (add) {
+        err = RouteController::addUsersToRejectNonSecureNetworkRule(uidRanges);
+    } else {
+        err = RouteController::removeUsersFromRejectNonSecureNetworkRule(uidRanges);
+    }
+
+    if (err != 0) {
+        return binder::Status::fromServiceSpecificError(-err,
+                String8::format("RouteController error: %s", strerror(-err)));
+    }
     return binder::Status::ok();
 }
 

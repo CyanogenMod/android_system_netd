@@ -75,6 +75,15 @@ bool UidRanges::parseFrom(int argc, char* argv[]) {
     return true;
 }
 
+void UidRanges::createFrom(const std::vector<android::net::UidRange>& ranges) {
+    mRanges.resize(ranges.size());
+    std::transform(ranges.begin(), ranges.end(), mRanges.begin(),
+            [](const android::net::UidRange& range) {
+                return Range(range.getStart(), range.getStop());
+            });
+    std::sort(mRanges.begin(), mRanges.end());
+}
+
 void UidRanges::add(const UidRanges& other) {
     auto middle = mRanges.insert(mRanges.end(), other.mRanges.begin(), other.mRanges.end());
     std::inplace_merge(mRanges.begin(), middle, mRanges.end());

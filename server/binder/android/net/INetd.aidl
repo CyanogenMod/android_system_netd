@@ -16,6 +16,8 @@
 
 package android.net;
 
+import android.net.UidRange;
+
 /** {@hide} */
 interface INetd {
     /**
@@ -55,4 +57,27 @@ interface INetd {
      * @return true if the if the operation was successful, false otherwise.
      */
     boolean bandwidthEnableDataSaver(boolean enable);
+
+    /**
+     * Adds or removes one rule for each supplied UID range to prohibit all network activity outside
+     * of secure VPN.
+     *
+     * When a UID is covered by one of these rules, traffic sent through any socket that is not
+     * protected or explicitly overriden by the system will be rejected. The kernel will respond
+     * with an ICMP prohibit message.
+     *
+     * Initially, there are no such rules. Any rules that are added will only last until the next
+     * restart of netd or the device.
+     *
+     * @param add {@code true} if the specified UID ranges should be denied access to any network
+     *        which is not secure VPN by adding rules, {@code false} to remove existing rules.
+     * @param uidRanges a set of non-overlapping, contiguous ranges of UIDs to which to apply or
+     *        remove this restriction.
+     *        <p> Added rules should not overlap with existing rules. Likewise, removed rules should
+     *        each correspond to an existing rule.
+     *
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
+     */
+    void networkRejectNonSecureVpn(boolean add, in UidRange[] uidRanges);
 }

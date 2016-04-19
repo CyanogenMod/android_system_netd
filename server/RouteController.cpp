@@ -47,6 +47,7 @@ namespace {
 const uint32_t RULE_PRIORITY_VPN_OVERRIDE_SYSTEM = 10000;
 const uint32_t RULE_PRIORITY_VPN_OVERRIDE_OIF    = 10500;
 const uint32_t RULE_PRIORITY_VPN_OUTPUT_TO_LOCAL = 11000;
+const uint32_t RULE_PRIORITY_PROHIBIT_NON_VPN    = 11500;
 const uint32_t RULE_PRIORITY_SECURE_VPN          = 12000;
 const uint32_t RULE_PRIORITY_EXPLICIT_NETWORK    = 13000;
 const uint32_t RULE_PRIORITY_OUTPUT_INTERFACE    = 14000;
@@ -768,6 +769,24 @@ WARN_UNUSED_RESULT int modifyPhysicalNetwork(unsigned netId, const char* interfa
     return modifyImplicitNetworkRule(netId, table, permission, add);
 }
 
+WARN_UNUSED_RESULT int modifyRejectNonSecureNetworkRule(const UidRanges& uidRanges, bool add) {
+    Fwmark fwmark;
+    Fwmark mask;
+    fwmark.protectedFromVpn = false;
+    mask.protectedFromVpn = true;
+
+    for (const UidRanges::Range& range : uidRanges.getRanges()) {
+        if (int ret = modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE,
+                                   RULE_PRIORITY_PROHIBIT_NON_VPN, FR_ACT_PROHIBIT, RT_TABLE_UNSPEC,
+                                   fwmark.intValue, mask.intValue, IIF_LOOPBACK, OIF_NONE,
+                                   range.first, range.second)) {
+            return ret;
+        }
+    }
+
+    return 0;
+}
+
 WARN_UNUSED_RESULT int modifyVirtualNetwork(unsigned netId, const char* interface,
                                             const UidRanges& uidRanges, bool secure, bool add,
                                             bool modifyNonUidBasedRules) {
@@ -1043,6 +1062,14 @@ int RouteController::modifyPhysicalNetworkPermission(unsigned netId, const char*
         return ret;
     }
     return modifyPhysicalNetwork(netId, interface, oldPermission, ACTION_DEL);
+}
+
+int RouteController::addUsersToRejectNonSecureNetworkRule(const UidRanges& uidRanges) {
+    return modifyRejectNonSecureNetworkRule(uidRanges, true);
+}
+
+int RouteController::removeUsersFromRejectNonSecureNetworkRule(const UidRanges& uidRanges) {
+    return modifyRejectNonSecureNetworkRule(uidRanges, false);
 }
 
 int RouteController::addUsersToVirtualNetwork(unsigned netId, const char* interface, bool secure,

@@ -38,7 +38,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             const String16& chainName, bool isWhitelist,
             const std::vector<int32_t>& uids, bool *ret) override;
     binder::Status bandwidthEnableDataSaver(bool enable, bool *ret) override;
-
+    binder::Status networkRejectNonSecureVpn(bool enable, const std::vector<UidRange>& uids)
+            override;
 };
 
 }  // namespace net
