@@ -17,6 +17,8 @@
 #ifndef NETD_SERVER_UID_RANGES_H
 #define NETD_SERVER_UID_RANGES_H
 
+#include "android/net/UidRange.h"
+
 #include <sys/types.h>
 #include <utility>
 #include <vector>

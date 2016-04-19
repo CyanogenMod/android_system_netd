@@ -25,8 +25,12 @@ LOCAL_MODULE := libnetdaidl
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
         libutils
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/binder
 LOCAL_AIDL_INCLUDES := $(LOCAL_PATH)/binder
-LOCAL_SRC_FILES := binder/android/net/INetd.aidl
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/binder
+LOCAL_SRC_FILES := \
+        binder/android/net/INetd.aidl \
+        binder/android/net/UidRange.cpp
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -126,7 +130,7 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 LOCAL_MODULE := netd_unit_test
 LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
-LOCAL_C_INCLUDES := system/netd/server system/core/logwrapper/include
+LOCAL_C_INCLUDES := system/netd/server system/netd/server/binder system/core/logwrapper/include
 LOCAL_SRC_FILES := \
         NetdConstants.cpp IptablesBaseTest.cpp \
         BandwidthController.cpp BandwidthControllerTest.cpp \
