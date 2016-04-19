@@ -124,6 +124,50 @@ bool expectNetdResult(int expected, const char* sockname, const char* format, ..
     return (200 <= expected && expected < 300);
 }
 
+class AddrInfo {
+  public:
+    AddrInfo() : ai_(nullptr), error_(0) {}
+
+    AddrInfo(const char* node, const char* service, const addrinfo& hints) : ai_(nullptr) {
+        init(node, service, hints);
+    }
+
+    AddrInfo(const char* node, const char* service) : ai_(nullptr) {
+        init(node, service);
+    }
+
+    ~AddrInfo() { clear(); }
+
+    int init(const char* node, const char* service, const addrinfo& hints) {
+        clear();
+        error_ = getaddrinfo(node, service, &hints, &ai_);
+        return error_;
+    }
+
+    int init(const char* node, const char* service) {
+        clear();
+        error_ = getaddrinfo(node, service, nullptr, &ai_);
+        return error_;
+    }
+
+    void clear() {
+        if (ai_ != nullptr) {
+            freeaddrinfo(ai_);
+            ai_ = nullptr;
+            error_ = 0;
+        }
+    }
+
+    const addrinfo& operator*() const { return *ai_; }
+    const addrinfo* get() const { return ai_; }
+    const addrinfo* operator&() const { return ai_; }
+    int error() const { return error_; }
+
+  private:
+    addrinfo* ai_;
+    int error_;
+};
+
 class ResolverTest : public ::testing::Test {
 protected:
     struct Mapping {
@@ -471,57 +515,66 @@ TEST_F(ResolverTest, GetAddrInfo) {
     dns.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
     dns.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
     ASSERT_TRUE(dns.startServer());
-    std::vector<std::string> servers = { listen_addr };
-    ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
 
-    dns.clearQueries();
-    EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
-    size_t found = GetNumQueries(dns, host_name);
-    EXPECT_LE(1U, found);
-    // Could be A or AAAA
-    std::string result_str = ToString(result);
-    EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
-        << ", result_str='" << result_str << "'";
-    // TODO: Use ScopedAddrinfo or similar once it is available in a common header file.
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
-    }
-
-    // Verify that the name is cached.
-    EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
-    found = GetNumQueries(dns, host_name);
-    EXPECT_LE(1U, found);
-    result_str = ToString(result);
-    EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
-        << result_str;
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
-    }
-
-    // Change the DNS resolver, ensure that queries are no longer cached.
-    dns.clearQueries();
     test::DNSResponder dns2(listen_addr2, listen_srv, 250,
                             ns_rcode::ns_r_servfail, 1.0);
     dns2.addMapping(host_name, ns_type::ns_t_a, "1.2.3.4");
     dns2.addMapping(host_name, ns_type::ns_t_aaaa, "::1.2.3.4");
     ASSERT_TRUE(dns2.startServer());
-    servers = { listen_addr2 };
-    ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
-    EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
-    found = GetNumQueries(dns, host_name);
-    size_t found2 = GetNumQueries(dns2, host_name);
-    EXPECT_EQ(0U, found);
-    EXPECT_LE(1U, found2);
 
-    // Could be A or AAAA
-    result_str = ToString(result);
-    EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
-        << ", result_str='" << result_str << "'";
-    if (result) {
-        freeaddrinfo(result);
-        result = nullptr;
+    for (size_t i = 0 ; i < 1000 ; ++i) {
+        std::vector<std::string> servers = { listen_addr };
+        ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
+        dns.clearQueries();
+        dns2.clearQueries();
+
+        EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
+        size_t found = GetNumQueries(dns, host_name);
+        EXPECT_LE(1U, found);
+        // Could be A or AAAA
+        std::string result_str = ToString(result);
+        EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
+            << ", result_str='" << result_str << "'";
+        // TODO: Use ScopedAddrinfo or similar once it is available in a common header file.
+        if (result) {
+            freeaddrinfo(result);
+            result = nullptr;
+        }
+
+        // Verify that the name is cached.
+        size_t old_found = found;
+        EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
+        found = GetNumQueries(dns, host_name);
+        EXPECT_LE(1U, found);
+        EXPECT_EQ(old_found, found);
+        result_str = ToString(result);
+        EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
+            << result_str;
+        if (result) {
+            freeaddrinfo(result);
+            result = nullptr;
+        }
+
+        // Change the DNS resolver, ensure that queries are no longer cached.
+        servers = { listen_addr2 };
+        ASSERT_TRUE(SetResolversForNetwork(mDefaultSearchDomains, servers, mDefaultParams));
+        dns.clearQueries();
+        dns2.clearQueries();
+
+        EXPECT_EQ(0, getaddrinfo("howdy", nullptr, nullptr, &result));
+        found = GetNumQueries(dns, host_name);
+        size_t found2 = GetNumQueries(dns2, host_name);
+        EXPECT_EQ(0U, found);
+        EXPECT_LE(1U, found2);
+
+        // Could be A or AAAA
+        result_str = ToString(result);
+        EXPECT_TRUE(result_str == "1.2.3.4" || result_str == "::1.2.3.4")
+            << ", result_str='" << result_str << "'";
+        if (result) {
+            freeaddrinfo(result);
+            result = nullptr;
+        }
     }
     dns.stopServer();
     dns2.stopServer();

@@ -38,6 +38,7 @@
 #include "cutils/misc.h"
 #include "resolv_netid.h"
 
+#include "Controllers.h"
 #include "DummyNetwork.h"
 #include "DumpWriter.h"
 #include "Fwmark.h"
@@ -525,6 +526,8 @@ void NetworkController::dump(DumpWriter& dw) {
     dw.incIndent();
     for (const auto& i : mNetworks) {
         dw.println(i.second->toString().c_str());
+        android::net::gCtls->resolverCtrl.dump(dw, i.first);
+        dw.blankline();
     }
     dw.decIndent();
 

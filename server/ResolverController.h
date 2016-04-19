@@ -22,6 +22,7 @@
 #include <linux/in.h>
 
 struct __res_params;
+class DumpWriter;
 
 namespace android {
 namespace net {
@@ -55,6 +56,7 @@ public:
     int getResolverInfo(int32_t netId, std::vector<std::string>* servers,
             std::vector<std::string>* domains, std::vector<int32_t>* params,
             std::vector<int32_t>* stats);
+    void dump(DumpWriter& dw, unsigned netId);
 };
 
 #endif /* _RESOLVER_CONTROLLER_H_ */
