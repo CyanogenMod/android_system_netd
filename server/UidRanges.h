@@ -30,11 +30,13 @@ public:
     // a larger type first.
     typedef std::pair<uid_t, uid_t> Range;
 
+    UidRanges() {}
+    UidRanges(const std::vector<android::net::UidRange>& ranges);
+
     bool hasUid(uid_t uid) const;
     const std::vector<Range>& getRanges() const;
 
     bool parseFrom(int argc, char* argv[]);
-    void createFrom(const std::vector<android::net::UidRange>& ranges);
     std::string toString() const;
 
     void add(const UidRanges& other);

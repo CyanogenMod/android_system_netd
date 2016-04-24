@@ -21,7 +21,11 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <set>
 #include <vector>
+
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
@@ -290,4 +294,92 @@ TEST_F(BinderTest, TestNetworkRejectNonSecureVpn) {
     // All rules should be the same as before.
     EXPECT_EQ(initialRulesV4, listIpRules(IP_RULE_V4));
     EXPECT_EQ(initialRulesV6, listIpRules(IP_RULE_V6));
+}
+
+void socketpair(int *clientSocket, int *serverSocket, int *acceptedSocket) {
+    *serverSocket = socket(AF_INET6, SOCK_STREAM, 0);
+    struct sockaddr_in6 server6 = { .sin6_family = AF_INET6 };
+    ASSERT_EQ(0, bind(*serverSocket, (struct sockaddr *) &server6, sizeof(server6)));
+
+    socklen_t addrlen = sizeof(server6);
+    ASSERT_EQ(0, getsockname(*serverSocket, (struct sockaddr *) &server6, &addrlen));
+    ASSERT_EQ(0, listen(*serverSocket, 10));
+
+    *clientSocket = socket(AF_INET6, SOCK_STREAM, 0);
+    struct sockaddr_in6 client6;
+    ASSERT_EQ(0, connect(*clientSocket, (struct sockaddr *) &server6, sizeof(server6)));
+    ASSERT_EQ(0, getsockname(*clientSocket, (struct sockaddr *) &client6, &addrlen));
+
+    *acceptedSocket = accept(*serverSocket, (struct sockaddr *) &server6, &addrlen);
+    ASSERT_NE(-1, *acceptedSocket);
+
+    ASSERT_EQ(0, memcmp(&client6, &server6, sizeof(client6)));
+}
+
+void checkSocketpairOpen(int clientSocket, int acceptedSocket) {
+    char buf[4096];
+    EXPECT_EQ(4, write(clientSocket, "foo", sizeof("foo")));
+    EXPECT_EQ(4, read(acceptedSocket, buf, sizeof(buf)));
+    EXPECT_EQ(0, memcmp(buf, "foo", sizeof("foo")));
+}
+
+void checkSocketpairClosed(int clientSocket, int acceptedSocket) {
+    // Check that the client socket was closed with ECONNABORTED.
+    int ret = write(clientSocket, "foo", sizeof("foo"));
+    int err = errno;
+    EXPECT_EQ(-1, ret);
+    EXPECT_EQ(ECONNABORTED, err);
+
+    // Check that it sent a RST to the server.
+    ret = write(acceptedSocket, "foo", sizeof("foo"));
+    err = errno;
+    EXPECT_EQ(-1, ret);
+    EXPECT_EQ(ECONNRESET, err);
+}
+
+TEST_F(BinderTest, TestSocketDestroy) {
+    int clientSocket, serverSocket, acceptedSocket;
+    ASSERT_NO_FATAL_FAILURE(socketpair(&clientSocket, &serverSocket, &acceptedSocket));
+
+    // Pick a random UID in the system UID range.
+    constexpr int baseUid = AID_APP - 2000;
+    static_assert(baseUid > 0, "Not enough UIDs? Please fix this test.");
+    int uid = baseUid + 500 + arc4random_uniform(1000);
+    EXPECT_EQ(0, fchown(clientSocket, uid, -1));
+
+    // UID ranges that don't contain uid.
+    std::vector<UidRange> uidRanges = {
+        {baseUid + 42, baseUid + 449},
+        {baseUid + 1536, AID_APP - 4},
+        {baseUid + 498, uid - 1},
+        {uid + 1, baseUid + 1520},
+    };
+    // A skip list that doesn't contain UID.
+    std::vector<int32_t> skipUids { baseUid + 123, baseUid + 1600 };
+
+    // Close sockets. Our test socket should be intact.
+    EXPECT_TRUE(mNetd->socketDestroy(uidRanges, skipUids).isOk());
+    checkSocketpairOpen(clientSocket, acceptedSocket);
+
+    // UID ranges that do contain uid.
+    uidRanges = {
+        {baseUid + 42, baseUid + 449},
+        {baseUid + 1536, AID_APP - 4},
+        {baseUid + 498, baseUid + 1520},
+    };
+    // Add uid to the skip list.
+    skipUids.push_back(uid);
+
+    // Close sockets. Our test socket should still be intact because it's in the skip list.
+    EXPECT_TRUE(mNetd->socketDestroy(uidRanges, skipUids).isOk());
+    checkSocketpairOpen(clientSocket, acceptedSocket);
+
+    // Now remove uid from skipUids, and close sockets. Our test socket should have been closed.
+    skipUids.resize(skipUids.size() - 1);
+    EXPECT_TRUE(mNetd->socketDestroy(uidRanges, skipUids).isOk());
+    checkSocketpairClosed(clientSocket, acceptedSocket);
+
+    close(clientSocket);
+    close(serverSocket);
+    close(acceptedSocket);
 }

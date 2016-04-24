@@ -80,4 +80,9 @@ interface INetd {
      *         unix errno.
      */
     void networkRejectNonSecureVpn(boolean add, in UidRange[] uidRanges);
+
+    /**
+     * Administratively closes sockets belonging to the specified UIDs.
+     */
+    void socketDestroy(in UidRange[] uidRanges, in int[] exemptUids);
 }

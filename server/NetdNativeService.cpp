@@ -31,6 +31,7 @@
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
 #include "RouteController.h"
+#include "SockDiag.h"
 #include "UidRanges.h"
 
 using android::base::StringPrintf;
@@ -67,7 +68,6 @@ binder::Status checkPermission(const char *permission) {
     android::RWLock::AutoWLock _lock(lock);
 
 #define NETD_BIG_LOCK_RPC(permission) NETD_LOCKING_RPC((permission), gBigNetdLock)
-
 }  // namespace
 
 
@@ -135,8 +135,7 @@ binder::Status NetdNativeService::networkRejectNonSecureVpn(bool add,
     // look at routes, but it's not enough here).
     NETD_BIG_LOCK_RPC(CONNECTIVITY_INTERNAL);
 
-    UidRanges uidRanges;
-    uidRanges.createFrom(uidRangeArray);
+    UidRanges uidRanges(uidRangeArray);
 
     int err;
     if (add) {
@@ -149,6 +148,28 @@ binder::Status NetdNativeService::networkRejectNonSecureVpn(bool add,
         return binder::Status::fromServiceSpecificError(-err,
                 String8::format("RouteController error: %s", strerror(-err)));
     }
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::socketDestroy(const std::vector<UidRange>& uids,
+        const std::vector<int32_t>& skipUids) {
+
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+
+    SockDiag sd;
+    if (!sd.open()) {
+        return binder::Status::fromServiceSpecificError(EIO,
+                String8("Could not open SOCK_DIAG socket"));
+    }
+
+    UidRanges uidRanges(uids);
+    int err = sd.destroySockets(uidRanges, std::set<uid_t>(skipUids.begin(), skipUids.end()));
+
+    if (err) {
+        return binder::Status::fromServiceSpecificError(-err,
+                String8::format("destroySockets: %s", strerror(-err)));
+    }
+
     return binder::Status::ok();
 }
 
