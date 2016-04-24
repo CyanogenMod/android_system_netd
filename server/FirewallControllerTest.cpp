@@ -23,18 +23,89 @@
 #include <gtest/gtest.h>
 
 #include "FirewallController.h"
+#include "IptablesBaseTest.h"
 
 
-class FirewallControllerTest : public ::testing::Test {
+class FirewallControllerTest : public IptablesBaseTest {
 protected:
+    FirewallControllerTest() {
+        FirewallController::execIptables = fakeExecIptables;
+        FirewallController::execIptablesSilently = fakeExecIptables;
+        FirewallController::execIptablesRestore = fakeExecIptablesRestore;
+    }
     FirewallController mFw;
+
     std::string makeUidRules(const char *a, bool b, const std::vector<int32_t>& c) {
         return mFw.makeUidRules(a, b, c);
+    }
+
+    int createChain(const char* a, const char*b , FirewallType c) {
+        return mFw.createChain(a, b, c);
     }
 };
 
 
-TEST_F(FirewallControllerTest, TestWhitelist) {
+TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
+    ExpectedIptablesCommands expected = {
+        { V4V6, "-t filter -D INPUT -j fw_whitelist" },
+        { V4V6, "-t filter -F fw_whitelist" },
+        { V4V6, "-t filter -X fw_whitelist" },
+        { V4V6, "-t filter -N fw_whitelist" },
+        { V4V6, "-A fw_whitelist -p tcp --tcp-flags RST RST -j RETURN" },
+        { V6,   "-A fw_whitelist -p icmpv6 --icmpv6-type packet-too-big -j RETURN" },
+        { V6,   "-A fw_whitelist -p icmpv6 --icmpv6-type router-solicitation -j RETURN" },
+        { V6,   "-A fw_whitelist -p icmpv6 --icmpv6-type router-advertisement -j RETURN" },
+        { V6,   "-A fw_whitelist -p icmpv6 --icmpv6-type neighbour-solicitation -j RETURN" },
+        { V6,   "-A fw_whitelist -p icmpv6 --icmpv6-type neighbour-advertisement -j RETURN" },
+        { V6,   "-A fw_whitelist -p icmpv6 --icmpv6-type redirect -j RETURN" },
+        { V4V6, "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN" },
+        { V4V6, "-A fw_whitelist -j DROP" },
+    };
+    createChain("fw_whitelist", "INPUT", WHITELIST);
+    expectIptablesCommands(expected);
+}
+
+TEST_F(FirewallControllerTest, TestCreateBlacklistChain) {
+    ExpectedIptablesCommands expected = {
+        { V4V6, "-t filter -D INPUT -j fw_blacklist" },
+        { V4V6, "-t filter -F fw_blacklist" },
+        { V4V6, "-t filter -X fw_blacklist" },
+        { V4V6, "-t filter -N fw_blacklist" },
+        { V4V6, "-A fw_blacklist -p tcp --tcp-flags RST RST -j RETURN" },
+    };
+    createChain("fw_blacklist", "INPUT", BLACKLIST);
+    expectIptablesCommands(expected);
+}
+
+TEST_F(FirewallControllerTest, TestSetStandbyRule) {
+    ExpectedIptablesCommands expected = {
+        { V4V6, "-D fw_standby -m owner --uid-owner 12345 -j DROP" }
+    };
+    mFw.setUidRule(STANDBY, 12345, ALLOW);
+    expectIptablesCommands(expected);
+
+    expected = {
+        { V4V6, "-A fw_standby -m owner --uid-owner 12345 -j DROP" }
+    };
+    mFw.setUidRule(STANDBY, 12345, DENY);
+    expectIptablesCommands(expected);
+}
+
+TEST_F(FirewallControllerTest, TestSetDozeRule) {
+    ExpectedIptablesCommands expected = {
+        { V4V6, "-I fw_dozable -m owner --uid-owner 54321 -j RETURN" }
+    };
+    mFw.setUidRule(DOZABLE, 54321, ALLOW);
+    expectIptablesCommands(expected);
+
+    expected = {
+        { V4V6, "-D fw_dozable -m owner --uid-owner 54321 -j RETURN" }
+    };
+    mFw.setUidRule(DOZABLE, 54321, DENY);
+    expectIptablesCommands(expected);
+}
+
+TEST_F(FirewallControllerTest, TestReplaceWhitelistUidRule) {
     std::string expected =
             "*filter\n"
             ":FW_whitechain -\n"
@@ -53,7 +124,7 @@ TEST_F(FirewallControllerTest, TestWhitelist) {
     EXPECT_EQ(expected, makeUidRules("FW_whitechain", true, uids));
 }
 
-TEST_F(FirewallControllerTest, TestBlacklist) {
+TEST_F(FirewallControllerTest, TestReplaceBlacklistUidRule) {
     std::string expected =
             "*filter\n"
             ":FW_blackchain -\n"
