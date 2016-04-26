@@ -30,6 +30,10 @@
 
 using android::base::StringAppendF;
 
+auto FirewallController::execIptables = ::execIptables;
+auto FirewallController::execIptablesSilently = ::execIptables;
+auto FirewallController::execIptablesRestore = ::execIptablesRestore;
+
 const char* FirewallController::TABLE = "filter";
 
 const char* FirewallController::LOCAL_INPUT = "fw_INPUT";
@@ -241,10 +245,12 @@ int FirewallController::setUidRule(ChildChain chain, int uid, FirewallRule rule)
     FirewallType firewallType = getFirewallType(chain);
     if (firewallType == WHITELIST) {
         target = "RETURN";
+        // When adding, insert RETURN rules at the front, before the catch-all DROP at the end.
         op = (rule == ALLOW)? "-I" : "-D";
     } else { // BLACKLIST mode
         target = "DROP";
-        op = (rule == DENY)? "-I" : "-D";
+        // When adding, append DROP rules at the end, after the RETURN rule that matches TCP RSTs.
+        op = (rule == DENY)? "-A" : "-D";
     }
 
     int res = 0;
@@ -290,6 +296,12 @@ int FirewallController::createChain(const char* childChain,
     execIptablesSilently(V4V6, "-t", TABLE, "-X", childChain, NULL);
     int res = 0;
     res |= execIptables(V4V6, "-t", TABLE, "-N", childChain, NULL);
+
+    // Allow TCP RSTs so we can cleanly close TCP connections of apps that no longer have network
+    // access. Both incoming and outgoing RSTs are allowed.
+    res |= execIptables(V4V6, "-A", childChain, "-p", "tcp",
+            "--tcp-flags", "RST", "RST", "-j", "RETURN", NULL);
+
     if (type == WHITELIST) {
         // Allow ICMPv6 packets necessary to make IPv6 connectivity work. http://b/23158230 .
         for (size_t i = 0; i < ARRAY_SIZE(ICMPV6_TYPES); i++) {

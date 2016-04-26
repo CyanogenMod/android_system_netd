@@ -22,6 +22,8 @@
 
 #include <utils/RWLock.h>
 
+#include "NetdConstants.h"
+
 enum FirewallRule { DENY, ALLOW };
 
 // WHITELIST means the firewall denies all by default, uids must be explicitly ALLOWed
@@ -82,6 +84,9 @@ public:
 protected:
     friend class FirewallControllerTest;
     std::string makeUidRules(const char *name, bool isWhitelist, const std::vector<int32_t>& uids);
+    static int (*execIptables)(IptablesTarget target, ...);
+    static int (*execIptablesSilently)(IptablesTarget target, ...);
+    static int (*execIptablesRestore)(IptablesTarget target, const std::string& commands);
 
 private:
     FirewallType mFirewallType;
