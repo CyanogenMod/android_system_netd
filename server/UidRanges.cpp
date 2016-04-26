@@ -75,7 +75,7 @@ bool UidRanges::parseFrom(int argc, char* argv[]) {
     return true;
 }
 
-void UidRanges::createFrom(const std::vector<android::net::UidRange>& ranges) {
+UidRanges::UidRanges(const std::vector<android::net::UidRange>& ranges) {
     mRanges.resize(ranges.size());
     std::transform(ranges.begin(), ranges.end(), mRanges.begin(),
             [](const android::net::UidRange& range) {
