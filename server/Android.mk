@@ -94,6 +94,7 @@ LOCAL_SRC_FILES := \
         NetworkController.cpp \
         PhysicalNetwork.cpp \
         PppController.cpp \
+        QtiConnectivityAdapter.cpp \
         ResolverController.cpp \
         RouteController.cpp \
         SockDiag.cpp \
@@ -130,7 +131,7 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 LOCAL_MODULE := netd_unit_test
 LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
-LOCAL_C_INCLUDES := system/netd/server system/netd/server/binder system/core/logwrapper/include
+LOCAL_C_INCLUDES := system/netd/server system/netd/server/binder system/core/logwrapper/include system/netd/include
 LOCAL_SRC_FILES := \
         NetdConstants.cpp IptablesBaseTest.cpp \
         BandwidthController.cpp BandwidthControllerTest.cpp \

@@ -47,6 +47,7 @@
 #include "FirewallController.h"
 #include "RouteController.h"
 #include "UidRanges.h"
+#include "QtiConnectivityAdapter.h"
 
 #include <string>
 #include <vector>
@@ -198,6 +199,7 @@ CommandListener::CommandListener() :
     registerLockingCmd(new ClatdCmd());
     registerLockingCmd(new NetworkCommand());
     registerLockingCmd(new StrictCmd());
+    registerLockingCmd(getQtiConnectivityCmd(this));
 
     /*
      * This is the only time we touch top-level chains in iptables; controllers
@@ -675,11 +677,13 @@ int CommandListener::NatCmd::runCommand(SocketClient *cli,
     if (!strcmp(argv[1], "enable") && argc >= 4) {
         rc = gCtls->natCtrl.enableNat(argv[2], argv[3]);
         if(!rc) {
+            natStarted(argv[2], argv[3]);
             /* Ignore ifaces for now. */
             rc = gCtls->bandwidthCtrl.setGlobalAlertInForwardChain();
         }
     } else if (!strcmp(argv[1], "disable") && argc >= 4) {
         /* Ignore ifaces for now. */
+        natStopped(argv[2], argv[3]);
         rc = gCtls->bandwidthCtrl.removeGlobalAlertInForwardChain();
         rc |= gCtls->natCtrl.disableNat(argv[2], argv[3]);
     } else {
