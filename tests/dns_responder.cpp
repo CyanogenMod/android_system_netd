@@ -516,10 +516,10 @@ const char* DNSHeader::readHeader(const char* buffer, const char* buffer_end,
 
 /* DNS responder */
 
-DNSResponder::DNSResponder(const char* listen_address,
-                           const char* listen_service, int poll_timeout_ms,
+DNSResponder::DNSResponder(std::string listen_address,
+                           std::string listen_service, int poll_timeout_ms,
                            uint16_t error_rcode, double response_probability) :
-    listen_address_(listen_address), listen_service_(listen_service),
+    listen_address_(std::move(listen_address)), listen_service_(std::move(listen_service)),
     poll_timeout_ms_(poll_timeout_ms), error_rcode_(error_rcode),
     response_probability_(response_probability),
     socket_(-1), epoll_fd_(-1), terminate_(false) { }
