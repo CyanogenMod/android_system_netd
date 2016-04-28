@@ -33,8 +33,10 @@
 #include <resolv_params.h>
 #include <resolv_stats.h>
 
+#include <android-base/strings.h>
 #include <android/net/INetd.h>
 
+#include "DumpWriter.h"
 #include "ResolverController.h"
 #include "ResolverStats.h"
 
@@ -188,4 +190,58 @@ int ResolverController::getResolverInfo(int32_t netId, std::vector<std::string>*
     (*params)[INetd::RESOLVER_PARAMS_MIN_SAMPLES] = res_params.min_samples;
     (*params)[INetd::RESOLVER_PARAMS_MAX_SAMPLES] = res_params.max_samples;
     return 0;
+}
+
+void ResolverController::dump(DumpWriter& dw, unsigned netId) {
+    // No lock needed since Bionic's resolver locks all accessed data structures internally.
+    using android::net::ResolverStats;
+    std::vector<std::string> servers;
+    std::vector<std::string> domains;
+    __res_params params;
+    std::vector<ResolverStats> stats;
+    time_t now = time(nullptr);
+    int rv = getDnsInfo(netId, &servers, &domains, &params, &stats);
+    dw.incIndent();
+    if (rv != 0) {
+        dw.println("getDnsInfo() failed for netid %u", netId);
+    } else {
+        if (servers.empty()) {
+            dw.println("No DNS servers defined");
+        } else {
+            dw.println("DNS servers: # IP (total, successes, errors, timeouts, internal errors, "
+                    "RTT avg, last sample)");
+            dw.incIndent();
+            for (size_t i = 0 ; i < servers.size() ; ++i) {
+                if (i < stats.size()) {
+                    const ResolverStats& s = stats[i];
+                    int total = s.successes + s.errors + s.timeouts + s.internal_errors;
+                    if (total > 0) {
+                        int time_delta = (s.last_sample_time > 0) ? now - s.last_sample_time : -1;
+                        dw.println("%s (%d, %d, %d, %d, %d, %dms, %ds)%s", servers[i].c_str(),
+                                total, s.successes, s.errors, s.timeouts, s.internal_errors,
+                                s.rtt_avg, time_delta, s.usable ? "" : " BROKEN");
+                    } else {
+                        dw.println("%s <no data>", servers[i].c_str());
+                    }
+                } else {
+                    dw.println("%s <no stats>", servers[i].c_str());
+                }
+            }
+            dw.decIndent();
+        }
+        if (domains.empty()) {
+            dw.println("No search domains defined");
+        } else {
+            std::string domains_str = android::base::Join(domains, ", ");
+            dw.println("search domains: %s", domains_str.c_str());
+        }
+        if (params.sample_validity != 0) {
+            dw.println("DNS parameters: sample validity = %us, success threshold = %u%%, "
+                    "samples (min, max) = (%u, %u)", params.sample_validity,
+                    static_cast<unsigned>(params.success_threshold),
+                    static_cast<unsigned>(params.min_samples),
+                    static_cast<unsigned>(params.max_samples));
+        }
+    }
+    dw.decIndent();
 }
