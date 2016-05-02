@@ -736,8 +736,8 @@ WARN_UNUSED_RESULT int addDirectlyConnectedRule() {
 // behaviour. We do flush the kernel-default rules at startup, but having an explicit unreachable
 // rule will hopefully make things even clearer.
 WARN_UNUSED_RESULT int addUnreachableRule() {
-    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_UNREACHABLE, RT_TABLE_UNSPEC, MARK_UNSET,
-                        MARK_UNSET);
+    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_UNREACHABLE, FR_ACT_UNREACHABLE, RT_TABLE_UNSPEC,
+                        MARK_UNSET, MARK_UNSET, IIF_NONE, OIF_NONE, INVALID_UID, INVALID_UID);
 }
 
 WARN_UNUSED_RESULT int modifyLocalNetwork(unsigned netId, const char* interface, bool add) {
