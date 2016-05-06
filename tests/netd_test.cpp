@@ -763,3 +763,40 @@ TEST_F(ResolverTest, EmptySetup) {
     EXPECT_EQ(params[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
     EXPECT_EQ(params[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
 }
+
+TEST_F(ResolverTest, SearchPathChange) {
+    addrinfo* result = nullptr;
+
+    const char* listen_addr = "127.0.0.13";
+    const char* listen_srv = "53";
+    const char* host_name1 = "test13.domain1.org.";
+    const char* host_name2 = "test13.domain2.org.";
+    test::DNSResponder dns(listen_addr, listen_srv, 250,
+                           ns_rcode::ns_r_servfail, 1.0);
+    dns.addMapping(host_name1, ns_type::ns_t_aaaa, "2001:db8::13");
+    dns.addMapping(host_name2, ns_type::ns_t_aaaa, "2001:db8::1:13");
+    ASSERT_TRUE(dns.startServer());
+    std::vector<std::string> servers = { listen_addr };
+    std::vector<std::string> domains = { "domain1.org" };
+    ASSERT_TRUE(SetResolversForNetwork(domains, servers, mDefaultParams));
+
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET6;
+    EXPECT_EQ(0, getaddrinfo("test13", nullptr, &hints, &result));
+    EXPECT_EQ(1U, dns.queries().size());
+    EXPECT_EQ(1U, GetNumQueries(dns, host_name1));
+    EXPECT_EQ("2001:db8::13", ToString(result));
+    if (result) freeaddrinfo(result);
+
+    // Test that changing the domain search path on its own works.
+    domains = { "domain2.org" };
+    ASSERT_TRUE(SetResolversForNetwork(domains, servers, mDefaultParams));
+    dns.clearQueries();
+
+    EXPECT_EQ(0, getaddrinfo("test13", nullptr, &hints, &result));
+    EXPECT_EQ(1U, dns.queries().size());
+    EXPECT_EQ(1U, GetNumQueries(dns, host_name2));
+    EXPECT_EQ("2001:db8::1:13", ToString(result));
+    if (result) freeaddrinfo(result);
+}
