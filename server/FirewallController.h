@@ -83,7 +83,8 @@ public:
 
 protected:
     friend class FirewallControllerTest;
-    std::string makeUidRules(const char *name, bool isWhitelist, const std::vector<int32_t>& uids);
+    std::string makeUidRules(IptablesTarget target, const char *name, bool isWhitelist,
+                             const std::vector<int32_t>& uids);
     static int (*execIptables)(IptablesTarget target, ...);
     static int (*execIptablesSilently)(IptablesTarget target, ...);
     static int (*execIptablesRestore)(IptablesTarget target, const std::string& commands);
