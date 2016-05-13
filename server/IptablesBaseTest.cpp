@@ -70,12 +70,20 @@ int IptablesBaseTest::fakeExecIptablesRestore(IptablesTarget target, const std::
 
 int IptablesBaseTest::expectIptablesCommand(IptablesTarget target, int pos,
                                             const std::string& cmd) {
+
+    if ((unsigned) pos >= sCmds.size()) {
+        ADD_FAILURE() << "Expected too many iptables commands, want command "
+               << pos + 1 << "/" << sCmds.size();
+        return -1;
+    }
+
     if (target == V4 || target == V4V6) {
         EXPECT_EQ("/system/bin/iptables -w " + cmd, sCmds[pos++]);
     }
     if (target == V6 || target == V4V6) {
         EXPECT_EQ("/system/bin/ip6tables -w " + cmd, sCmds[pos++]);
     }
+
     return target == V4V6 ? 2 : 1;
 }
 
@@ -92,7 +100,12 @@ void IptablesBaseTest::expectIptablesCommands(const ExpectedIptablesCommands& ex
     for (size_t i = 0; i < expectedCmds.size(); i ++) {
         auto target = expectedCmds[i].first;
         auto cmd = expectedCmds[i].second;
-        pos += expectIptablesCommand(target, pos, cmd);
+        int numConsumed = expectIptablesCommand(target, pos, cmd);
+        if (numConsumed < 0) {
+            // Read past the end of the array.
+            break;
+        }
+        pos += numConsumed;
     }
 
     EXPECT_EQ(pos, sCmds.size());
