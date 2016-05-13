@@ -22,6 +22,8 @@
 
 #include <gtest/gtest.h>
 
+#include <android-base/strings.h>
+
 #include "FirewallController.h"
 #include "IptablesBaseTest.h"
 
@@ -47,35 +49,61 @@ protected:
 
 
 TEST_F(FirewallControllerTest, TestCreateWhitelistChain) {
-    ExpectedIptablesCommands expected = {
+    ExpectedIptablesCommands expectedCommands = {
         { V4V6, "-t filter -D INPUT -j fw_whitelist" },
-        { V4V6, "-t filter -F fw_whitelist" },
-        { V4V6, "-t filter -X fw_whitelist" },
-        { V4V6, "-t filter -N fw_whitelist" },
-        { V4V6, "-A fw_whitelist -p tcp --tcp-flags RST RST -j RETURN" },
-        { V6,   "-A fw_whitelist -p icmpv6 --icmpv6-type packet-too-big -j RETURN" },
-        { V6,   "-A fw_whitelist -p icmpv6 --icmpv6-type router-solicitation -j RETURN" },
-        { V6,   "-A fw_whitelist -p icmpv6 --icmpv6-type router-advertisement -j RETURN" },
-        { V6,   "-A fw_whitelist -p icmpv6 --icmpv6-type neighbour-solicitation -j RETURN" },
-        { V6,   "-A fw_whitelist -p icmpv6 --icmpv6-type neighbour-advertisement -j RETURN" },
-        { V6,   "-A fw_whitelist -p icmpv6 --icmpv6-type redirect -j RETURN" },
-        { V4V6, "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN" },
-        { V4V6, "-A fw_whitelist -j DROP" },
     };
+
+    std::vector<std::string> expectedRestore4 = {
+        "*filter",
+        ":fw_whitelist -",
+        "-A fw_whitelist -p tcp --tcp-flags RST RST -j RETURN",
+        "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN",
+        "-A fw_whitelist -j DROP",
+        "COMMIT\n\x04"
+    };
+    std::vector<std::string> expectedRestore6 = {
+        "*filter",
+        ":fw_whitelist -",
+        "-A fw_whitelist -p tcp --tcp-flags RST RST -j RETURN",
+        "-A fw_whitelist -p icmpv6 --icmpv6-type packet-too-big -j RETURN",
+        "-A fw_whitelist -p icmpv6 --icmpv6-type router-solicitation -j RETURN",
+        "-A fw_whitelist -p icmpv6 --icmpv6-type router-advertisement -j RETURN",
+        "-A fw_whitelist -p icmpv6 --icmpv6-type neighbour-solicitation -j RETURN",
+        "-A fw_whitelist -p icmpv6 --icmpv6-type neighbour-advertisement -j RETURN",
+        "-A fw_whitelist -p icmpv6 --icmpv6-type redirect -j RETURN",
+        "-A fw_whitelist -m owner --uid-owner 0-9999 -j RETURN",
+        "-A fw_whitelist -j DROP",
+        "COMMIT\n\x04"
+    };
+    std::vector<std::pair<IptablesTarget, std::string>> expectedRestoreCommands = {
+        { V4, android::base::Join(expectedRestore4, '\n') },
+        { V6, android::base::Join(expectedRestore6, '\n') },
+    };
+
     createChain("fw_whitelist", "INPUT", WHITELIST);
-    expectIptablesCommands(expected);
+    expectIptablesCommands(expectedCommands);
+    expectIptablesRestoreCommands(expectedRestoreCommands);
 }
 
 TEST_F(FirewallControllerTest, TestCreateBlacklistChain) {
-    ExpectedIptablesCommands expected = {
+    ExpectedIptablesCommands expectedCommands = {
         { V4V6, "-t filter -D INPUT -j fw_blacklist" },
-        { V4V6, "-t filter -F fw_blacklist" },
-        { V4V6, "-t filter -X fw_blacklist" },
-        { V4V6, "-t filter -N fw_blacklist" },
-        { V4V6, "-A fw_blacklist -p tcp --tcp-flags RST RST -j RETURN" },
     };
+
+    std::vector<std::string> expectedRestore = {
+        "*filter",
+        ":fw_blacklist -",
+        "-A fw_blacklist -p tcp --tcp-flags RST RST -j RETURN",
+        "COMMIT\n\x04"
+    };
+    std::vector<std::pair<IptablesTarget, std::string>> expectedRestoreCommands = {
+        { V4, android::base::Join(expectedRestore, '\n') },
+        { V6, android::base::Join(expectedRestore, '\n') },
+    };
+
     createChain("fw_blacklist", "INPUT", BLACKLIST);
-    expectIptablesCommands(expected);
+    expectIptablesCommands(expectedCommands);
+    expectIptablesRestoreCommands(expectedRestoreCommands);
 }
 
 TEST_F(FirewallControllerTest, TestSetStandbyRule) {

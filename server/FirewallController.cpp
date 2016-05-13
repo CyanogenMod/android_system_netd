@@ -290,35 +290,9 @@ int FirewallController::detachChain(const char* childChain, const char* parentCh
 
 int FirewallController::createChain(const char* childChain,
         const char* parentChain, FirewallType type) {
-    // Order is important, otherwise later steps may fail.
     execIptablesSilently(V4V6, "-t", TABLE, "-D", parentChain, "-j", childChain, NULL);
-    execIptablesSilently(V4V6, "-t", TABLE, "-F", childChain, NULL);
-    execIptablesSilently(V4V6, "-t", TABLE, "-X", childChain, NULL);
-    int res = 0;
-    res |= execIptables(V4V6, "-t", TABLE, "-N", childChain, NULL);
-
-    // Allow TCP RSTs so we can cleanly close TCP connections of apps that no longer have network
-    // access. Both incoming and outgoing RSTs are allowed.
-    res |= execIptables(V4V6, "-A", childChain, "-p", "tcp",
-            "--tcp-flags", "RST", "RST", "-j", "RETURN", NULL);
-
-    if (type == WHITELIST) {
-        // Allow ICMPv6 packets necessary to make IPv6 connectivity work. http://b/23158230 .
-        for (size_t i = 0; i < ARRAY_SIZE(ICMPV6_TYPES); i++) {
-            res |= execIptables(V6, "-A", childChain, "-p", "icmpv6", "--icmpv6-type",
-                    ICMPV6_TYPES[i], "-j", "RETURN", NULL);
-        }
-
-        // create default white list for system uid range
-        char uidStr[16];
-        sprintf(uidStr, "0-%d", MAX_SYSTEM_UID);
-        res |= execIptables(V4V6, "-A", childChain, "-m", "owner", "--uid-owner",
-                uidStr, "-j", "RETURN", NULL);
-
-        // create default rule to drop all traffic
-        res |= execIptables(V4V6, "-A", childChain, "-j", "DROP", NULL);
-    }
-    return res;
+    std::vector<int32_t> uids;
+    return replaceUidChain(childChain, type == WHITELIST, uids);
 }
 
 std::string FirewallController::makeUidRules(IptablesTarget target, const char *name,
