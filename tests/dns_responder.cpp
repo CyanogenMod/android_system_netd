@@ -802,7 +802,7 @@ bool DNSResponder::addAnswerRecords(const DNSQuestion& question,
     record.name = question.qname;
     record.rtype = question.qtype;
     record.rclass = ns_class::ns_c_in;
-    record.ttl = 1;
+    record.ttl = 5;  // seconds
     if (question.qtype == ns_type::ns_t_a) {
         record.rdata.resize(4);
         if (inet_pton(AF_INET, it->second.c_str(), record.rdata.data()) != 1) {
