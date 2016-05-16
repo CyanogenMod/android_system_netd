@@ -135,7 +135,8 @@ int NetworkController::DelegateImpl::modifyFallthrough(const std::string& physic
 }
 
 NetworkController::NetworkController() :
-        mDelegateImpl(new NetworkController::DelegateImpl(this)), mDefaultNetId(NETID_UNSET) {
+        mDelegateImpl(new NetworkController::DelegateImpl(this)), mDefaultNetId(NETID_UNSET),
+        mProtectableUsers({AID_VPN}) {
     mNetworks[LOCAL_NET_ID] = new LocalNetwork(LOCAL_NET_ID);
     mNetworks[DUMMY_NET_ID] = new DummyNetwork(DUMMY_NET_ID);
 }
