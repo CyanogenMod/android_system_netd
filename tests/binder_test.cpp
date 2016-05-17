@@ -235,7 +235,7 @@ TEST_F(BinderTest, TestBandwidthEnableDataSaver) {
 static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
         const std::string& action, const char* ipVersion) {
     // Output looks like this:
-    //   "11500:\tfrom all fwmark 0x0/0x20000 iif lo uidrange 1000-2000 prohibit"
+    //   "12500:\tfrom all fwmark 0x0/0x20000 iif lo uidrange 1000-2000 prohibit"
     std::vector<std::string> rules = listIpRules(ipVersion);
 
     std::string prefix = StringPrintf("%" PRIu32 ":", priority);
@@ -259,7 +259,7 @@ static bool ipRuleExistsForRange(const uint32_t priority, const UidRange& range,
 }
 
 TEST_F(BinderTest, TestNetworkRejectNonSecureVpn) {
-    constexpr uint32_t RULE_PRIORITY = 11500;
+    constexpr uint32_t RULE_PRIORITY = 12500;
 
     constexpr int baseUid = MULTIUSER_APP_PER_USER_RANGE * 5;
     std::vector<UidRange> uidRanges = {
