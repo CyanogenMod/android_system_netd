@@ -31,7 +31,7 @@
 using android::base::StringAppendF;
 
 auto FirewallController::execIptables = ::execIptables;
-auto FirewallController::execIptablesSilently = ::execIptables;
+auto FirewallController::execIptablesSilently = ::execIptablesSilently;
 auto FirewallController::execIptablesRestore = ::execIptablesRestore;
 
 const char* FirewallController::TABLE = "filter";
