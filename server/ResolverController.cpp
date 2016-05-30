@@ -146,9 +146,10 @@ int ResolverController::setResolverConfiguration(int32_t netId,
         return -EINVAL;
     }
 
+    auto server_count = std::min<size_t>(MAXNS, servers.size());
     std::vector<const char*> server_ptrs;
-    for (const std::string& str : servers) {
-        server_ptrs.push_back(str.c_str());
+    for (size_t i = 0 ; i < server_count ; ++i) {
+        server_ptrs.push_back(servers[i].c_str());
     }
 
     std::string domains_str;
