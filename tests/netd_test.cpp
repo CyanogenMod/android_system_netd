@@ -372,8 +372,7 @@ protected:
         ASSERT_NO_FATAL_FAILURE(SetupMappings(num_hosts, domains, &mappings));
         ASSERT_NO_FATAL_FAILURE(SetupDNSServers(MAXNS, mappings, &dns, &servers));
 
-        std::vector<int> params = { 300, 25, 8, 8 };
-        ASSERT_TRUE(SetResolversForNetwork(servers, domains, params));
+        ASSERT_TRUE(SetResolversForNetwork(servers, domains, mDefaultParams_Binder));
 
         auto t0 = std::chrono::steady_clock::now();
         std::vector<std::thread> threads(num_threads);
@@ -416,6 +415,7 @@ protected:
     const std::vector<std::string> mDefaultSearchDomains = { "example.com" };
     // <sample validity in s> <success threshold in percent> <min samples> <max samples>
     const std::string mDefaultParams = "300 25 8 8";
+    const std::vector<int> mDefaultParams_Binder = { 300, 25, 8, 8 };
 };
 
 TEST_F(ResolverTest, GetHostByName) {
@@ -467,8 +467,7 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
     ASSERT_EQ(1U, mappings.size());
     const Mapping& mapping = mappings[0];
 
-    std::vector<int> params = { 300, 25, 8, 8 };
-    ASSERT_TRUE(SetResolversForNetwork(servers, domains, params));
+    ASSERT_TRUE(SetResolversForNetwork(servers, domains, mDefaultParams_Binder));
 
     const hostent* result = gethostbyname(mapping.host.c_str());
     size_t total_queries = std::accumulate(dns.begin(), dns.end(), 0,
@@ -490,11 +489,13 @@ TEST_F(ResolverTest, GetHostByName_Binder) {
     ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_params, &res_stats));
     EXPECT_EQ(servers.size(), res_servers.size());
     EXPECT_EQ(domains.size(), res_domains.size());
-    ASSERT_EQ(INetd::RESOLVER_PARAMS_COUNT, params.size());
-    EXPECT_EQ(params[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY], res_params.sample_validity);
-    EXPECT_EQ(params[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD], res_params.success_threshold);
-    EXPECT_EQ(params[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
-    EXPECT_EQ(params[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
+    ASSERT_EQ(INetd::RESOLVER_PARAMS_COUNT, mDefaultParams_Binder.size());
+    EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY],
+            res_params.sample_validity);
+    EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
+            res_params.success_threshold);
+    EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
+    EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
     EXPECT_EQ(servers.size(), res_stats.size());
 
     EXPECT_TRUE(UnorderedCompareArray(res_servers, servers));
@@ -748,8 +749,7 @@ TEST_F(ResolverTest, EmptySetup) {
     using android::net::INetd;
     std::vector<std::string> servers;
     std::vector<std::string> domains;
-    std::vector<int> params = { 300, 25, 8, 8 };
-    ASSERT_TRUE(SetResolversForNetwork(servers, domains, params));
+    ASSERT_TRUE(SetResolversForNetwork(servers, domains, mDefaultParams_Binder));
     std::vector<std::string> res_servers;
     std::vector<std::string> res_domains;
     __res_params res_params;
@@ -757,11 +757,13 @@ TEST_F(ResolverTest, EmptySetup) {
     ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_params, &res_stats));
     EXPECT_EQ(0U, res_servers.size());
     EXPECT_EQ(0U, res_domains.size());
-    ASSERT_EQ(INetd::RESOLVER_PARAMS_COUNT, params.size());
-    EXPECT_EQ(params[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY], res_params.sample_validity);
-    EXPECT_EQ(params[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD], res_params.success_threshold);
-    EXPECT_EQ(params[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
-    EXPECT_EQ(params[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
+    ASSERT_EQ(INetd::RESOLVER_PARAMS_COUNT, mDefaultParams_Binder.size());
+    EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_SAMPLE_VALIDITY],
+            res_params.sample_validity);
+    EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_SUCCESS_THRESHOLD],
+            res_params.success_threshold);
+    EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_MIN_SAMPLES], res_params.min_samples);
+    EXPECT_EQ(mDefaultParams_Binder[INetd::RESOLVER_PARAMS_MAX_SAMPLES], res_params.max_samples);
 }
 
 TEST_F(ResolverTest, SearchPathChange) {
@@ -799,4 +801,26 @@ TEST_F(ResolverTest, SearchPathChange) {
     EXPECT_EQ(1U, GetNumQueries(dns, host_name2));
     EXPECT_EQ("2001:db8::1:13", ToString(result));
     if (result) freeaddrinfo(result);
+}
+
+TEST_F(ResolverTest, MaxServerPrune_Binder) {
+    using android::net::INetd;
+
+    std::vector<std::string> domains = { "example.com" };
+    std::vector<std::unique_ptr<test::DNSResponder>> dns;
+    std::vector<std::string> servers;
+    std::vector<Mapping> mappings;
+    ASSERT_NO_FATAL_FAILURE(SetupMappings(1, domains, &mappings));
+    ASSERT_NO_FATAL_FAILURE(SetupDNSServers(MAXNS + 1, mappings, &dns, &servers));
+
+    ASSERT_TRUE(SetResolversForNetwork(servers, domains,  mDefaultParams_Binder));
+
+    std::vector<std::string> res_servers;
+    std::vector<std::string> res_domains;
+    __res_params res_params;
+    std::vector<ResolverStats> res_stats;
+    ASSERT_TRUE(GetResolverInfo(&res_servers, &res_domains, &res_params, &res_stats));
+    EXPECT_EQ(static_cast<size_t>(MAXNS), res_servers.size());
+
+    ASSERT_NO_FATAL_FAILURE(ShutdownDNSServers(&dns));
 }
