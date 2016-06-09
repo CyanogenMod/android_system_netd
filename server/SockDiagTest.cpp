@@ -203,7 +203,7 @@ protected:
 
     constexpr static int MAX_SOCKETS = 500;
     constexpr static int ADDRESS_SOCKETS = 500;
-    constexpr static int UID_SOCKETS = 100;
+    constexpr static int UID_SOCKETS = 50;
     constexpr static uid_t START_UID = 8000;  // START_UID + number of sockets must be <= 9999.
     constexpr static int CLOSE_UID = START_UID + UID_SOCKETS - 42;  // Close to the end
     static_assert(START_UID + MAX_SOCKETS < 9999, "Too many sockets");
@@ -212,10 +212,10 @@ protected:
         MicroBenchmarkTestType mode = GetParam();
         switch (mode) {
         case ADDRESS:
-            return 500;
+            return ADDRESS_SOCKETS;
         case UID:
         case UIDRANGE:
-            return 50;
+            return UID_SOCKETS;
         }
     }
 
@@ -265,23 +265,26 @@ protected:
         }
     }
 
-    void checkSocketState(int i, int sock, const char *msg) {
+    bool checkSocketState(int i, int sock, const char *msg) {
         const char data[] = "foo";
         const int ret = send(sock, data, sizeof(data), 0);
         const int err = errno;
-        if (shouldHaveClosedSocket(i)) {
-            EXPECT_EQ(-1, ret) << msg << " " << i << " not closed";
-            if (ret == -1) {
-                // Since we're connected to ourselves, the error might be ECONNABORTED (if we
-                // destroyed the socket) or ECONNRESET (if the other end was destroyed and sent a
-                // RST).
-                EXPECT_TRUE(err == ECONNABORTED || err == ECONNRESET)
-                    << msg << ": unexpected error: " << strerror(err);
-            }
-        } else {
+        if (!shouldHaveClosedSocket(i)) {
             EXPECT_EQ((ssize_t) sizeof(data), ret) <<
                     "Write on open socket failed: " << strerror(err);
+            return false;
         }
+
+        EXPECT_EQ(-1, ret) << msg << " " << i << " not closed";
+        if (ret != -1) {
+            return false;
+        }
+
+        // Since we're connected to ourselves, the error might be ECONNABORTED (if we destroyed the
+        // socket) or ECONNRESET (if the other end was destroyed and sent a RST).
+        EXPECT_TRUE(err == ECONNABORTED || err == ECONNRESET)
+            << msg << ": unexpected error: " << strerror(err);
+        return (err == ECONNABORTED);  // Return true iff. SOCK_DESTROY closed this socket.
     }
 };
 
@@ -330,12 +333,15 @@ TEST_P(SockDiagMicroBenchmarkTest, TestMicroBenchmark) {
             std::chrono::duration_cast<ms>(std::chrono::steady_clock::now() - start).count());
 
     start = std::chrono::steady_clock::now();
+    int socketsClosed = 0;
     for (int i = 0; i < numSockets; i++) {
-        checkSocketState(i, clientsockets[i], "Client socket");
-        checkSocketState(i, serversockets[i], "Server socket");
+        socketsClosed += checkSocketState(i, clientsockets[i], "Client socket");
+        socketsClosed += checkSocketState(i, serversockets[i], "Server socket");
     }
-    fprintf(stderr, "   Verifying: %6.1f ms\n",
-            std::chrono::duration_cast<ms>(std::chrono::steady_clock::now() - start).count());
+    fprintf(stderr, "   Verifying: %6.1f ms (%d sockets destroyed)\n",
+            std::chrono::duration_cast<ms>(std::chrono::steady_clock::now() - start).count(),
+            socketsClosed);
+    EXPECT_GT(socketsClosed, 0);  // Just in case there's a bug in the test.
 
     start = std::chrono::steady_clock::now();
     for (int i = 0; i < numSockets; i++) {
