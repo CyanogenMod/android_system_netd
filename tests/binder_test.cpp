@@ -117,7 +117,7 @@ static std::vector<std::string> listIpRules(const char *ipVersion) {
 }
 
 static std::vector<std::string> listIptablesRule(const char *binary, const char *chainName) {
-    std::string command = StringPrintf("%s -n -L %s", binary, chainName);
+    std::string command = StringPrintf("%s -w -n -L %s", binary, chainName);
     return runCommand(command);
 }
 
