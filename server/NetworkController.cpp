@@ -191,8 +191,18 @@ uint32_t NetworkController::getNetworkForDns(unsigned* netId, uid_t uid) const {
     if (checkUserNetworkAccessLocked(uid, *netId) == 0) {
         // If a non-zero NetId was explicitly specified, and the user has permission for that
         // network, use that network's DNS servers. Do not fall through to the default network even
-        // if the explicitly selected network is a split tunnel VPN or a VPN without DNS servers.
+        // if the explicitly selected network is a split tunnel VPN: the explicitlySelected bit
+        // ensures that the VPN fallthrough rule does not match.
         fwmark.explicitlySelected = true;
+
+        // If the network is a VPN and it doesn't have DNS servers, use the default network's DNS
+        // servers (through the default network). Otherwise, the query is guaranteed to fail.
+        // http://b/29498052
+        Network *network = getNetworkLocked(*netId);
+        if (network && network->getType() == Network::VIRTUAL &&
+                !static_cast<VirtualNetwork *>(network)->getHasDns()) {
+            *netId = mDefaultNetId;
+        }
     } else {
         // If the user is subject to a VPN and the VPN provides DNS servers, use those servers
         // (possibly falling through to the default network if the VPN doesn't provide a route to
@@ -201,6 +211,8 @@ uint32_t NetworkController::getNetworkForDns(unsigned* netId, uid_t uid) const {
         if (virtualNetwork && virtualNetwork->getHasDns()) {
             *netId = virtualNetwork->getNetId();
         } else {
+            // TODO: return an error instead of silently doing the DNS lookup on the wrong network.
+            // http://b/27560555
             *netId = mDefaultNetId;
         }
     }
