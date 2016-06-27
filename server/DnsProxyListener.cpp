@@ -49,6 +49,7 @@
 #include "NetworkController.h"
 #include "ResponseCode.h"
 #include "android/net/metrics/IDnsEventListener.h"
+#include "QtiDataController.h"
 
 using android::String16;
 using android::interface_cast;
@@ -257,6 +258,15 @@ int DnsProxyListener::GetAddrInfoCmd::runCommand(SocketClient *cli,
         return -1;
     }
 
+    if(NETID_INVALID == checkAppInWhitelist(cli)){
+        char* msg = NULL;
+        asprintf( &msg, "Zero Balance: App is not in whitelist GetAddrInfoCmd");
+        ALOGW("%s", msg);
+        cli->sendMsg(ResponseCode::CommandParameterError, msg, false);
+        free(msg);
+        return -1;
+    }
+
     char* name = argv[1];
     if (strcmp("^", name) == 0) {
         name = NULL;
@@ -334,6 +344,16 @@ int DnsProxyListener::GetHostByNameCmd::runCommand(SocketClient *cli,
     }
 
     uid_t uid = cli->getUid();
+
+    if(NETID_INVALID == checkAppInWhitelist(cli)){
+        char* msg = NULL;
+        asprintf( &msg, "Zero Balance: App is not in whitelist GetHostByNameCmd");
+        ALOGW("%s", msg);
+        cli->sendMsg(ResponseCode::CommandParameterError, msg, false);
+        free(msg);
+        return -1;
+    }
+
     unsigned netId = strtoul(argv[1], NULL, 10);
     char* name = argv[2];
     int af = atoi(argv[3]);
@@ -448,6 +468,15 @@ int DnsProxyListener::GetHostByAddrCmd::runCommand(SocketClient *cli,
     if (argc != 5) {
         char* msg = NULL;
         asprintf(&msg, "Invalid number of arguments to gethostbyaddr: %i", argc);
+        ALOGW("%s", msg);
+        cli->sendMsg(ResponseCode::CommandParameterError, msg, false);
+        free(msg);
+        return -1;
+    }
+
+    if(NETID_INVALID == checkAppInWhitelist(cli)){
+        char* msg = NULL;
+        asprintf( &msg, "Zero Balance: App is not in whitelist GetHostByAddrCmd1");
         ALOGW("%s", msg);
         cli->sendMsg(ResponseCode::CommandParameterError, msg, false);
         free(msg);

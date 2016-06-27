@@ -111,6 +111,7 @@ LOCAL_SRC_FILES := \
         main.cpp \
         oem_iptables_hook.cpp \
         binder/android/net/metrics/IDnsEventListener.aidl \
+        QtiDataController.cpp \
 
 LOCAL_AIDL_INCLUDES := $(LOCAL_PATH)/binder
 
