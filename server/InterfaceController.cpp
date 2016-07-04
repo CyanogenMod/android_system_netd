@@ -17,6 +17,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <malloc.h>
+#include <sys/socket.h>
 
 #define LOG_TAG "InterfaceController"
 #include <android-base/file.h>
@@ -29,6 +30,7 @@
 #include "RouteController.h"
 
 using android::base::StringPrintf;
+using android::base::ReadFileToString;
 using android::base::WriteStringToFile;
 
 namespace {
@@ -39,15 +41,25 @@ const char ipv4_neigh_conf_dir[] = "/proc/sys/net/ipv4/neigh";
 
 const char ipv6_neigh_conf_dir[] = "/proc/sys/net/ipv6/neigh";
 
+const char proc_net_path[] = "/proc/sys/net";
 const char sys_net_path[] = "/sys/class/net";
 
 const char wl_util_path[] = "/vendor/xbin/wlutil";
 
-bool isInterfaceName(const char *name) {
-    return strcmp(name, ".") &&
-            strcmp(name, "..") &&
-            strcmp(name, "default") &&
-            strcmp(name, "all");
+inline bool isNormalPathComponent(const char *component) {
+    return (strcmp(component, ".") != 0) &&
+           (strcmp(component, "..") != 0) &&
+           (strchr(component, '/') == nullptr);
+}
+
+inline bool isAddressFamilyPathComponent(const char *component) {
+    return strcmp(component, "ipv4") == 0 || strcmp(component, "ipv6") == 0;
+}
+
+inline bool isInterfaceName(const char *name) {
+    return isNormalPathComponent(name) &&
+           (strcmp(name, "default") != 0) &&
+           (strcmp(name, "all") != 0);
 }
 
 int writeValueToPath(
@@ -79,6 +91,21 @@ void setOnAllInterfaces(const char* dirname, const char* basename, const char* v
 
 void setIPv6UseOutgoingInterfaceAddrsOnly(const char *value) {
     setOnAllInterfaces(ipv6_proc_path, "use_oif_addrs_only", value);
+}
+
+std::string getParameterPathname(
+        const char *family, const char *which, const char *interface, const char *parameter) {
+    if (!isAddressFamilyPathComponent(family)) {
+        errno = EAFNOSUPPORT;
+        return "";
+    } else if (!isNormalPathComponent(which) ||
+               !isInterfaceName(interface) ||
+               !isNormalPathComponent(parameter)) {
+        errno = EINVAL;
+        return "";
+    }
+
+    return StringPrintf("%s/%s/%s/%s/%s", proc_net_path, family, which, interface, parameter);
 }
 
 }  // namespace
@@ -201,7 +228,6 @@ int InterfaceController::setMtu(const char *interface, const char *mtu)
     return writeValueToPath(sys_net_path, interface, "mtu", mtu);
 }
 
-
 int InterfaceController::addAddress(const char *interface,
         const char *addrString, int prefixLength) {
     return ifc_add_address(interface, addrString, prefixLength);
@@ -210,6 +236,26 @@ int InterfaceController::addAddress(const char *interface,
 int InterfaceController::delAddress(const char *interface,
         const char *addrString, int prefixLength) {
     return ifc_del_address(interface, addrString, prefixLength);
+}
+
+int InterfaceController::getParameter(
+        const char *family, const char *which, const char *interface, const char *parameter,
+        std::string *value) {
+    const std::string path(getParameterPathname(family, which, interface, parameter));
+    if (path.empty()) {
+        return -errno;
+    }
+    return ReadFileToString(path, value) ? 0 : -errno;
+}
+
+int InterfaceController::setParameter(
+        const char *family, const char *which, const char *interface, const char *parameter,
+        const char *value) {
+    const std::string path(getParameterPathname(family, which, interface, parameter));
+    if (path.empty()) {
+        return -errno;
+    }
+    return WriteStringToFile(value, path) ? 0 : -errno;
 }
 
 void InterfaceController::setBaseReachableTimeMs(unsigned int millis) {

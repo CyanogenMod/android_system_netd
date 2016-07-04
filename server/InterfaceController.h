@@ -17,6 +17,8 @@
 #ifndef _INTERFACE_CONTROLLER_H
 #define _INTERFACE_CONTROLLER_H
 
+#include <string>
+
 class InterfaceController {
 public:
     static void initializeAll();
@@ -30,6 +32,15 @@ public:
     static int setMtu(const char *interface, const char *mtu);
     static int addAddress(const char *interface, const char *addrString, int prefixLength);
     static int delAddress(const char *interface, const char *addrString, int prefixLength);
+
+    // Read and write values in files of the form:
+    //     /proc/sys/net/<family>/<which>/<interface>/<parameter>
+    static int getParameter(
+            const char *family, const char *which, const char *interface, const char *parameter,
+            std::string *value);
+    static int setParameter(
+            const char *family, const char *which, const char *interface, const char *parameter,
+            const char *value);
 
 private:
     static void setAcceptRA(const char* value);
