@@ -1082,6 +1082,16 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
     return res;
 }
 
+void BandwidthController::addStats(TetherStatsList& statsList, const TetherStats& stats) {
+    for (TetherStats& existing : statsList) {
+        if (existing.addStatsIfMatch(stats)) {
+            return;
+        }
+    }
+    // No match. Insert a new interface pair.
+    statsList.push_back(stats);
+}
+
 /*
  * Parse the ptks and bytes out of:
  *   Chain natctrl_tether_counters (4 references)
@@ -1093,8 +1103,9 @@ int BandwidthController::removeCostlyAlert(const char *costName, int64_t *alertB
  * It results in an error if invoked and no tethering counter rules exist. The constraint
  * helps detect complete parsing failure.
  */
-int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherStats filter,
-                                                FILE *fp, std::string &extraProcessingInfo) {
+int BandwidthController::addForwardChainStats(const TetherStats& filter,
+                                              TetherStatsList& statsList, FILE *fp,
+                                              std::string &extraProcessingInfo) {
     int res;
     char lineBuffer[MAX_IPT_OUTPUT_LINE_LEN];
     char iface0[MAX_IPT_OUTPUT_LINE_LEN];
@@ -1170,17 +1181,13 @@ int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherS
         }
         if (stats.rxBytes != -1 && stats.txBytes != -1) {
             ALOGV("rx_bytes=%" PRId64" tx_bytes=%" PRId64" filterPair=%d", stats.rxBytes, stats.txBytes, filterPair);
-            /* Send out stats, and prep for the next if needed. */
-            char *msg = stats.getStatsLine();
+            addStats(statsList, stats);
             if (filterPair) {
-                cli->sendMsg(ResponseCode::TetheringStatsResult, msg, false);
                 return 0;
             } else {
-                cli->sendMsg(ResponseCode::TetheringStatsListResult, msg, false);
+                statsFound++;
                 stats = filter;
             }
-            free(msg);
-            statsFound++;
         }
     }
 
@@ -1190,7 +1197,6 @@ int BandwidthController::parseForwardChainStats(SocketClient *cli, const TetherS
         (!statsFound && !filterPair)) {
         return -1;
     }
-    cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
     return 0;
 }
 
@@ -1201,10 +1207,13 @@ char *BandwidthController::TetherStats::getStatsLine(void) const {
     return msg;
 }
 
-int BandwidthController::getTetherStats(SocketClient *cli, TetherStats &stats, std::string &extraProcessingInfo) {
+int BandwidthController::getTetherStats(SocketClient *cli, TetherStats& filter,
+                                        std::string &extraProcessingInfo) {
     int res;
     std::string fullCmd;
     FILE *iptOutput;
+
+    TetherStatsList statsList;
 
     /*
      * Why not use some kind of lib to talk to iptables?
@@ -1222,8 +1231,20 @@ int BandwidthController::getTetherStats(SocketClient *cli, TetherStats &stats, s
             extraProcessingInfo += "Failed to run iptables.";
         return -1;
     }
-    res = parseForwardChainStats(cli, stats, iptOutput, extraProcessingInfo);
+
+    res = addForwardChainStats(filter, statsList, iptOutput, extraProcessingInfo);
     pclose(iptOutput);
+
+    if (filter.intIface[0] && filter.extIface[0] && statsList.size() == 1) {
+        cli->sendMsg(ResponseCode::TetheringStatsResult, statsList[0].getStatsLine(), false);
+    } else {
+        for (const auto& stats: statsList) {
+            cli->sendMsg(ResponseCode::TetheringStatsListResult, stats.getStatsLine(), false);
+        }
+        if (res == 0) {
+            cli->sendMsg(ResponseCode::CommandOkay, "Tethering stats list completed", false);
+        }
+    }
 
     /* Currently NatController doesn't do ipv6 tethering, so we are done. */
     return res;
