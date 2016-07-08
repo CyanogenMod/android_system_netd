@@ -19,16 +19,17 @@
 #include <string>
 #include <vector>
 
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+
 #include <gtest/gtest.h>
 
 #include <android-base/strings.h>
 
 #include "BandwidthController.h"
 #include "IptablesBaseTest.h"
-
-FILE *fake_popen(const char *, const char *) {
-    return NULL;
-};
 
 class BandwidthControllerTest : public IptablesBaseTest {
 public:
@@ -38,6 +39,10 @@ public:
         BandwidthController::iptablesRestoreFunction = fakeExecIptablesRestore;
     }
     BandwidthController mBw;
+
+    void addPopenContents(std::string contents) {
+        sPopenContents.push_back(contents);
+    }
 };
 
 TEST_F(BandwidthControllerTest, TestSetupIptablesHooks) {
@@ -133,4 +138,62 @@ TEST_F(BandwidthControllerTest, TestEnableDataSaver) {
         "-R bw_data_saver 1 --jump RETURN",
     };
     expectIptablesCommands(expected);
+}
+
+std::string kIPv4TetherCounters = android::base::Join(std::vector<std::string> {
+    "Chain natctrl_tether_counters (4 references)",
+    "    pkts      bytes target     prot opt in     out     source               destination",
+    "      26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0",
+    "      27     2002 RETURN     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0",
+    "    1040   107471 RETURN     all  --  bt-pan rmnet0  0.0.0.0/0            0.0.0.0/0",
+    "    1450  1708806 RETURN     all  --  rmnet0 bt-pan  0.0.0.0/0            0.0.0.0/0",
+}, '\n');
+
+std::string readSocketClientResponse(int fd) {
+    char buf[32768];
+    ssize_t bytesRead = read(fd, buf, sizeof(buf));
+    if (bytesRead < 0) {
+        return "";
+    }
+    for (int i = 0; i < bytesRead; i++) {
+        if (buf[i] == '\0') buf[i] = '\n';
+    }
+    return std::string(buf, bytesRead);
+}
+
+TEST_F(BandwidthControllerTest, TestGetTetherStats) {
+    int socketPair[2];
+    ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, socketPair));
+    ASSERT_EQ(0, fcntl(socketPair[0], F_SETFL, O_NONBLOCK | fcntl(socketPair[0], F_GETFL)));
+    ASSERT_EQ(0, fcntl(socketPair[1], F_SETFL, O_NONBLOCK | fcntl(socketPair[1], F_GETFL)));
+    SocketClient cli(socketPair[0], false);
+
+    std::string err;
+    BandwidthController::TetherStats filter;
+    addPopenContents(kIPv4TetherCounters);
+    std::string expected =
+            "114 wlan0 rmnet0 2373 26 2002 27\n"
+            "114 bt-pan rmnet0 107471 1040 1708806 1450\n"
+            "200 Tethering stats list completed\n";
+    mBw.getTetherStats(&cli, filter, err);
+    ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
+
+    addPopenContents(kIPv4TetherCounters);
+    filter = BandwidthController::TetherStats("bt-pan", "rmnet0", -1, -1, -1, -1);
+    expected = "221 bt-pan rmnet0 107471 1040 1708806 1450\n";
+    mBw.getTetherStats(&cli, filter, err);
+    ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
+
+
+    addPopenContents(kIPv4TetherCounters);
+    filter = BandwidthController::TetherStats("rmnet0", "wlan0", -1, -1, -1, -1);
+    expected = "221 rmnet0 wlan0 2002 27 2373 26\n";
+    mBw.getTetherStats(&cli, filter, err);
+    ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
+
+    addPopenContents(kIPv4TetherCounters);
+    filter = BandwidthController::TetherStats("rmnet0", "foo0", -1, -1, -1, -1);
+    expected = "200 Tethering stats list completed\n";
+    mBw.getTetherStats(&cli, filter, err);
+    ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
 }

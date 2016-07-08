@@ -16,13 +16,19 @@
  * IptablesBaseTest.cpp - utility class for tests that use iptables
  */
 
+#include <deque>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include <android-base/stringprintf.h>
+
 #include "IptablesBaseTest.h"
 #include "NetdConstants.h"
+
+#define LOG_TAG "IptablesBaseTest"
+#include <cutils/log.h>
 
 IptablesBaseTest::IptablesBaseTest() {
     sCmds.clear();
@@ -61,6 +67,16 @@ int IptablesBaseTest::fakeExecIptables(IptablesTarget target, ...) {
     }
 
     return 0;
+}
+
+FILE *IptablesBaseTest::fake_popen(const char * /* cmd */, const char *type) {
+    if (sPopenContents.empty() || strcmp(type, "r") != 0) {
+        return NULL;
+    }
+
+    std::string realCmd = android::base::StringPrintf("echo '%s'", sPopenContents.front().c_str());
+    sPopenContents.pop_front();
+    return popen(realCmd.c_str(), "r");
 }
 
 int IptablesBaseTest::fakeExecIptablesRestore(IptablesTarget target, const std::string& commands) {
@@ -131,3 +147,4 @@ void IptablesBaseTest::expectIptablesRestoreCommands(const ExpectedIptablesComma
 
 std::vector<std::string> IptablesBaseTest::sCmds = {};
 IptablesBaseTest::ExpectedIptablesCommands IptablesBaseTest::sRestoreCmds = {};
+std::deque<std::string> IptablesBaseTest::sPopenContents = {};
