@@ -40,6 +40,8 @@ const char* NatController::LOCAL_MANGLE_FORWARD = "natctrl_mangle_FORWARD";
 const char* NatController::LOCAL_NAT_POSTROUTING = "natctrl_nat_POSTROUTING";
 const char* NatController::LOCAL_TETHER_COUNTERS_CHAIN = "natctrl_tether_counters";
 
+auto NatController::execFunction = android_fork_execvp;
+
 NatController::NatController() {
 }
 
@@ -55,7 +57,7 @@ struct CommandsAndArgs {
 int NatController::runCmd(int argc, const char **argv) {
     int res;
 
-    res = android_fork_execvp(argc, (char **)argv, NULL, false, false);
+    res = execFunction(argc, (char **)argv, NULL, false, false);
 
 #if !LOG_NDEBUG
     std::string full_cmd = argv[0];

@@ -47,6 +47,10 @@ private:
     int runCmd(int argc, const char **argv);
     int setForwardRules(bool set, const char *intIface, const char *extIface);
     int setTetherCountingRules(bool add, const char *intIface, const char *extIface);
+
+    // For testing.
+    friend class NatControllerTest;
+    static int (*execFunction)(int, char **, int *, bool, bool);
 };
 
 #endif
