@@ -48,20 +48,20 @@ protected:
     }
 
     const ExpectedIptablesCommands FLUSH_COMMANDS = {
-        { V4, "-F natctrl_FORWARD" },
-        { V4, "-A natctrl_FORWARD -j DROP" },
-        { V4, "-t nat -F natctrl_nat_POSTROUTING" },
+        { V4V6, "-F natctrl_FORWARD" },
+        { V4,   "-A natctrl_FORWARD -j DROP" },
+        { V4,   "-t nat -F natctrl_nat_POSTROUTING" },
     };
 
     const ExpectedIptablesCommands SETUP_COMMANDS = {
-        { V4, "-F natctrl_FORWARD" },
-        { V4, "-A natctrl_FORWARD -j DROP" },
-        { V4, "-t nat -F natctrl_nat_POSTROUTING" },
-        { V4, "-F natctrl_tether_counters" },
-        { V4, "-X natctrl_tether_counters" },
-        { V4, "-N natctrl_tether_counters" },
-        { V4, "-t mangle -A natctrl_mangle_FORWARD -p tcp --tcp-flags SYN SYN "
-              "-j TCPMSS --clamp-mss-to-pmtu" },
+        { V4V6, "-F natctrl_FORWARD" },
+        { V4,   "-A natctrl_FORWARD -j DROP" },
+        { V4,   "-t nat -F natctrl_nat_POSTROUTING" },
+        { V4V6, "-F natctrl_tether_counters" },
+        { V4V6, "-X natctrl_tether_counters" },
+        { V4V6, "-N natctrl_tether_counters" },
+        { V4,   "-t mangle -A natctrl_mangle_FORWARD -p tcp --tcp-flags SYN SYN "
+                "-j TCPMSS --clamp-mss-to-pmtu" },
     };
 
     const ExpectedIptablesCommands TWIDDLE_COMMANDS = {
@@ -69,22 +69,25 @@ protected:
         { V4, "-A natctrl_FORWARD -j DROP" },
     };
 
-    ExpectedIptablesCommands enableMasqueradeCommand(const char *extIf) {
+    ExpectedIptablesCommands firstNatCommands(const char *extIf) {
         return {
             { V4, StringPrintf("-t nat -A natctrl_nat_POSTROUTING -o %s -j MASQUERADE", extIf) },
+            { V6, "-A natctrl_FORWARD -g natctrl_tether_counters" },
         };
     }
 
     ExpectedIptablesCommands startNatCommands(const char *intIf, const char *extIf) {
         return {
-            { V4, StringPrintf("-A natctrl_FORWARD -i %s -o %s -m state --state"
-                               " ESTABLISHED,RELATED -g natctrl_tether_counters", extIf, intIf) },
-            { V4, StringPrintf("-A natctrl_FORWARD -i %s -o %s -m state --state INVALID -j DROP",
-                               intIf, extIf) },
-            { V4, StringPrintf("-A natctrl_FORWARD -i %s -o %s -g natctrl_tether_counters",
-                               intIf, extIf) },
-            { V4, StringPrintf("-A natctrl_tether_counters -i %s -o %s -j RETURN", intIf, extIf) },
-            { V4, StringPrintf("-A natctrl_tether_counters -i %s -o %s -j RETURN", extIf, intIf) },
+            { V4,   StringPrintf("-A natctrl_FORWARD -i %s -o %s -m state --state"
+                                 " ESTABLISHED,RELATED -g natctrl_tether_counters", extIf, intIf) },
+            { V4,   StringPrintf("-A natctrl_FORWARD -i %s -o %s -m state --state INVALID -j DROP",
+                                 intIf, extIf) },
+            { V4,   StringPrintf("-A natctrl_FORWARD -i %s -o %s -g natctrl_tether_counters",
+                                 intIf, extIf) },
+            { V4V6, StringPrintf("-A natctrl_tether_counters -i %s -o %s -j RETURN",
+                                 intIf, extIf) },
+            { V4V6, StringPrintf("-A natctrl_tether_counters -i %s -o %s -j RETURN",
+                                 extIf, intIf) },
         };
     }
 
@@ -113,7 +116,7 @@ TEST_F(NatControllerTest, TestSetDefaults) {
 TEST_F(NatControllerTest, TestAddAndRemoveNat) {
 
     std::vector<ExpectedIptablesCommands> startFirstNat = {
-        enableMasqueradeCommand("rmnet0"),
+        firstNatCommands("rmnet0"),
         startNatCommands("wlan0", "rmnet0"),
         TWIDDLE_COMMANDS,
     };

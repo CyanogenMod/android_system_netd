@@ -216,7 +216,7 @@ CommandListener::CommandListener() :
     createChildChains(V4V6, "filter", "OUTPUT", FILTER_OUTPUT);
     createChildChains(V4V6, "raw", "PREROUTING", RAW_PREROUTING);
     createChildChains(V4V6, "mangle", "POSTROUTING", MANGLE_POSTROUTING);
-    createChildChains(V4, "mangle", "FORWARD", MANGLE_FORWARD);
+    createChildChains(V4V6, "mangle", "FORWARD", MANGLE_FORWARD);
     createChildChains(V4, "nat", "PREROUTING", NAT_PREROUTING);
     createChildChains(V4, "nat", "POSTROUTING", NAT_POSTROUTING);
 
