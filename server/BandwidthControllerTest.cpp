@@ -43,6 +43,15 @@ public:
     void addPopenContents(std::string contents) {
         sPopenContents.push_back(contents);
     }
+
+    void addPopenContents(std::string contents1, std::string contents2) {
+        sPopenContents.push_back(contents1);
+        sPopenContents.push_back(contents2);
+    }
+
+    void clearPopenContents() {
+        sPopenContents.clear();
+    }
 };
 
 TEST_F(BandwidthControllerTest, TestSetupIptablesHooks) {
@@ -149,6 +158,13 @@ std::string kIPv4TetherCounters = android::base::Join(std::vector<std::string> {
     "    1450  1708806 RETURN     all  --  rmnet0 bt-pan  0.0.0.0/0            0.0.0.0/0",
 }, '\n');
 
+std::string kIPv6TetherCounters = android::base::Join(std::vector<std::string> {
+    "Chain natctrl_tether_counters (2 references)",
+    "    pkts      bytes target     prot opt in     out     source               destination",
+    "   10000 10000000 RETURN     all      wlan0  rmnet0  ::/0                 ::/0",
+    "   20000 20000000 RETURN     all      rmnet0 wlan0   ::/0                 ::/0",
+}, '\n');
+
 std::string readSocketClientResponse(int fd) {
     char buf[32768];
     ssize_t bytesRead = read(fd, buf, sizeof(buf));
@@ -175,63 +191,104 @@ TEST_F(BandwidthControllerTest, TestGetTetherStats) {
 
     std::string err;
     BandwidthController::TetherStats filter;
-    addPopenContents(kIPv4TetherCounters);
+
+    // If no filter is specified, both IPv4 and IPv6 counters must have at least one interface pair.
+    addPopenContents(kIPv4TetherCounters, "");
+    ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
+    expectNoSocketClientResponse(socketPair[1]);
+    clearPopenContents();
+
+    addPopenContents("", kIPv6TetherCounters);
+    ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
+    clearPopenContents();
+
+    // IPv4 and IPv6 counters are properly added together.
+    addPopenContents(kIPv4TetherCounters, kIPv6TetherCounters);
+    filter = BandwidthController::TetherStats();
     std::string expected =
-            "114 wlan0 rmnet0 2373 26 2002 27\n"
+            "114 wlan0 rmnet0 10002373 10026 20002002 20027\n"
             "114 bt-pan rmnet0 107471 1040 1708806 1450\n"
             "200 Tethering stats list completed\n";
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
+    expectNoSocketClientResponse(socketPair[1]);
+    clearPopenContents();
 
-    addPopenContents(kIPv4TetherCounters);
+    // Test filtering.
+    addPopenContents(kIPv4TetherCounters, kIPv6TetherCounters);
     filter = BandwidthController::TetherStats("bt-pan", "rmnet0", -1, -1, -1, -1);
     expected = "221 bt-pan rmnet0 107471 1040 1708806 1450\n";
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
+    expectNoSocketClientResponse(socketPair[1]);
+    clearPopenContents();
 
-    addPopenContents(kIPv4TetherCounters);
-    filter = BandwidthController::TetherStats("rmnet0", "wlan0", -1, -1, -1, -1);
-    expected = "221 rmnet0 wlan0 2002 27 2373 26\n";
+    addPopenContents(kIPv4TetherCounters, kIPv6TetherCounters);
+    filter = BandwidthController::TetherStats("wlan0", "rmnet0", -1, -1, -1, -1);
+    expected = "221 wlan0 rmnet0 10002373 10026 20002002 20027\n";
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
+    clearPopenContents();
 
-    addPopenContents(kIPv4TetherCounters);
+    // Select nonexistent interfaces.
+    addPopenContents(kIPv4TetherCounters, kIPv6TetherCounters);
     filter = BandwidthController::TetherStats("rmnet0", "foo0", -1, -1, -1, -1);
     expected = "200 Tethering stats list completed\n";
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
+    clearPopenContents();
 
     // No stats with a filter: no error.
-    addPopenContents("");
+    addPopenContents("", "");
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ("200 Tethering stats list completed\n", readSocketClientResponse(socketPair[1]));
-    addPopenContents("foo");
+    clearPopenContents();
+
+    addPopenContents("foo", "foo");
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ("200 Tethering stats list completed\n", readSocketClientResponse(socketPair[1]));
+    clearPopenContents();
 
     // No stats and empty filter: error.
     filter = BandwidthController::TetherStats();
-    addPopenContents("");
-    ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
-    addPopenContents("foo");
+    addPopenContents("", kIPv6TetherCounters);
     ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
     expectNoSocketClientResponse(socketPair[1]);
+    clearPopenContents();
+
+    addPopenContents(kIPv4TetherCounters, "");
+    ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
+    expectNoSocketClientResponse(socketPair[1]);
+    clearPopenContents();
 
     // Include only one pair of interfaces and things are fine.
     std::vector<std::string> counterLines = android::base::Split(kIPv4TetherCounters, "\n");
     std::vector<std::string> brokenCounterLines = counterLines;
     counterLines.resize(4);
     std::string counters = android::base::Join(counterLines, "\n") + "\n";
-    addPopenContents(counters);
+    addPopenContents(counters, counters);
     expected =
-            "114 wlan0 rmnet0 2373 26 2002 27\n"
+            "114 wlan0 rmnet0 4746 52 4004 54\n"
             "200 Tethering stats list completed\n";
     ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
+    clearPopenContents();
 
     // But if interfaces aren't paired, it's always an error.
     counterLines.resize(3);
     counters = android::base::Join(counterLines, "\n") + "\n";
+    addPopenContents(counters, counters);
     ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
     expectNoSocketClientResponse(socketPair[1]);
+    clearPopenContents();
+
+    // popen() failing is always an error.
+    addPopenContents(kIPv4TetherCounters);
+    ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
+    expectNoSocketClientResponse(socketPair[1]);
+    clearPopenContents();
+    addPopenContents(kIPv6TetherCounters);
+    ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
+    expectNoSocketClientResponse(socketPair[1]);
+    clearPopenContents();
 }

@@ -1100,6 +1100,12 @@ void BandwidthController::addStats(TetherStatsList& statsList, const TetherStats
  *         27     2002 RETURN     all  --  rmnet0 wlan0   0.0.0.0/0            0.0.0.0/0
  *       1040   107471 RETURN     all  --  bt-pan rmnet0  0.0.0.0/0            0.0.0.0/0
  *       1450  1708806 RETURN     all  --  rmnet0 bt-pan  0.0.0.0/0            0.0.0.0/0
+ * or:
+ *   Chain natctrl_tether_counters (0 references)
+ *       pkts      bytes target     prot opt in     out     source               destination
+ *          0        0 RETURN     all      wlan0  rmnet_data0  ::/0                 ::/0
+ *          0        0 RETURN     all      rmnet_data0 wlan0   ::/0                 ::/0
+ *
  * It results in an error if invoked and no tethering counter rules exist. The constraint
  * helps detect complete parsing failure.
  */
@@ -1128,8 +1134,17 @@ int BandwidthController::addForwardChainStats(const TetherStats& filter,
     while (NULL != (buffPtr = fgets(lineBuffer, MAX_IPT_OUTPUT_LINE_LEN, fp))) {
         /* Clean up, so a failed parse can still print info */
         iface0[0] = iface1[0] = rest[0] = packets = bytes = 0;
-        res = sscanf(buffPtr, "%" SCNd64" %" SCNd64" RETURN all -- %s %s 0.%s",
-                &packets, &bytes, iface0, iface1, rest);
+        if (strstr(buffPtr, "0.0.0.0")) {
+            // IPv4 has -- indicating what to do with fragments...
+            //       26     2373 RETURN     all  --  wlan0  rmnet0  0.0.0.0/0            0.0.0.0/0
+            res = sscanf(buffPtr, "%" SCNd64" %" SCNd64" RETURN all -- %s %s 0.%s",
+                    &packets, &bytes, iface0, iface1, rest);
+        } else {
+            // ... but IPv6 does not.
+            //       26     2373 RETURN     all      wlan0  rmnet0  ::/0                 ::/0
+            res = sscanf(buffPtr, "%" SCNd64" %" SCNd64" RETURN all %s %s ::/%s",
+                    &packets, &bytes, iface0, iface1, rest);
+        }
         ALOGV("parse res=%d iface0=<%s> iface1=<%s> pkts=%" PRId64" bytes=%" PRId64" rest=<%s> orig line=<%s>", res,
              iface0, iface1, packets, bytes, rest, buffPtr);
         extraProcessingInfo += buffPtr;
@@ -1207,14 +1222,7 @@ char *BandwidthController::TetherStats::getStatsLine(void) const {
     return msg;
 }
 
-int BandwidthController::getTetherStats(SocketClient *cli, TetherStats& filter,
-                                        std::string &extraProcessingInfo) {
-    int res;
-    std::string fullCmd;
-    FILE *iptOutput;
-
-    TetherStatsList statsList;
-
+std::string getTetherStatsCommand(const char *binary) {
     /*
      * Why not use some kind of lib to talk to iptables?
      * Because the only libs are libiptc and libip6tc in iptables, and they are
@@ -1222,18 +1230,33 @@ int BandwidthController::getTetherStats(SocketClient *cli, TetherStats& filter,
      * preloaded/linked, and require apparently a lot of wrapper code to get
      * the wanted info.
      */
-    fullCmd = IPTABLES_PATH;
-    fullCmd += " -nvx -w -L ";
-    fullCmd += NatController::LOCAL_TETHER_COUNTERS_CHAIN;
-    iptOutput = popenFunction(fullCmd.c_str(), "r");
-    if (!iptOutput) {
-            ALOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
-            extraProcessingInfo += "Failed to run iptables.";
-        return -1;
-    }
+    return android::base::StringPrintf("%s -nvx -w -L %s", binary,
+                                       NatController::LOCAL_TETHER_COUNTERS_CHAIN);
+}
 
-    res = addForwardChainStats(filter, statsList, iptOutput, extraProcessingInfo);
-    pclose(iptOutput);
+int BandwidthController::getTetherStats(SocketClient *cli, TetherStats& filter,
+                                        std::string &extraProcessingInfo) {
+    int res = 0;
+    std::string fullCmd;
+    FILE *iptOutput;
+
+    TetherStatsList statsList;
+
+    for (const auto binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        fullCmd = getTetherStatsCommand(binary);
+        iptOutput = popenFunction(fullCmd.c_str(), "r");
+        if (!iptOutput) {
+                ALOGE("Failed to run %s err=%s", fullCmd.c_str(), strerror(errno));
+                extraProcessingInfo += "Failed to run iptables.";
+            return -1;
+        }
+
+        res = addForwardChainStats(filter, statsList, iptOutput, extraProcessingInfo);
+        pclose(iptOutput);
+        if (res != 0) {
+            return res;
+        }
+    }
 
     if (filter.intIface[0] && filter.extIface[0] && statsList.size() == 1) {
         cli->sendMsg(ResponseCode::TetheringStatsResult, statsList[0].getStatsLine(), false);
@@ -1246,7 +1269,6 @@ int BandwidthController::getTetherStats(SocketClient *cli, TetherStats& filter,
         }
     }
 
-    /* Currently NatController doesn't do ipv6 tethering, so we are done. */
     return res;
 }
 
