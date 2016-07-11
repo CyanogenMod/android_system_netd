@@ -161,6 +161,11 @@ std::string readSocketClientResponse(int fd) {
     return std::string(buf, bytesRead);
 }
 
+void expectNoSocketClientResponse(int fd) {
+    char buf[64];
+    EXPECT_EQ(-1, read(fd, buf, sizeof(buf)));
+}
+
 TEST_F(BandwidthControllerTest, TestGetTetherStats) {
     int socketPair[2];
     ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, socketPair));
@@ -175,25 +180,58 @@ TEST_F(BandwidthControllerTest, TestGetTetherStats) {
             "114 wlan0 rmnet0 2373 26 2002 27\n"
             "114 bt-pan rmnet0 107471 1040 1708806 1450\n"
             "200 Tethering stats list completed\n";
-    mBw.getTetherStats(&cli, filter, err);
+    ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
 
     addPopenContents(kIPv4TetherCounters);
     filter = BandwidthController::TetherStats("bt-pan", "rmnet0", -1, -1, -1, -1);
     expected = "221 bt-pan rmnet0 107471 1040 1708806 1450\n";
-    mBw.getTetherStats(&cli, filter, err);
+    ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
-
 
     addPopenContents(kIPv4TetherCounters);
     filter = BandwidthController::TetherStats("rmnet0", "wlan0", -1, -1, -1, -1);
     expected = "221 rmnet0 wlan0 2002 27 2373 26\n";
-    mBw.getTetherStats(&cli, filter, err);
+    ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
 
     addPopenContents(kIPv4TetherCounters);
     filter = BandwidthController::TetherStats("rmnet0", "foo0", -1, -1, -1, -1);
     expected = "200 Tethering stats list completed\n";
-    mBw.getTetherStats(&cli, filter, err);
+    ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
     ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
+
+    // No stats with a filter: no error.
+    addPopenContents("");
+    ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
+    ASSERT_EQ("200 Tethering stats list completed\n", readSocketClientResponse(socketPair[1]));
+    addPopenContents("foo");
+    ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
+    ASSERT_EQ("200 Tethering stats list completed\n", readSocketClientResponse(socketPair[1]));
+
+    // No stats and empty filter: error.
+    filter = BandwidthController::TetherStats();
+    addPopenContents("");
+    ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
+    addPopenContents("foo");
+    ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
+    expectNoSocketClientResponse(socketPair[1]);
+
+    // Include only one pair of interfaces and things are fine.
+    std::vector<std::string> counterLines = android::base::Split(kIPv4TetherCounters, "\n");
+    std::vector<std::string> brokenCounterLines = counterLines;
+    counterLines.resize(4);
+    std::string counters = android::base::Join(counterLines, "\n") + "\n";
+    addPopenContents(counters);
+    expected =
+            "114 wlan0 rmnet0 2373 26 2002 27\n"
+            "200 Tethering stats list completed\n";
+    ASSERT_EQ(0, mBw.getTetherStats(&cli, filter, err));
+    ASSERT_EQ(expected, readSocketClientResponse(socketPair[1]));
+
+    // But if interfaces aren't paired, it's always an error.
+    counterLines.resize(3);
+    counters = android::base::Join(counterLines, "\n") + "\n";
+    ASSERT_EQ(-1, mBw.getTetherStats(&cli, filter, err));
+    expectNoSocketClientResponse(socketPair[1]);
 }
