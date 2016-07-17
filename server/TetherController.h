@@ -54,9 +54,9 @@ public:
     int tetherInterface(const char *interface);
     int untetherInterface(const char *interface);
     const std::list<std::string> &getTetheredInterfaceList() const;
+    bool applyDnsInterfaces();
 
 private:
-    bool applyDnsInterfaces();
     bool setIpFwdEnabled();
 };
 

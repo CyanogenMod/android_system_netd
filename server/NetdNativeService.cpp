@@ -201,5 +201,12 @@ binder::Status NetdNativeService::getResolverInfo(int32_t netId,
     return binder::Status::ok();
 }
 
+binder::Status NetdNativeService::tetherApplyDnsInterfaces(bool *ret) {
+    NETD_BIG_LOCK_RPC(CONNECTIVITY_INTERNAL);
+
+    *ret = gCtls->tetherCtrl.applyDnsInterfaces();
+    return binder::Status::ok();
+}
+
 }  // namespace net
 }  // namespace android

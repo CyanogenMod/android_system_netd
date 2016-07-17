@@ -145,4 +145,14 @@ interface INetd {
      */
     void getResolverInfo(int netId, out @utf8InCpp String[] servers,
             out @utf8InCpp String[] domains, out int[] params, out int[] stats);
+
+    /**
+     * Instruct the tethering DNS server to reevaluated serving interfaces.
+     * This is needed to for the DNS server to observe changes in the set
+     * of potential listening IP addresses. (Listening on wildcard addresses
+     * can turn the device into an open resolver; b/7530468)
+     *
+     * TODO: Return something richer than just a boolean.
+     */
+    boolean tetherApplyDnsInterfaces();
 }
