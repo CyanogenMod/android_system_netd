@@ -164,7 +164,8 @@ binder::Status NetdNativeService::socketDestroy(const std::vector<UidRange>& uid
     }
 
     UidRanges uidRanges(uids);
-    int err = sd.destroySockets(uidRanges, std::set<uid_t>(skipUids.begin(), skipUids.end()));
+    int err = sd.destroySockets(uidRanges, std::set<uid_t>(skipUids.begin(), skipUids.end()),
+                                true /* excludeLoopback */);
 
     if (err) {
         return binder::Status::fromServiceSpecificError(-err,
