@@ -300,6 +300,9 @@ std::string FirewallController::makeUidRules(IptablesTarget target, const char *
     std::string commands;
     StringAppendF(&commands, "*filter\n:%s -\n", name);
 
+    // Always allow networking on loopback.
+    StringAppendF(&commands, "-A %s -i lo -o lo -j RETURN\n", name);
+
     // Allow TCP RSTs so we can cleanly close TCP connections of apps that no longer have network
     // access. Both incoming and outgoing RSTs are allowed.
     StringAppendF(&commands, "-A %s -p tcp --tcp-flags RST RST -j RETURN\n", name);

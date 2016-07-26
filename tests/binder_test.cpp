@@ -170,31 +170,31 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), true, uids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ((int) uids.size() + 5, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ((int) uids.size() + 11, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 6, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 12, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
     {
         TimedOperation op("Clearing whitelist chain");
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, noUids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ(3, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ(3, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(4, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(4, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
 
     {
         TimedOperation op(StringPrintf("Programming %d-UID blacklist chain", kNumUids));
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, uids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ((int) uids.size() + 3, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ((int) uids.size() + 3, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 4, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 4, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
 
     {
         TimedOperation op("Clearing blacklist chain");
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, noUids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ(3, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ(3, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(4, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(4, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
 
     // Check that the call fails if iptables returns an error.
     std::string veryLongStringName = "netd_binder_test_UnacceptablyLongIptablesChainName";
