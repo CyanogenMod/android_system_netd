@@ -21,11 +21,12 @@ LOCAL_MODULE := netd_integration_test
 LOCAL_CFLAGS := -Wall -Werror -Wunused-parameter
 EXTRA_LDLIBS := -lpthread
 LOCAL_SHARED_LIBRARIES += libbase libbinder libcutils liblog liblogwrap libnetdaidl libnetd_client \
-                          libutils
+                          libnetutils libutils
 LOCAL_STATIC_LIBRARIES += libtestUtil
 LOCAL_AIDL_INCLUDES := system/netd/server/binder
 LOCAL_C_INCLUDES += system/netd/include system/extras/tests/include system/netd/binder/include \
                     system/netd/server system/core/logwrapper/include \
+                    system/core/libnetutils/include \
                     system/extras/tests/include bionic/libc/dns/include
 # netd_integration_test.cpp is currently empty and exists only so that we can do:
 # runtest -x system/netd/tests/netd_integration_test.cpp

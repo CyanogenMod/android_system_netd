@@ -24,19 +24,27 @@
 #include <set>
 #include <vector>
 
+#include <fcntl.h>
+#include <netdb.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <netinet/in.h>
+#include <linux/if.h>
+#include <linux/if_tun.h>
 
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <cutils/multiuser.h>
 #include <gtest/gtest.h>
 #include <logwrap/logwrap.h>
+#include <netutils/ifc.h>
 
 #include "NetdConstants.h"
 #include "android/net/INetd.h"
 #include "android/net/UidRange.h"
 #include "binder/IServiceManager.h"
+
+#define TUN_DEV "/dev/tun"
 
 using namespace android;
 using namespace android::base;
@@ -58,14 +66,36 @@ public:
         }
     }
 
-    void SetUp() {
+    void SetUp() override {
         ASSERT_NE(nullptr, mNetd.get());
     }
 
+    // Static because setting up the tun interface takes about 40ms.
+    static void SetUpTestCase() {
+        sTunFd = createTunInterface();
+        ASSERT_NE(-1, sTunFd);
+    }
+
+    static void TearDownTestCase() {
+        // Closing the socket removes the interface and IP addresses.
+        close(sTunFd);
+    }
+
+    static void fakeRemoteSocketPair(int *clientSocket, int *serverSocket, int *acceptedSocket);
+    static int createTunInterface();
+
 protected:
     sp<INetd> mNetd;
+    static int sTunFd;
+    static in6_addr sSrcAddr, sDstAddr;
+    static char sSrcStr[], sDstStr[];
 };
 
+int BinderTest::sTunFd;
+in6_addr BinderTest::sSrcAddr;
+in6_addr BinderTest::sDstAddr;
+char BinderTest::sSrcStr[INET6_ADDRSTRLEN];
+char BinderTest::sDstStr[INET6_ADDRSTRLEN];
 
 class TimedOperation : public Stopwatch {
 public:
@@ -296,9 +326,51 @@ TEST_F(BinderTest, TestNetworkRejectNonSecureVpn) {
     EXPECT_EQ(initialRulesV6, listIpRules(IP_RULE_V6));
 }
 
-void socketpair(int *clientSocket, int *serverSocket, int *acceptedSocket) {
+int BinderTest::createTunInterface() {
+    // Generate a random ULA address pair.
+    arc4random_buf(&sSrcAddr, sizeof(sSrcAddr));
+    sSrcAddr.s6_addr[0] = 0xfd;
+    memcpy(&sDstAddr, &sSrcAddr, sizeof(sDstAddr));
+    sDstAddr.s6_addr[15] ^= 1;
+
+    // Convert the addresses to strings because that's what ifc_add_address takes.
+    sockaddr_in6 src6 = { .sin6_family = AF_INET6, .sin6_addr = sSrcAddr, };
+    sockaddr_in6 dst6 = { .sin6_family = AF_INET6, .sin6_addr = sDstAddr, };
+    int flags = NI_NUMERICHOST;
+    if (getnameinfo((sockaddr *) &src6, sizeof(src6), sSrcStr, sizeof(sSrcStr), NULL, 0, flags) ||
+        getnameinfo((sockaddr *) &dst6, sizeof(dst6), sDstStr, sizeof(sDstStr), NULL, 0, flags)) {
+        return -1;
+    }
+
+    // Create a tun interface with a name based on our PID.
+    struct ifreq ifr = {
+        .ifr_ifru = { .ifru_flags = IFF_TUN },
+    };
+    snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "netdtest%u", getpid());
+
+    int fd = open(TUN_DEV, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    EXPECT_NE(-1, fd) << TUN_DEV << ": " << strerror(errno);
+    if (fd == -1) return fd;
+
+    int ret = ioctl(fd, TUNSETIFF, &ifr, sizeof(ifr));
+    EXPECT_EQ(0, ret) << "TUNSETIFF: " << strerror(errno);
+    if (ret) {
+        close(fd);
+        return -1;
+    }
+
+    if (ifc_add_address(ifr.ifr_name, sSrcStr, 64) ||
+        ifc_add_address(ifr.ifr_name, sDstStr, 64)) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+// Create a socket pair that isLoopbackSocket won't think is local.
+void BinderTest::fakeRemoteSocketPair(int *clientSocket, int *serverSocket, int *acceptedSocket) {
     *serverSocket = socket(AF_INET6, SOCK_STREAM, 0);
-    struct sockaddr_in6 server6 = { .sin6_family = AF_INET6 };
+    struct sockaddr_in6 server6 = { .sin6_family = AF_INET6, .sin6_addr = sDstAddr };
     ASSERT_EQ(0, bind(*serverSocket, (struct sockaddr *) &server6, sizeof(server6)));
 
     socklen_t addrlen = sizeof(server6);
@@ -306,7 +378,8 @@ void socketpair(int *clientSocket, int *serverSocket, int *acceptedSocket) {
     ASSERT_EQ(0, listen(*serverSocket, 10));
 
     *clientSocket = socket(AF_INET6, SOCK_STREAM, 0);
-    struct sockaddr_in6 client6;
+    struct sockaddr_in6 client6 = { .sin6_family = AF_INET6, .sin6_addr = sSrcAddr };
+    ASSERT_EQ(0, bind(*clientSocket, (struct sockaddr *) &client6, sizeof(client6)));
     ASSERT_EQ(0, connect(*clientSocket, (struct sockaddr *) &server6, sizeof(server6)));
     ASSERT_EQ(0, getsockname(*clientSocket, (struct sockaddr *) &client6, &addrlen));
 
@@ -339,7 +412,7 @@ void checkSocketpairClosed(int clientSocket, int acceptedSocket) {
 
 TEST_F(BinderTest, TestSocketDestroy) {
     int clientSocket, serverSocket, acceptedSocket;
-    ASSERT_NO_FATAL_FAILURE(socketpair(&clientSocket, &serverSocket, &acceptedSocket));
+    ASSERT_NO_FATAL_FAILURE(fakeRemoteSocketPair(&clientSocket, &serverSocket, &acceptedSocket));
 
     // Pick a random UID in the system UID range.
     constexpr int baseUid = AID_APP - 2000;
