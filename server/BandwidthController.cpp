@@ -692,6 +692,13 @@ int BandwidthController::prepCostlyIface(const char *ifn, QuotaType quotaType) {
 
     snprintf(cmd, sizeof(cmd), "-I bw_OUTPUT %d -o %s --jump %s", ruleInsertPos, ifn, costCString);
     res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
+
+    snprintf(cmd, sizeof(cmd), "-D bw_FORWARD -i %s --jump %s", ifn, costCString);
+    runIpxtablesCmd(cmd, IptJumpNoAdd, IptFailHide);
+
+    snprintf(cmd, sizeof(cmd), "-I bw_FORWARD %d -i %s --jump %s", ruleInsertPos, ifn, costCString);
+    res |= runIpxtablesCmd(cmd, IptJumpNoAdd);
+
     return res;
 }
 
