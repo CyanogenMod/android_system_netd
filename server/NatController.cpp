@@ -38,6 +38,7 @@
 const char* NatController::LOCAL_FORWARD = "natctrl_FORWARD";
 const char* NatController::LOCAL_MANGLE_FORWARD = "natctrl_mangle_FORWARD";
 const char* NatController::LOCAL_NAT_POSTROUTING = "natctrl_nat_POSTROUTING";
+const char* NatController::LOCAL_RAW_PREROUTING = "natctrl_raw_PREROUTING";
 const char* NatController::LOCAL_TETHER_COUNTERS_CHAIN = "natctrl_tether_counters";
 
 auto NatController::execFunction = android_fork_execvp;
@@ -131,6 +132,7 @@ int NatController::setDefaults() {
         {{IP6TABLES_PATH, "-w", "-F", LOCAL_FORWARD,}, 1},
         {{IPTABLES_PATH, "-w", "-A", LOCAL_FORWARD, "-j", "DROP"}, 1},
         {{IPTABLES_PATH, "-w", "-t", "nat", "-F", LOCAL_NAT_POSTROUTING}, 1},
+        {{IP6TABLES_PATH, "-w", "-t", "raw", "-F", LOCAL_RAW_PREROUTING}, 1},
     };
     for (unsigned int cmdNum = 0; cmdNum < ARRAY_SIZE(defaultCommands); cmdNum++) {
         if (runCmd(ARRAY_SIZE(defaultCommands[cmdNum].cmd), defaultCommands[cmdNum].cmd) &&
@@ -343,6 +345,25 @@ int NatController::setForwardRules(bool add, const char *intIface, const char *e
             LOCAL_TETHER_COUNTERS_CHAIN
     };
 
+    const char *cmd4[] = {
+            IP6TABLES_PATH,
+            "-w",
+            "-t",
+            "raw",
+            add ? "-A" : "-D",
+            LOCAL_RAW_PREROUTING,
+            "-i",
+            intIface,
+            "-m",
+            "rpfilter",
+            "--invert",
+            "!",
+            "-s",
+            "fe80::/64",
+            "-j",
+            "DROP"
+    };
+
     if (runCmd(ARRAY_SIZE(cmd2), cmd2) && add) {
         // bail on error, but only if adding
         rc = -1;
@@ -355,6 +376,12 @@ int NatController::setForwardRules(bool add, const char *intIface, const char *e
         goto err_return;
     }
 
+    // STOPSHIP: Make this an error.
+    if (runCmd(ARRAY_SIZE(cmd4), cmd4) && add && false /* STOPSHIP */) {
+        rc = -1;
+        goto err_rpfilter;
+    }
+
     if (setTetherCountingRules(add, intIface, extIface) && add) {
         rc = -1;
         goto err_return;
@@ -362,6 +389,9 @@ int NatController::setForwardRules(bool add, const char *intIface, const char *e
 
     return 0;
 
+err_rpfilter:
+    cmd3[2] = "-D";
+    runCmd(ARRAY_SIZE(cmd3), cmd3);
 err_return:
     cmd2[2] = "-D";
     runCmd(ARRAY_SIZE(cmd2), cmd2);

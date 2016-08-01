@@ -51,12 +51,14 @@ protected:
         { V4V6, "-F natctrl_FORWARD" },
         { V4,   "-A natctrl_FORWARD -j DROP" },
         { V4,   "-t nat -F natctrl_nat_POSTROUTING" },
+        { V6,   "-t raw -F natctrl_raw_PREROUTING" },
     };
 
     const ExpectedIptablesCommands SETUP_COMMANDS = {
         { V4V6, "-F natctrl_FORWARD" },
         { V4,   "-A natctrl_FORWARD -j DROP" },
         { V4,   "-t nat -F natctrl_nat_POSTROUTING" },
+        { V6,   "-t raw -F natctrl_raw_PREROUTING" },
         { V4V6, "-F natctrl_tether_counters" },
         { V4V6, "-X natctrl_tether_counters" },
         { V4V6, "-N natctrl_tether_counters" },
@@ -84,6 +86,8 @@ protected:
                                  intIf, extIf) },
             { V4,   StringPrintf("-A natctrl_FORWARD -i %s -o %s -g natctrl_tether_counters",
                                  intIf, extIf) },
+            { V6,   StringPrintf("-t raw -A natctrl_raw_PREROUTING -i %s -m rpfilter --invert"
+                                 " ! -s fe80::/64 -j DROP", intIf) },
             { V4V6, StringPrintf("-A natctrl_tether_counters -i %s -o %s -j RETURN",
                                  intIf, extIf) },
             { V4V6, StringPrintf("-A natctrl_tether_counters -i %s -o %s -j RETURN",
@@ -99,6 +103,8 @@ protected:
                                intIf, extIf) },
             { V4, StringPrintf("-D natctrl_FORWARD -i %s -o %s -g natctrl_tether_counters",
                                intIf, extIf) },
+            { V6, StringPrintf("-t raw -D natctrl_raw_PREROUTING -i %s -m rpfilter --invert"
+                               " ! -s fe80::/64 -j DROP", intIf) },
         };
     }
 };

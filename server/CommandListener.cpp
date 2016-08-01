@@ -135,6 +135,7 @@ static const char* FILTER_OUTPUT[] = {
 static const char* RAW_PREROUTING[] = {
         BandwidthController::LOCAL_RAW_PREROUTING,
         IdletimerController::LOCAL_RAW_PREROUTING,
+        NatController::LOCAL_RAW_PREROUTING,
         NULL,
 };
 
