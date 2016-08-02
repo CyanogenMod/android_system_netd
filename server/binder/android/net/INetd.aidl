@@ -155,4 +155,19 @@ interface INetd {
      * TODO: Return something richer than just a boolean.
      */
     boolean tetherApplyDnsInterfaces();
+
+    /**
+     * Add/Remove and IP address from an interface.
+     *
+     * @param ifName the interface name
+     * @param addrString the IP address to add/remove as a string literal
+     * @param prefixLength the prefix length associated with this IP address
+     *
+     * @throws ServiceSpecificException in case of failure, with an error code corresponding to the
+     *         unix errno.
+     */
+    void interfaceAddAddress(in @utf8InCpp String ifName, in @utf8InCpp String addrString,
+            int prefixLength);
+    void interfaceDelAddress(in @utf8InCpp String ifName, in @utf8InCpp String addrString,
+            int prefixLength);
 }

@@ -50,6 +50,11 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     // Tethering-related commands.
     binder::Status tetherApplyDnsInterfaces(bool *ret) override;
+
+    binder::Status interfaceAddAddress(const std::string &ifName,
+            const std::string &addrString, int prefixLength) override;
+    binder::Status interfaceDelAddress(const std::string &ifName,
+            const std::string &addrString, int prefixLength) override;
 };
 
 }  // namespace net

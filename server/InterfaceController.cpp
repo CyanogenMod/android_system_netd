@@ -23,6 +23,7 @@
 #include <android-base/stringprintf.h>
 #include <cutils/log.h>
 #include <logwrap/logwrap.h>
+#include <netutils/ifc.h>
 
 #include "InterfaceController.h"
 #include "RouteController.h"
@@ -190,6 +191,17 @@ int InterfaceController::setMtu(const char *interface, const char *mtu)
         return -1;
     }
     return writeValueToPath(sys_net_path, interface, "mtu", mtu);
+}
+
+
+int InterfaceController::addAddress(const char *interface,
+        const char *addrString, int prefixLength) {
+    return ifc_add_address(interface, addrString, prefixLength);
+}
+
+int InterfaceController::delAddress(const char *interface,
+        const char *addrString, int prefixLength) {
+    return ifc_del_address(interface, addrString, prefixLength);
 }
 
 void InterfaceController::setBaseReachableTimeMs(unsigned int millis) {

@@ -209,5 +209,31 @@ binder::Status NetdNativeService::tetherApplyDnsInterfaces(bool *ret) {
     return binder::Status::ok();
 }
 
+binder::Status NetdNativeService::interfaceAddAddress(const std::string &ifName,
+        const std::string &addrString, int prefixLength) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+
+    const int err = InterfaceController::addAddress(
+            ifName.c_str(), addrString.c_str(), prefixLength);
+    if (err != 0) {
+        return binder::Status::fromServiceSpecificError(-err,
+                String8::format("InterfaceController error: %s", strerror(-err)));
+    }
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::interfaceDelAddress(const std::string &ifName,
+        const std::string &addrString, int prefixLength) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+
+    const int err = InterfaceController::delAddress(
+            ifName.c_str(), addrString.c_str(), prefixLength);
+    if (err != 0) {
+        return binder::Status::fromServiceSpecificError(-err,
+                String8::format("InterfaceController error: %s", strerror(-err)));
+    }
+    return binder::Status::ok();
+}
+
 }  // namespace net
 }  // namespace android
