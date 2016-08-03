@@ -42,12 +42,6 @@
 
 namespace {
 
-struct AddrinfoDeleter {
-  void operator()(addrinfo *a) { if (a) freeaddrinfo(a); }
-};
-
-typedef std::unique_ptr<addrinfo, AddrinfoDeleter> ScopedAddrinfo;
-
 int checkError(int fd) {
     struct {
         nlmsghdr h;
