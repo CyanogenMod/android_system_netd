@@ -24,6 +24,7 @@ public:
     static int setEnableIPv6(const char *interface, const int on);
     static int setAcceptIPv6Ra(const char *interface, const int on);
     static int setAcceptIPv6Dad(const char *interface, const int on);
+    static int setIPv6DadTransmits(const char *interface, const char *value);
     static int setIPv6PrivacyExtensions(const char *interface, const int on);
     static int setIPv6NdOffload(char* interface, const int on);
     static int setMtu(const char *interface, const char *mtu);

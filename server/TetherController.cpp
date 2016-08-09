@@ -65,11 +65,15 @@ bool writeToFile(const char* filename, const char* value) {
 bool configureForIPv6Router(const char *interface) {
     return (InterfaceController::setEnableIPv6(interface, 0) == 0)
             && (InterfaceController::setAcceptIPv6Ra(interface, 0) == 0)
+            && (InterfaceController::setAcceptIPv6Dad(interface, 0) == 0)
+            && (InterfaceController::setIPv6DadTransmits(interface, "0") == 0)
             && (InterfaceController::setEnableIPv6(interface, 1) == 0);
 }
 
 void configureForIPv6Client(const char *interface) {
     InterfaceController::setAcceptIPv6Ra(interface, 1);
+    InterfaceController::setAcceptIPv6Dad(interface, 1);
+    InterfaceController::setIPv6DadTransmits(interface, "1");
     InterfaceController::setEnableIPv6(interface, 0);
 }
 

@@ -136,6 +136,14 @@ int InterfaceController::setAcceptIPv6Dad(const char *interface, const int on) {
     return writeValueToPath(ipv6_proc_path, interface, "accept_dad", accept_dad);
 }
 
+int InterfaceController::setIPv6DadTransmits(const char *interface, const char *value) {
+    if (!isIfaceName(interface)) {
+        errno = ENOENT;
+        return -1;
+    }
+    return writeValueToPath(ipv6_proc_path, interface, "dad_transmits", value);
+}
+
 int InterfaceController::setIPv6PrivacyExtensions(const char *interface, const int on) {
     if (!isIfaceName(interface)) {
         errno = ENOENT;
