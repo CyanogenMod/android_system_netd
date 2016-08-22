@@ -1251,6 +1251,26 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         return 0;
     }
 
+    if (!strcmp(argv[1], "enableMms")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "enableMms input parameter error");
+            return 0;
+        }
+        bool rc = enableMms(argv[2]);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "enableData")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "enableData input parameter error");
+            return 0;
+        }
+        bool rc = enableData(argv[2]);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+
     cli->sendMsg(ResponseCode::CommandSyntaxError, "Unknown bandwidth cmd", false);
     return 0;
 }
