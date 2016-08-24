@@ -804,7 +804,7 @@ int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
         qsap_unprepare_softap();
 #else
     if (!strcmp(argv[1], "startap")) {
-        rc = gCtls->softapCtrl.startSoftap();
+        rc = gCtls->softapCtrl.startSoftap(false);
     } else if (!strcmp(argv[1], "stopap")) {
         rc = gCtls->softapCtrl.stopSoftap();
 #endif
