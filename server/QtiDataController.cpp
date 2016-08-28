@@ -44,6 +44,11 @@ int (*_blockAllData) () = NULL;
 int (*_unblockAllData) () = NULL;
 unsigned (*_checkAppInWhitelist) (SocketClient *cli) = NULL;
 
+void *_libCsmDataHandle = NULL;
+void (*_initCsmDataCtl) () = NULL;
+bool (*_enableMms)(char *uids) = NULL;
+bool (*_enableData)(char *uids) = NULL;
+
 void initDataControllerLibrary() {
     if (!_libDataHandle) {
         _libDataHandle = dlopen("libdatactrl.so", RTLD_NOW);
@@ -62,12 +67,30 @@ void initDataControllerLibrary() {
                     "some features may not be present.");
         }
     }
+
+    /**csm data*/
+    if (!_libCsmDataHandle) {
+        _libCsmDataHandle = dlopen("libcsm_data.so", RTLD_NOW);
+        if (_libCsmDataHandle) {
+            *(void **)&_initCsmDataCtl =
+                    dlsym(_libCsmDataHandle, "initCsmDataCtl");
+            *(void **)&_enableMms =
+                    dlsym(_libCsmDataHandle, "enableMms");
+            *(void **)&_enableData =
+                    dlsym(_libCsmDataHandle, "enableData");
+            ALOGI("Successfully loaded %s", "libCsmDataHandle");
+        } else {
+            ALOGE("Failed to open libcsm_data, "
+                    "some features may not be present.");
+        }
+    }
 }
 
 
 void initializeDataControllerLib() {
     initDataControllerLibrary();
     if (_initDataController) _initDataController();
+    if (_initCsmDataCtl) _initCsmDataCtl();
 }
 
 int blockAllData() {
@@ -85,3 +108,12 @@ unsigned checkAppInWhitelist(SocketClient *cli) {
     return 0;
 }
 
+bool enableMms(char *uids) {
+    if (_enableMms) return _enableMms(uids);
+    return -1;
+}
+
+bool enableData(char *uids) {
+    if (_enableData) return _enableData(uids);
+    return -1;
+}
