@@ -790,7 +790,7 @@ int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
     else if (!strcmp(argv[1], "startap")) {
         rc = qsap_prepare_softap();
         if (!rc) {
-            rc = gCtls->softapCtrl.startSoftap(qsap_is_fst_enabled());
+            rc = gCtls->softapCtrl.startSoftap(qsap_is_fst_enabled(), cli);
             if (rc != ResponseCode::SoftapStatusResult) {
                 ALOGE("failed to start SoftAP ResponseCode : %d", rc);
                 qsap_unprepare_softap();
@@ -804,7 +804,7 @@ int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
         qsap_unprepare_softap();
 #else
     if (!strcmp(argv[1], "startap")) {
-        rc = gCtls->softapCtrl.startSoftap(false);
+        rc = gCtls->softapCtrl.startSoftap(false, cli);
     } else if (!strcmp(argv[1], "stopap")) {
         rc = gCtls->softapCtrl.stopSoftap();
 #endif
