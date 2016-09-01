@@ -59,7 +59,7 @@ SoftapController::SoftapController()
 SoftapController::~SoftapController() {
 }
 
-int SoftapController::startSoftap(bool global_ctrl_iface = false) {
+int SoftapController::startSoftap(bool global_ctrl_iface) {
     pid_t pid = 1;
     DIR *dir = NULL;
     int ret;

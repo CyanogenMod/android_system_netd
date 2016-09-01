@@ -32,7 +32,7 @@ public:
     SoftapController();
     virtual ~SoftapController();
 
-    int startSoftap(bool global_ctrl_iface);
+    int startSoftap(bool global_ctrl_iface = false);
     int stopSoftap();
     bool isSoftapStarted();
     int setSoftap(int argc, char *argv[]);
