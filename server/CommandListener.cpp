@@ -1232,6 +1232,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         return 0;
 
     }
+
     if (!strcmp(argv[1], "blockAllData")) {
         if (argc < 2) {
             sendGenericSyntaxError(cli, "zerobalanceblock");
@@ -1267,6 +1268,43 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
             return 0;
         }
         bool rc = enableData(argv[2]);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "addrestrictappsondata")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "addrestrictappsondata <appUid> ...");
+            return 0;
+        }
+        int rc = gCtls->bandwidthCtrl.addRestrictAppsOnData(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+    if (!strcmp(argv[1], "removerestrictappsondata")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "removerestrictappsondata <appUid> ...");
+            return 0;
+        }
+        int rc = gCtls->bandwidthCtrl.removeRestrictAppsOnData(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+    if (!strcmp(argv[1], "addrestrictappsonwlan")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "addrestrictappsonwlan <appUid> ...");
+            return 0;
+        }
+        int rc = gCtls->bandwidthCtrl.addRestrictAppsOnWlan(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+    if (!strcmp(argv[1], "removerestrictappsonwlan")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "removerestrictappsonwlan <appUid> ...");
+            return 0;
+        }
+        int rc = gCtls->bandwidthCtrl.removeRestrictAppsOnWlan(argc - 2, argv + 2);
         sendGenericOkFail(cli, rc);
         return 0;
     }
