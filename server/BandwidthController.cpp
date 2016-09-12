@@ -296,6 +296,9 @@ int BandwidthController::enableBandwidthControl(bool force) {
     globalAlertTetherCount = 0;
     sharedQuotaBytes = sharedAlertBytes = 0;
 
+    restrictAppUidsOnData.clear();
+    restrictAppUidsOnWlan.clear();
+
     flushCleanTables(false);
     std::string commands = android::base::Join(IPT_BASIC_ACCOUNTING_COMMANDS, '\n');
     return iptablesRestoreFunction(V4V6, commands);
@@ -380,6 +383,116 @@ int BandwidthController::manipulateNiceApps(int numUids, char *appStrUids[], Spe
     return manipulateSpecialApps(numUids, appStrUids, "bw_happy_box", IptJumpReturn, appOp);
 }
 
+int BandwidthController::manipulateRestrictAppsOnData(int numUids, char *appUids[],
+        RestrictAppOp appOp) {
+    int ret = manipulateRestrictApps(numUids, appUids, "INPUT -i rmnet_data0",
+            restrictAppUidsOnData, appOp);
+    if (ret != 0) {
+        return ret;
+    } else {
+        return manipulateRestrictApps(numUids, appUids, "OUTPUT -o rmnet_data0",
+                restrictAppUidsOnData, appOp);
+    }
+}
+
+int BandwidthController::manipulateRestrictAppsOnWlan(int numUids, char *appUids[],
+        RestrictAppOp appOp) {
+    int ret = manipulateRestrictApps(numUids, appUids,"INPUT -i wlan0",
+            restrictAppUidsOnWlan, appOp);
+    if (ret != 0) {
+        return ret;
+    } else {
+        return manipulateRestrictApps(numUids, appUids,"OUTPUT -o wlan0",
+                restrictAppUidsOnWlan, appOp);
+    }
+}
+int BandwidthController::addRestrictAppsOnData(int numUids, char *appUids[]) {
+    return manipulateRestrictAppsOnData(numUids, appUids, RestrictAppOpAdd);
+}
+
+int BandwidthController::removeRestrictAppsOnData(int numUids, char *appUids[]) {
+    return manipulateRestrictAppsOnData(numUids, appUids, RestrictAppOpRemove);
+}
+
+int BandwidthController::addRestrictAppsOnWlan(int numUids, char *appUids[]) {
+    return manipulateRestrictAppsOnWlan(numUids, appUids, RestrictAppOpAdd);
+}
+
+int BandwidthController::removeRestrictAppsOnWlan(int numUids, char *appUids[]) {
+    return manipulateRestrictAppsOnWlan(numUids, appUids, RestrictAppOpRemove);
+}
+
+
+int BandwidthController::manipulateRestrictApps(int numUids, char *appStrUids[],
+                                               const char *chain,
+                                               std::list<int /*appUid*/> &restrictAppUids,
+                                               RestrictAppOp appOp) {
+    int uidNum;
+    const char *failLogTemplate;
+    IptOp op;
+    int appUids[numUids];
+    std::string iptCmd;
+    std::list<int /*uid*/>::iterator it;
+    bool isOutputChain = !strncmp(chain, "OUTPUT", strlen("OUTPUT"));
+    switch (appOp) {
+        case RestrictAppOpAdd:
+            op = IptOpInsert;
+            failLogTemplate = "Failed to add app uid %s(%d) to %s.";
+            break;
+        case RestrictAppOpRemove:
+            op = IptOpDelete;
+            failLogTemplate = "Failed to delete app uid %s(%d) from %s box.";
+            break;
+        default:
+            ALOGE("Unexpected app Op %d", appOp);
+            return -1;
+    }
+    for (uidNum = 0; uidNum < numUids; uidNum++) {
+        char *end;
+        appUids[uidNum] = strtoul(appStrUids[uidNum], &end, 0);
+        if (*end || !*appStrUids[uidNum]) {
+            ALOGE(failLogTemplate, appStrUids[uidNum], appUids[uidNum], chain);
+            goto fail_parse;
+        }
+    }
+
+    for (uidNum = 0; uidNum < numUids; uidNum++) {
+        int uid = appUids[uidNum];
+        for (it = restrictAppUids.begin(); it != restrictAppUids.end(); it++) {
+            if (*it == uid)
+                break;
+        }
+        bool found = (it != restrictAppUids.end());
+
+        if (appOp == RestrictAppOpRemove) {
+            if (!found) {
+                ALOGE("No such appUid %d to remove", uid);
+                return -1;
+            }
+            restrictAppUids.erase(it);
+        } else {
+            if (found && !isOutputChain) {
+                ALOGE("appUid %d exists already", uid);
+                return -1;
+            }
+            restrictAppUids.push_front(uid);
+        }
+
+        iptCmd = makeIptablesSpecialAppCmd(op, uid, chain);
+        if (runIpxtablesCmd(iptCmd.c_str(), IptJumpReject)) {
+            ALOGE(failLogTemplate, appStrUids[uidNum], uid, chain);
+            goto fail_with_uidNum;
+        }
+    }
+    return 0;
+
+fail_with_uidNum:
+    /* Try to remove the uid that failed in any case*/
+    iptCmd = makeIptablesSpecialAppCmd(IptOpDelete, appUids[uidNum], chain);
+    runIpxtablesCmd(iptCmd.c_str(), IptJumpReject);
+fail_parse:
+    return -1;
+}
 
 int BandwidthController::manipulateSpecialApps(int numUids, char *appStrUids[],
                                                const char *chain,
