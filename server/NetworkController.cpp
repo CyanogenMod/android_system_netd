@@ -453,8 +453,6 @@ int NetworkController::setPermissionForNetworks(Permission permission,
             return -EINVAL;
         }
 
-        // TODO: ioctl(SIOCKILLADDR, ...) to kill socets on the network that don't have permission.
-
         if (int ret = static_cast<PhysicalNetwork*>(network)->setPermission(permission)) {
             return ret;
         }

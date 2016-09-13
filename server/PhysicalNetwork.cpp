@@ -17,6 +17,7 @@
 #include "PhysicalNetwork.h"
 
 #include "RouteController.h"
+#include "SockDiag.h"
 
 #define LOG_TAG "Netd"
 #include "log/log.h"
@@ -65,10 +66,33 @@ Permission PhysicalNetwork::getPermission() const {
     return mPermission;
 }
 
+int PhysicalNetwork::destroySocketsLackingPermission(Permission permission) {
+    if (permission == PERMISSION_NONE) return 0;
+
+    SockDiag sd;
+    if (!sd.open()) {
+       ALOGE("Error closing sockets for netId %d permission change", mNetId);
+       return -EBADFD;
+    }
+    if (int ret = sd.destroySocketsLackingPermission(mNetId, permission,
+                                                     true /* excludeLoopback */)) {
+        ALOGE("Failed to close sockets changing netId %d to permission %d: %s",
+              mNetId, permission, strerror(-ret));
+        return ret;
+    }
+    return 0;
+}
+
 int PhysicalNetwork::setPermission(Permission permission) {
     if (permission == mPermission) {
         return 0;
     }
+    if (mInterfaces.empty()) {
+        mPermission = permission;
+        return 0;
+    }
+
+    destroySocketsLackingPermission(permission);
     for (const std::string& interface : mInterfaces) {
         if (int ret = RouteController::modifyPhysicalNetworkPermission(mNetId, interface.c_str(),
                                                                        mPermission, permission)) {
@@ -87,6 +111,10 @@ int PhysicalNetwork::setPermission(Permission permission) {
             }
         }
     }
+    // Destroy sockets again in case any were opened after we called destroySocketsLackingPermission
+    // above and before we changed the permissions. These sockets won't be able to send any RST
+    // packets because they are now no longer routed, but at least the apps will get errors.
+    destroySocketsLackingPermission(permission);
     mPermission = permission;
     return 0;
 }
