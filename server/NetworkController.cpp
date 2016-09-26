@@ -536,7 +536,14 @@ void NetworkController::dump(DumpWriter& dw) {
     dw.println("Networks:");
     dw.incIndent();
     for (const auto& i : mNetworks) {
-        dw.println(i.second->toString().c_str());
+        Network* network = i.second;
+        dw.println(network->toString().c_str());
+        if (network->getType() == Network::PHYSICAL) {
+            dw.incIndent();
+            Permission permission = reinterpret_cast<PhysicalNetwork*>(network)->getPermission();
+            dw.println("Required permission: %s", permissionToName(permission));
+            dw.decIndent();
+        }
         android::net::gCtls->resolverCtrl.dump(dw, i.first);
         dw.blankline();
     }
