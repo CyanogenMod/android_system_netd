@@ -48,6 +48,15 @@
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
 
+#ifdef LIBWPA_CLIENT_EXISTS
+#include <dirent.h>
+#include "wpa_ctrl.h"
+#endif
+
+#ifdef LIBWPA_CLIENT_EXISTS
+static const char HOSTAPD_UNIX_FILE[]    = "/data/misc/wifi/hostapd/wlan0";
+static const char HOSTAPD_DHCP_DIR[]    = "/data/misc/dhcp";
+#endif
 static const char HOSTAPD_CONF_FILE[]    = "/data/misc/wifi/hostapd.conf";
 static const char HOSTAPD_BIN_FILE[]    = "/system/bin/hostapd";
 static const char HOSTAPD_SOCKETS_DIR[]    = "/data/misc/wifi/sockets";
@@ -59,7 +68,91 @@ SoftapController::SoftapController()
 SoftapController::~SoftapController() {
 }
 
-int SoftapController::startSoftap(bool global_ctrl_iface) {
+#ifdef LIBWPA_CLIENT_EXISTS
+void *SoftapController::threadStart(void *obj){
+    SoftapController *me = reinterpret_cast<SoftapController *>(obj);
+    struct wpa_ctrl *ctrl;
+    int count = 0;
+
+    ALOGD("SoftapController::threadStart...");
+
+    DIR *dir = NULL;
+
+    dir = opendir(HOSTAPD_SOCKETS_DIR);
+    if (NULL == dir && errno == ENOENT) {
+        mkdir(HOSTAPD_SOCKETS_DIR, S_IRWXU|S_IRWXG|S_IRWXO);
+        chown(HOSTAPD_SOCKETS_DIR, AID_WIFI, AID_WIFI);
+        chmod(HOSTAPD_SOCKETS_DIR, S_IRWXU|S_IRWXG);
+    } else {
+         if (dir != NULL) { /* Directory already exists */
+             ALOGD("%s already exists", HOSTAPD_SOCKETS_DIR);
+             closedir(dir);
+         }
+         if (errno == EACCES) {
+             ALOGE("Cant open %s , check permissions ", HOSTAPD_SOCKETS_DIR);
+         }
+    }
+    chmod(HOSTAPD_DHCP_DIR, S_IRWXU|S_IRWXG|S_IRWXO);
+
+    ctrl = wpa_ctrl_open(HOSTAPD_UNIX_FILE);
+    while (ctrl == NULL) {
+        /*
+         * Try to connect to hostapd via wpa_ctrl interface.
+         * During conneciton process, it is possible that hostapd
+         * has station connected to it.
+         * Set sleep time to a appropriate value to lower the
+         * ratio that miss the STA-CONNECTED msg from hostapd
+         */
+        usleep(20000);
+        ctrl = wpa_ctrl_open(HOSTAPD_UNIX_FILE);
+        if (ctrl != NULL || count >= 150) {
+            break;
+        }
+        count ++;
+    }
+    if (count == 150 && ctrl == NULL) {
+        ALOGE("Connection to hostapd Error.");
+        return NULL;
+    }
+
+    if (wpa_ctrl_attach(ctrl) != 0) {
+        wpa_ctrl_close(ctrl);
+        ALOGE("Attach to hostapd Error.");
+        return NULL;
+    }
+
+    while (me->mHostapdFlag) {
+        int res = 0;
+        char buf[256];
+        char dest_str[300];
+        while (wpa_ctrl_pending(ctrl)) {
+            size_t len = sizeof(buf) - 1;
+            res = wpa_ctrl_recv(ctrl, buf, &len);
+            if (res == 0) {
+                buf[len] = '\0';
+                ALOGD("Get event from hostapd (%s)", buf);
+                memset(dest_str, 0x0, sizeof(dest_str));
+                snprintf(dest_str, sizeof(dest_str), "IfaceMessage active %s", buf);
+                me->mSocketClient->sendMsg(ResponseCode::InterfaceMessage, dest_str, false);
+            } else {
+                break;
+            }
+        }
+
+        if (res < 0) {
+            break;
+        }
+        sleep(2);
+    }
+
+    wpa_ctrl_detach(ctrl);
+    wpa_ctrl_close(ctrl);
+
+    return NULL;
+}
+#endif
+
+int SoftapController::startSoftap(bool global_ctrl_iface, SocketClient *socketClient = NULL) {
     pid_t pid = 1;
     DIR *dir = NULL;
     int ret;
@@ -113,6 +206,13 @@ int SoftapController::startSoftap(bool global_ctrl_iface) {
                 ALOGE("Cant open %s , check permissions ", HOSTAPD_SOCKETS_DIR);
             }
         }
+#ifdef LIBWPA_CLIENT_EXISTS
+        mSocketClient = socketClient;
+        mHostapdFlag = true;
+        if ((mThreadErr = pthread_create(&mThread, NULL, SoftapController::threadStart, this)) != 0) {
+            ALOGE("pthread_create failed for hostapd listen socket (%s)", strerror(errno));
+        }
+#endif
     }
     return ResponseCode::SoftapStatusResult;
 }
@@ -123,6 +223,13 @@ int SoftapController::stopSoftap() {
         ALOGE("SoftAP is not running");
         return ResponseCode::SoftapStatusResult;
     }
+
+#ifdef LIBWPA_CLIENT_EXISTS
+    mHostapdFlag = false;
+    if (mThreadErr == 0) {
+        pthread_join(mThread, NULL);
+    }
+#endif
 
     ALOGD("Stopping the SoftAP service...");
     kill(mPid, SIGTERM);

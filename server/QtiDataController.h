@@ -40,4 +40,7 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  int unblockAllData();
  unsigned checkAppInWhitelist(SocketClient *cli);
 
+ bool enableMms(char* uids);
+ bool enableData(char* uids);
+
 #endif

@@ -86,6 +86,12 @@ public:
     int setInterfaceAlert(const char *iface, int64_t bytes);
     int removeInterfaceAlert(const char *iface);
 
+    int addRestrictAppsOnData(int numUids, char *appUids[]);
+    int removeRestrictAppsOnData(int numUids, char *appUids[]);
+
+    int addRestrictAppsOnWlan(int numUids, char *appUids[]);
+    int removeRestrictAppsOnWlan(int numUids, char *appUids[]);
+
     /*
      * For single pair of ifaces, stats should have ifaceIn and ifaceOut initialized.
      * For all pairs, stats should have ifaceIn=ifaceOut="".
@@ -116,6 +122,7 @@ protected:
     enum IptOp { IptOpInsert, IptOpReplace, IptOpDelete, IptOpAppend };
     enum IptJumpOp { IptJumpReject, IptJumpReturn, IptJumpNoAdd };
     enum SpecialAppOp { SpecialAppOpAdd, SpecialAppOpRemove };
+    enum RestrictAppOp { RestrictAppOpAdd, RestrictAppOpRemove};
     enum QuotaType { QuotaUnique, QuotaShared };
     enum RunCmdErrHandling { RunCmdFailureBad, RunCmdFailureOk };
 #if LOG_NDEBUG
@@ -129,6 +136,13 @@ protected:
                                IptJumpOp jumpHandling, SpecialAppOp appOp);
     int manipulateNaughtyApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
     int manipulateNiceApps(int numUids, char *appStrUids[], SpecialAppOp appOp);
+
+    int manipulateRestrictAppsOnData(int numUids, char* appStrUids[], RestrictAppOp appOp);
+    int manipulateRestrictAppsOnWlan(int numUids, char* appStrUids[], RestrictAppOp appOp);
+    int manipulateRestrictApps(int numUids, char *appStrUids[],
+                               const char *chain,
+                               std::list<int /*appUid*/> &restrictAppUids,
+                               RestrictAppOp appOp);
 
     int prepCostlyIface(const char *ifn, QuotaType quotaType);
     int cleanupCostlyIface(const char *ifn, QuotaType quotaType);
@@ -207,6 +221,9 @@ protected:
     static int (*execFunction)(int, char **, int *, bool, bool);
     static FILE *(*popenFunction)(const char *, const char *);
     static int (*iptablesRestoreFunction)(IptablesTarget, const std::string&);
+
+    std::list<int /*appUid*/> restrictAppUidsOnData;
+    std::list<int /*appUid*/> restrictAppUidsOnWlan;
 };
 
 #endif

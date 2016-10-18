@@ -790,7 +790,7 @@ int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
     else if (!strcmp(argv[1], "startap")) {
         rc = qsap_prepare_softap();
         if (!rc) {
-            rc = gCtls->softapCtrl.startSoftap(qsap_is_fst_enabled());
+            rc = gCtls->softapCtrl.startSoftap(qsap_is_fst_enabled(), cli);
             if (rc != ResponseCode::SoftapStatusResult) {
                 ALOGE("failed to start SoftAP ResponseCode : %d", rc);
                 qsap_unprepare_softap();
@@ -804,7 +804,7 @@ int CommandListener::SoftapCmd::runCommand(SocketClient *cli,
         qsap_unprepare_softap();
 #else
     if (!strcmp(argv[1], "startap")) {
-        rc = gCtls->softapCtrl.startSoftap();
+        rc = gCtls->softapCtrl.startSoftap(false, cli);
     } else if (!strcmp(argv[1], "stopap")) {
         rc = gCtls->softapCtrl.stopSoftap();
 #endif
@@ -1232,6 +1232,7 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
         return 0;
 
     }
+
     if (!strcmp(argv[1], "blockAllData")) {
         if (argc < 2) {
             sendGenericSyntaxError(cli, "zerobalanceblock");
@@ -1247,6 +1248,63 @@ int CommandListener::BandwidthControlCmd::runCommand(SocketClient *cli, int argc
             return 0;
         }
         int rc = unblockAllData();
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "enableMms")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "enableMms input parameter error");
+            return 0;
+        }
+        bool rc = enableMms(argv[2]);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "enableData")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "enableData input parameter error");
+            return 0;
+        }
+        bool rc = enableData(argv[2]);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "addrestrictappsondata")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "addrestrictappsondata <appUid> ...");
+            return 0;
+        }
+        int rc = gCtls->bandwidthCtrl.addRestrictAppsOnData(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+    if (!strcmp(argv[1], "removerestrictappsondata")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "removerestrictappsondata <appUid> ...");
+            return 0;
+        }
+        int rc = gCtls->bandwidthCtrl.removeRestrictAppsOnData(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+    if (!strcmp(argv[1], "addrestrictappsonwlan")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "addrestrictappsonwlan <appUid> ...");
+            return 0;
+        }
+        int rc = gCtls->bandwidthCtrl.addRestrictAppsOnWlan(argc - 2, argv + 2);
+        sendGenericOkFail(cli, rc);
+        return 0;
+    }
+    if (!strcmp(argv[1], "removerestrictappsonwlan")) {
+        if (argc < 3) {
+            sendGenericSyntaxError(cli, "removerestrictappsonwlan <appUid> ...");
+            return 0;
+        }
+        int rc = gCtls->bandwidthCtrl.removeRestrictAppsOnWlan(argc - 2, argv + 2);
         sendGenericOkFail(cli, rc);
         return 0;
     }
