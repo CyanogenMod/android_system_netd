@@ -108,20 +108,13 @@ bool TetherController::enableForwarding(const char* requester) {
     // Don't return an error if this requester already requested forwarding. Only return errors for
     // things that the caller caller needs to care about, such as "couldn't write to the file to
     // enable forwarding".
-    bool trigger = mForwardingRequests.empty();
     mForwardingRequests.insert(requester);
-    if (trigger) {
-        return setIpFwdEnabled();
-    }
-    return true;
+    return setIpFwdEnabled();
 }
 
 bool TetherController::disableForwarding(const char* requester) {
     mForwardingRequests.erase(requester);
-    if (mForwardingRequests.empty()) {
-        return setIpFwdEnabled();
-    }
-    return true;
+    return setIpFwdEnabled();
 }
 
 size_t TetherController::forwardingRequestCount() {
