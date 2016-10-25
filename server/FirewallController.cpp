@@ -31,7 +31,7 @@
 using android::base::StringAppendF;
 
 auto FirewallController::execIptables = ::execIptables;
-auto FirewallController::execIptablesSilently = ::execIptables;
+auto FirewallController::execIptablesSilently = ::execIptablesSilently;
 auto FirewallController::execIptablesRestore = ::execIptablesRestore;
 
 const char* FirewallController::TABLE = "filter";
@@ -299,6 +299,9 @@ std::string FirewallController::makeUidRules(IptablesTarget target, const char *
         bool isWhitelist, const std::vector<int32_t>& uids) {
     std::string commands;
     StringAppendF(&commands, "*filter\n:%s -\n", name);
+
+    // Always allow networking on loopback.
+    StringAppendF(&commands, "-A %s -i lo -o lo -j RETURN\n", name);
 
     // Allow TCP RSTs so we can cleanly close TCP connections of apps that no longer have network
     // access. Both incoming and outgoing RSTs are allowed.

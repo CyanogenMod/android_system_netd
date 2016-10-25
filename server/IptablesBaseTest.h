@@ -16,6 +16,8 @@
  * IptablesBaseTest.h - utility class for tests that use iptables
  */
 
+#include <deque>
+
 #include "NetdConstants.h"
 
 class IptablesBaseTest : public ::testing::Test {
@@ -25,15 +27,19 @@ public:
     typedef std::vector<std::pair<IptablesTarget, std::string>> ExpectedIptablesCommands;
 
     static int fake_android_fork_exec(int argc, char* argv[], int *status, bool, bool);
+    static int fake_android_fork_execvp(int argc, char* argv[], int *status, bool, bool);
     static int fakeExecIptables(IptablesTarget target, ...);
     static int fakeExecIptablesRestore(IptablesTarget target, const std::string& commands);
+    static FILE *fake_popen(const char *cmd, const char *type);
     void expectIptablesCommands(const std::vector<std::string>& expectedCmds);
     void expectIptablesCommands(const ExpectedIptablesCommands& expectedCmds);
+    void expectIptablesCommands(const std::vector<ExpectedIptablesCommands>& snippets);
     void expectIptablesRestoreCommands(const std::vector<std::string>& expectedCmds);
     void expectIptablesRestoreCommands(const ExpectedIptablesCommands& expectedCmds);
 
 protected:
     static std::vector<std::string> sCmds;
     static ExpectedIptablesCommands sRestoreCmds;
+    static std::deque<std::string> sPopenContents;
     int expectIptablesCommand(IptablesTarget target, int pos, const std::string& cmd);
 };

@@ -24,19 +24,29 @@
 #include <set>
 #include <vector>
 
+#include <fcntl.h>
+#include <ifaddrs.h>
+#include <netdb.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <netinet/in.h>
+#include <linux/if.h>
+#include <linux/if_tun.h>
 
+#include <android-base/macros.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <cutils/multiuser.h>
 #include <gtest/gtest.h>
 #include <logwrap/logwrap.h>
+#include <netutils/ifc.h>
 
 #include "NetdConstants.h"
 #include "android/net/INetd.h"
 #include "android/net/UidRange.h"
 #include "binder/IServiceManager.h"
+
+#define TUN_DEV "/dev/tun"
 
 using namespace android;
 using namespace android::base;
@@ -58,14 +68,39 @@ public:
         }
     }
 
-    void SetUp() {
+    void SetUp() override {
         ASSERT_NE(nullptr, mNetd.get());
     }
 
+    // Static because setting up the tun interface takes about 40ms.
+    static void SetUpTestCase() {
+        sTunFd = createTunInterface();
+        ASSERT_LE(sTunIfName.size(), static_cast<size_t>(IFNAMSIZ));
+        ASSERT_NE(-1, sTunFd);
+    }
+
+    static void TearDownTestCase() {
+        // Closing the socket removes the interface and IP addresses.
+        close(sTunFd);
+    }
+
+    static void fakeRemoteSocketPair(int *clientSocket, int *serverSocket, int *acceptedSocket);
+    static int createTunInterface();
+
 protected:
     sp<INetd> mNetd;
+    static int sTunFd;
+    static std::string sTunIfName;
+    static in6_addr sSrcAddr, sDstAddr;
+    static char sSrcStr[], sDstStr[];
 };
 
+int BinderTest::sTunFd;
+std::string BinderTest::sTunIfName;
+in6_addr BinderTest::sSrcAddr;
+in6_addr BinderTest::sDstAddr;
+char BinderTest::sSrcStr[INET6_ADDRSTRLEN];
+char BinderTest::sDstStr[INET6_ADDRSTRLEN];
 
 class TimedOperation : public Stopwatch {
 public:
@@ -117,7 +152,7 @@ static std::vector<std::string> listIpRules(const char *ipVersion) {
 }
 
 static std::vector<std::string> listIptablesRule(const char *binary, const char *chainName) {
-    std::string command = StringPrintf("%s -n -L %s", binary, chainName);
+    std::string command = StringPrintf("%s -w -n -L %s", binary, chainName);
     return runCommand(command);
 }
 
@@ -140,31 +175,31 @@ TEST_F(BinderTest, TestFirewallReplaceUidChain) {
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), true, uids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ((int) uids.size() + 5, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ((int) uids.size() + 11, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 6, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 12, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
     {
         TimedOperation op("Clearing whitelist chain");
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, noUids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ(3, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ(3, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(4, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(4, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
 
     {
         TimedOperation op(StringPrintf("Programming %d-UID blacklist chain", kNumUids));
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, uids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ((int) uids.size() + 3, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ((int) uids.size() + 3, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 4, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ((int) uids.size() + 4, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
 
     {
         TimedOperation op("Clearing blacklist chain");
         mNetd->firewallReplaceUidChain(String16(chainName.c_str()), false, noUids, &ret);
     }
     EXPECT_EQ(true, ret);
-    EXPECT_EQ(3, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
-    EXPECT_EQ(3, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(4, iptablesRuleLineLength(IPTABLES_PATH, chainName.c_str()));
+    EXPECT_EQ(4, iptablesRuleLineLength(IP6TABLES_PATH, chainName.c_str()));
 
     // Check that the call fails if iptables returns an error.
     std::string veryLongStringName = "netd_binder_test_UnacceptablyLongIptablesChainName";
@@ -296,9 +331,52 @@ TEST_F(BinderTest, TestNetworkRejectNonSecureVpn) {
     EXPECT_EQ(initialRulesV6, listIpRules(IP_RULE_V6));
 }
 
-void socketpair(int *clientSocket, int *serverSocket, int *acceptedSocket) {
+int BinderTest::createTunInterface() {
+    // Generate a random ULA address pair.
+    arc4random_buf(&sSrcAddr, sizeof(sSrcAddr));
+    sSrcAddr.s6_addr[0] = 0xfd;
+    memcpy(&sDstAddr, &sSrcAddr, sizeof(sDstAddr));
+    sDstAddr.s6_addr[15] ^= 1;
+
+    // Convert the addresses to strings because that's what ifc_add_address takes.
+    sockaddr_in6 src6 = { .sin6_family = AF_INET6, .sin6_addr = sSrcAddr, };
+    sockaddr_in6 dst6 = { .sin6_family = AF_INET6, .sin6_addr = sDstAddr, };
+    int flags = NI_NUMERICHOST;
+    if (getnameinfo((sockaddr *) &src6, sizeof(src6), sSrcStr, sizeof(sSrcStr), NULL, 0, flags) ||
+        getnameinfo((sockaddr *) &dst6, sizeof(dst6), sDstStr, sizeof(sDstStr), NULL, 0, flags)) {
+        return -1;
+    }
+
+    // Create a tun interface with a name based on our PID.
+    sTunIfName = StringPrintf("netdtest%u", getpid());
+    struct ifreq ifr = {
+        .ifr_ifru = { .ifru_flags = IFF_TUN },
+    };
+    snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "%s", sTunIfName.c_str());
+
+    int fd = open(TUN_DEV, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    EXPECT_NE(-1, fd) << TUN_DEV << ": " << strerror(errno);
+    if (fd == -1) return fd;
+
+    int ret = ioctl(fd, TUNSETIFF, &ifr, sizeof(ifr));
+    EXPECT_EQ(0, ret) << "TUNSETIFF: " << strerror(errno);
+    if (ret) {
+        close(fd);
+        return -1;
+    }
+
+    if (ifc_add_address(ifr.ifr_name, sSrcStr, 64) ||
+        ifc_add_address(ifr.ifr_name, sDstStr, 64)) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+// Create a socket pair that isLoopbackSocket won't think is local.
+void BinderTest::fakeRemoteSocketPair(int *clientSocket, int *serverSocket, int *acceptedSocket) {
     *serverSocket = socket(AF_INET6, SOCK_STREAM, 0);
-    struct sockaddr_in6 server6 = { .sin6_family = AF_INET6 };
+    struct sockaddr_in6 server6 = { .sin6_family = AF_INET6, .sin6_addr = sDstAddr };
     ASSERT_EQ(0, bind(*serverSocket, (struct sockaddr *) &server6, sizeof(server6)));
 
     socklen_t addrlen = sizeof(server6);
@@ -306,7 +384,8 @@ void socketpair(int *clientSocket, int *serverSocket, int *acceptedSocket) {
     ASSERT_EQ(0, listen(*serverSocket, 10));
 
     *clientSocket = socket(AF_INET6, SOCK_STREAM, 0);
-    struct sockaddr_in6 client6;
+    struct sockaddr_in6 client6 = { .sin6_family = AF_INET6, .sin6_addr = sSrcAddr };
+    ASSERT_EQ(0, bind(*clientSocket, (struct sockaddr *) &client6, sizeof(client6)));
     ASSERT_EQ(0, connect(*clientSocket, (struct sockaddr *) &server6, sizeof(server6)));
     ASSERT_EQ(0, getsockname(*clientSocket, (struct sockaddr *) &client6, &addrlen));
 
@@ -339,7 +418,7 @@ void checkSocketpairClosed(int clientSocket, int acceptedSocket) {
 
 TEST_F(BinderTest, TestSocketDestroy) {
     int clientSocket, serverSocket, acceptedSocket;
-    ASSERT_NO_FATAL_FAILURE(socketpair(&clientSocket, &serverSocket, &acceptedSocket));
+    ASSERT_NO_FATAL_FAILURE(fakeRemoteSocketPair(&clientSocket, &serverSocket, &acceptedSocket));
 
     // Pick a random UID in the system UID range.
     constexpr int baseUid = AID_APP - 2000;
@@ -382,4 +461,159 @@ TEST_F(BinderTest, TestSocketDestroy) {
     close(clientSocket);
     close(serverSocket);
     close(acceptedSocket);
+}
+
+namespace {
+
+int netmaskToPrefixLength(const uint8_t *buf, size_t buflen) {
+    if (buf == nullptr) return -1;
+
+    int prefixLength = 0;
+    bool endOfContiguousBits = false;
+    for (unsigned int i = 0; i < buflen; i++) {
+        const uint8_t value = buf[i];
+
+        // Bad bit sequence: check for a contiguous set of bits from the high
+        // end by verifying that the inverted value + 1 is a power of 2
+        // (power of 2 iff. (v & (v - 1)) == 0).
+        const uint8_t inverse = ~value + 1;
+        if ((inverse & (inverse - 1)) != 0) return -1;
+
+        prefixLength += (value == 0) ? 0 : CHAR_BIT - ffs(value) + 1;
+
+        // Bogus netmask.
+        if (endOfContiguousBits && value != 0) return -1;
+
+        if (value != 0xff) endOfContiguousBits = true;
+    }
+
+    return prefixLength;
+}
+
+template<typename T>
+int netmaskToPrefixLength(const T *p) {
+    return netmaskToPrefixLength(reinterpret_cast<const uint8_t*>(p), sizeof(T));
+}
+
+
+static bool interfaceHasAddress(
+        const std::string &ifname, const char *addrString, int prefixLength) {
+    struct addrinfo *addrinfoList = nullptr;
+    ScopedAddrinfo addrinfoCleanup(addrinfoList);
+
+    const struct addrinfo hints = {
+        .ai_flags    = AI_NUMERICHOST,
+        .ai_family   = AF_UNSPEC,
+        .ai_socktype = SOCK_DGRAM,
+    };
+    if (getaddrinfo(addrString, nullptr, &hints, &addrinfoList) != 0 ||
+        addrinfoList == nullptr || addrinfoList->ai_addr == nullptr) {
+        return false;
+    }
+
+    struct ifaddrs *ifaddrsList = nullptr;
+    ScopedIfaddrs ifaddrsCleanup(ifaddrsList);
+
+    if (getifaddrs(&ifaddrsList) != 0) {
+        return false;
+    }
+
+    for (struct ifaddrs *addr = ifaddrsList; addr != nullptr; addr = addr->ifa_next) {
+        if (std::string(addr->ifa_name) != ifname ||
+            addr->ifa_addr == nullptr ||
+            addr->ifa_addr->sa_family != addrinfoList->ai_addr->sa_family) {
+            continue;
+        }
+
+        switch (addr->ifa_addr->sa_family) {
+        case AF_INET: {
+            auto *addr4 = reinterpret_cast<const struct sockaddr_in*>(addr->ifa_addr);
+            auto *want = reinterpret_cast<const struct sockaddr_in*>(addrinfoList->ai_addr);
+            if (memcmp(&addr4->sin_addr, &want->sin_addr, sizeof(want->sin_addr)) != 0) {
+                continue;
+            }
+
+            if (prefixLength < 0) return true;  // not checking prefix lengths
+
+            if (addr->ifa_netmask == nullptr) return false;
+            auto *nm = reinterpret_cast<const struct sockaddr_in*>(addr->ifa_netmask);
+            EXPECT_EQ(prefixLength, netmaskToPrefixLength(&nm->sin_addr));
+            return (prefixLength == netmaskToPrefixLength(&nm->sin_addr));
+        }
+        case AF_INET6: {
+            auto *addr6 = reinterpret_cast<const struct sockaddr_in6*>(addr->ifa_addr);
+            auto *want = reinterpret_cast<const struct sockaddr_in6*>(addrinfoList->ai_addr);
+            if (memcmp(&addr6->sin6_addr, &want->sin6_addr, sizeof(want->sin6_addr)) != 0) {
+                continue;
+            }
+
+            if (prefixLength < 0) return true;  // not checking prefix lengths
+
+            if (addr->ifa_netmask == nullptr) return false;
+            auto *nm = reinterpret_cast<const struct sockaddr_in6*>(addr->ifa_netmask);
+            EXPECT_EQ(prefixLength, netmaskToPrefixLength(&nm->sin6_addr));
+            return (prefixLength == netmaskToPrefixLength(&nm->sin6_addr));
+        }
+        default:
+            // Cannot happen because we have already screened for matching
+            // address families at the top of each iteration.
+            continue;
+        }
+    }
+
+    return false;
+}
+
+}  // namespace
+
+TEST_F(BinderTest, TestInterfaceAddRemoveAddress) {
+    static const struct TestData {
+        const char *addrString;
+        const int   prefixLength;
+        const bool  expectSuccess;
+    } kTestData[] = {
+        { "192.0.2.1", 24, true },
+        { "192.0.2.2", 25, true },
+        { "192.0.2.3", 32, true },
+        { "192.0.2.4", 33, false },
+        { "192.not.an.ip", 24, false },
+        { "2001:db8::1", 64, true },
+        { "2001:db8::2", 65, true },
+        { "2001:db8::3", 128, true },
+        { "2001:db8::4", 129, false },
+        { "foo:bar::bad", 64, false },
+    };
+
+    for (unsigned int i = 0; i < arraysize(kTestData); i++) {
+        const auto &td = kTestData[i];
+
+        // [1.a] Add the address.
+        binder::Status status = mNetd->interfaceAddAddress(
+                sTunIfName, td.addrString, td.prefixLength);
+        if (td.expectSuccess) {
+            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        } else {
+            ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            ASSERT_NE(0, status.serviceSpecificErrorCode());
+        }
+
+        // [1.b] Verify the addition meets the expectation.
+        if (td.expectSuccess) {
+            EXPECT_TRUE(interfaceHasAddress(sTunIfName, td.addrString, td.prefixLength));
+        } else {
+            EXPECT_FALSE(interfaceHasAddress(sTunIfName, td.addrString, -1));
+        }
+
+        // [2.a] Try to remove the address.  If it was not previously added, removing it fails.
+        status = mNetd->interfaceDelAddress(sTunIfName, td.addrString, td.prefixLength);
+        if (td.expectSuccess) {
+            EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        } else {
+            ASSERT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            ASSERT_NE(0, status.serviceSpecificErrorCode());
+        }
+
+        // [2.b] No matter what, the address should not be present.
+        EXPECT_FALSE(interfaceHasAddress(sTunIfName, td.addrString, -1));
+    }
 }

@@ -16,13 +16,19 @@
  * IptablesBaseTest.cpp - utility class for tests that use iptables
  */
 
+#include <deque>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include <android-base/stringprintf.h>
+
 #include "IptablesBaseTest.h"
 #include "NetdConstants.h"
+
+#define LOG_TAG "IptablesBaseTest"
+#include <cutils/log.h>
 
 IptablesBaseTest::IptablesBaseTest() {
     sCmds.clear();
@@ -32,11 +38,14 @@ IptablesBaseTest::IptablesBaseTest() {
 int IptablesBaseTest::fake_android_fork_exec(int argc, char* argv[], int *status, bool, bool) {
     std::string cmd = argv[0];
     for (int i = 1; i < argc; i++) {
+        if (argv[i] == NULL) break;  // NatController likes to pass in invalid argc values.
         cmd += " ";
         cmd += argv[i];
     }
     sCmds.push_back(cmd);
-    *status = 0;
+    if (status) {
+        *status = 0;
+    }
     return 0;
 }
 
@@ -61,6 +70,16 @@ int IptablesBaseTest::fakeExecIptables(IptablesTarget target, ...) {
     }
 
     return 0;
+}
+
+FILE *IptablesBaseTest::fake_popen(const char * /* cmd */, const char *type) {
+    if (sPopenContents.empty() || strcmp(type, "r") != 0) {
+        return NULL;
+    }
+
+    std::string realCmd = android::base::StringPrintf("echo '%s'", sPopenContents.front().c_str());
+    sPopenContents.pop_front();
+    return popen(realCmd.c_str(), "r");
 }
 
 int IptablesBaseTest::fakeExecIptablesRestore(IptablesTarget target, const std::string& commands) {
@@ -112,6 +131,15 @@ void IptablesBaseTest::expectIptablesCommands(const ExpectedIptablesCommands& ex
     sCmds.clear();
 }
 
+void IptablesBaseTest::expectIptablesCommands(
+        const std::vector<ExpectedIptablesCommands>& snippets) {
+    ExpectedIptablesCommands expected;
+    for (const auto& snippet: snippets) {
+        expected.insert(expected.end(), snippet.begin(), snippet.end());
+    }
+    expectIptablesCommands(expected);
+}
+
 void IptablesBaseTest::expectIptablesRestoreCommands(const std::vector<std::string>& expectedCmds) {
     ExpectedIptablesCommands expected;
     for (auto cmd : expectedCmds) {
@@ -131,3 +159,4 @@ void IptablesBaseTest::expectIptablesRestoreCommands(const ExpectedIptablesComma
 
 std::vector<std::string> IptablesBaseTest::sCmds = {};
 IptablesBaseTest::ExpectedIptablesCommands IptablesBaseTest::sRestoreCmds = {};
+std::deque<std::string> IptablesBaseTest::sPopenContents = {};

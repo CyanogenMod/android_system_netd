@@ -18,19 +18,27 @@
 #define _INTERFACE_CONTROLLER_H
 
 class InterfaceController {
- public:
-	InterfaceController();
-	virtual ~InterfaceController();
-	int setEnableIPv6(const char *interface, const int on);
-	int setIPv6PrivacyExtensions(const char *interface, const int on);
-	int setIPv6NdOffload(char* interface, const int on);
-	int setMtu(const char *interface, const char *mtu);
+public:
+    static void initializeAll();
 
- private:
-	void setAcceptRA(const char* value);
-	void setAcceptRARouteTable(int tableOrOffset);
-	void setBaseReachableTimeMs(unsigned int millis);
-	void setIPv6OptimisticMode(const char *value);
+    static int setEnableIPv6(const char *interface, const int on);
+    static int setAcceptIPv6Ra(const char *interface, const int on);
+    static int setAcceptIPv6Dad(const char *interface, const int on);
+    static int setIPv6DadTransmits(const char *interface, const char *value);
+    static int setIPv6PrivacyExtensions(const char *interface, const int on);
+    static int setIPv6NdOffload(char* interface, const int on);
+    static int setMtu(const char *interface, const char *mtu);
+    static int addAddress(const char *interface, const char *addrString, int prefixLength);
+    static int delAddress(const char *interface, const char *addrString, int prefixLength);
+
+private:
+    static void setAcceptRA(const char* value);
+    static void setAcceptRARouteTable(int tableOrOffset);
+    static void setBaseReachableTimeMs(unsigned int millis);
+    static void setIPv6OptimisticMode(const char *value);
+
+    InterfaceController() = delete;
+    ~InterfaceController() = delete;
 };
 
 #endif

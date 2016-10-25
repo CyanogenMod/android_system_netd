@@ -42,12 +42,6 @@
 
 namespace {
 
-struct AddrinfoDeleter {
-  void operator()(addrinfo *a) { if (a) freeaddrinfo(a); }
-};
-
-typedef std::unique_ptr<addrinfo, AddrinfoDeleter> ScopedAddrinfo;
-
 int checkError(int fd) {
     struct {
         nlmsghdr h;
@@ -236,6 +230,28 @@ int SockDiag::readDiagMsg(uint8_t proto, SockDiag::DumpCallback callback) {
     return 0;
 }
 
+// Determines whether a socket is a loopback socket. Does not check socket state.
+bool SockDiag::isLoopbackSocket(const inet_diag_msg *msg) {
+    switch (msg->idiag_family) {
+        case AF_INET:
+            // Old kernels only copy the IPv4 address and leave the other 12 bytes uninitialized.
+            return IN_LOOPBACK(htonl(msg->id.idiag_src[0])) ||
+                   IN_LOOPBACK(htonl(msg->id.idiag_dst[0])) ||
+                   msg->id.idiag_src[0] == msg->id.idiag_dst[0];
+
+        case AF_INET6: {
+            const struct in6_addr *src = (const struct in6_addr *) &msg->id.idiag_src;
+            const struct in6_addr *dst = (const struct in6_addr *) &msg->id.idiag_dst;
+            return (IN6_IS_ADDR_V4MAPPED(src) && IN_LOOPBACK(src->s6_addr32[3])) ||
+                   (IN6_IS_ADDR_V4MAPPED(dst) && IN_LOOPBACK(dst->s6_addr32[3])) ||
+                   IN6_IS_ADDR_LOOPBACK(src) || IN6_IS_ADDR_LOOPBACK(dst) ||
+                   !memcmp(src, dst, sizeof(*src));
+        }
+        default:
+            return false;
+    }
+}
+
 int SockDiag::sockDestroy(uint8_t proto, const inet_diag_msg *msg) {
     if (msg == nullptr) {
        return 0;
@@ -319,12 +335,14 @@ int SockDiag::destroyLiveSockets(DumpCallback destroyFilter) {
     return 0;
 }
 
-int SockDiag::destroySockets(uint8_t proto, const uid_t uid) {
+int SockDiag::destroySockets(uint8_t proto, const uid_t uid, bool excludeLoopback) {
     mSocketsDestroyed = 0;
     Stopwatch s;
 
-    auto shouldDestroy = [uid] (uint8_t, const inet_diag_msg *msg) {
-        return (msg != nullptr && msg->idiag_uid == uid);
+    auto shouldDestroy = [uid, excludeLoopback] (uint8_t, const inet_diag_msg *msg) {
+        return msg != nullptr &&
+               msg->idiag_uid == uid &&
+               !(excludeLoopback && isLoopbackSocket(msg));
     };
 
     for (const int family : {AF_INET, AF_INET6}) {
@@ -347,14 +365,16 @@ int SockDiag::destroySockets(uint8_t proto, const uid_t uid) {
     return 0;
 }
 
-int SockDiag::destroySockets(const UidRanges& uidRanges, const std::set<uid_t>& skipUids) {
+int SockDiag::destroySockets(const UidRanges& uidRanges, const std::set<uid_t>& skipUids,
+                             bool excludeLoopback) {
     mSocketsDestroyed = 0;
     Stopwatch s;
 
     auto shouldDestroy = [&] (uint8_t, const inet_diag_msg *msg) {
         return msg != nullptr &&
                uidRanges.hasUid(msg->idiag_uid) &&
-               skipUids.find(msg->idiag_uid) == skipUids.end();
+               skipUids.find(msg->idiag_uid) == skipUids.end() &&
+               !(excludeLoopback && isLoopbackSocket(msg));
     };
 
     if (int ret = destroyLiveSockets(shouldDestroy)) {

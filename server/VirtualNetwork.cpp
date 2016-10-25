@@ -54,7 +54,7 @@ int VirtualNetwork::maybeCloseSockets(bool add, const UidRanges& uidRanges,
         return -EBADFD;
     }
 
-    if (int ret = sd.destroySockets(uidRanges, protectableUsers)) {
+    if (int ret = sd.destroySockets(uidRanges, protectableUsers, true /* excludeLoopback */)) {
         ALOGE("Failed to close sockets while %s %s to network %d: %s",
               add ? "adding" : "removing", uidRanges.toString().c_str(), mNetId, strerror(-ret));
         return ret;

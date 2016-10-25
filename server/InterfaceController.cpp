@@ -23,6 +23,7 @@
 #include <android-base/stringprintf.h>
 #include <cutils/log.h>
 #include <logwrap/logwrap.h>
+#include <netutils/ifc.h>
 
 #include "InterfaceController.h"
 #include "RouteController.h"
@@ -82,28 +83,25 @@ void setIPv6UseOutgoingInterfaceAddrsOnly(const char *value) {
 
 }  // namespace
 
-InterfaceController::InterfaceController() {
-	// Initial IPv6 settings.
-	// By default, accept_ra is set to 1 (accept RAs unless forwarding is on) on all interfaces.
-	// This causes RAs to work or not work based on whether forwarding is on, and causes routes
-	// learned from RAs to go away when forwarding is turned on. Make this behaviour predictable
-	// by always setting accept_ra to 2.
-	setAcceptRA("2");
+void InterfaceController::initializeAll() {
+    // Initial IPv6 settings.
+    // By default, accept_ra is set to 1 (accept RAs unless forwarding is on) on all interfaces.
+    // This causes RAs to work or not work based on whether forwarding is on, and causes routes
+    // learned from RAs to go away when forwarding is turned on. Make this behaviour predictable
+    // by always setting accept_ra to 2.
+    setAcceptRA("2");
 
-	setAcceptRARouteTable(-RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX);
+    setAcceptRARouteTable(-RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX);
 
-	// Enable optimistic DAD for IPv6 addresses on all interfaces.
-	setIPv6OptimisticMode("1");
+    // Enable optimistic DAD for IPv6 addresses on all interfaces.
+    setIPv6OptimisticMode("1");
 
-	// Reduce the ARP/ND base reachable time from the default (30sec) to 15sec.
-	setBaseReachableTimeMs(15 * 1000);
+    // Reduce the ARP/ND base reachable time from the default (30sec) to 15sec.
+    setBaseReachableTimeMs(15 * 1000);
 
-	// When sending traffic via a given interface use only addresses configured
-        // on that interface as possible source addresses.
-	setIPv6UseOutgoingInterfaceAddrsOnly("1");
-}
-
-InterfaceController::~InterfaceController() {
+    // When sending traffic via a given interface use only addresses configured
+       // on that interface as possible source addresses.
+    setIPv6UseOutgoingInterfaceAddrsOnly("1");
 }
 
 int InterfaceController::setEnableIPv6(const char *interface, const int on) {
@@ -116,6 +114,34 @@ int InterfaceController::setEnableIPv6(const char *interface, const int on) {
     // addresses and routes and disables IPv6 on the interface.
     const char *disable_ipv6 = on ? "0" : "1";
     return writeValueToPath(ipv6_proc_path, interface, "disable_ipv6", disable_ipv6);
+}
+
+int InterfaceController::setAcceptIPv6Ra(const char *interface, const int on) {
+    if (!isIfaceName(interface)) {
+        errno = ENOENT;
+        return -1;
+    }
+    // Because forwarding can be enabled even when tethering is off, we always
+    // use mode "2" (accept RAs, even if forwarding is enabled).
+    const char *accept_ra = on ? "2" : "0";
+    return writeValueToPath(ipv6_proc_path, interface, "accept_ra", accept_ra);
+}
+
+int InterfaceController::setAcceptIPv6Dad(const char *interface, const int on) {
+    if (!isIfaceName(interface)) {
+        errno = ENOENT;
+        return -1;
+    }
+    const char *accept_dad = on ? "1" : "0";
+    return writeValueToPath(ipv6_proc_path, interface, "accept_dad", accept_dad);
+}
+
+int InterfaceController::setIPv6DadTransmits(const char *interface, const char *value) {
+    if (!isIfaceName(interface)) {
+        errno = ENOENT;
+        return -1;
+    }
+    return writeValueToPath(ipv6_proc_path, interface, "dad_transmits", value);
 }
 
 int InterfaceController::setIPv6PrivacyExtensions(const char *interface, const int on) {
@@ -173,6 +199,17 @@ int InterfaceController::setMtu(const char *interface, const char *mtu)
         return -1;
     }
     return writeValueToPath(sys_net_path, interface, "mtu", mtu);
+}
+
+
+int InterfaceController::addAddress(const char *interface,
+        const char *addrString, int prefixLength) {
+    return ifc_add_address(interface, addrString, prefixLength);
+}
+
+int InterfaceController::delAddress(const char *interface,
+        const char *addrString, int prefixLength) {
+    return ifc_del_address(interface, addrString, prefixLength);
 }
 
 void InterfaceController::setBaseReachableTimeMs(unsigned int millis) {

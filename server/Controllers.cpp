@@ -19,7 +19,9 @@
 namespace android {
 namespace net {
 
-Controllers::Controllers() : clatdCtrl(&netCtrl) {}
+Controllers::Controllers() : clatdCtrl(&netCtrl) {
+    InterfaceController::initializeAll();
+}
 
 Controllers* gCtls = nullptr;
 

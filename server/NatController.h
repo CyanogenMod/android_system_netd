@@ -33,6 +33,7 @@ public:
     static const char* LOCAL_FORWARD;
     static const char* LOCAL_MANGLE_FORWARD;
     static const char* LOCAL_NAT_POSTROUTING;
+    static const char* LOCAL_RAW_PREROUTING;
     static const char* LOCAL_TETHER_COUNTERS_CHAIN;
 
     // List of strings of interface pairs.
@@ -47,6 +48,10 @@ private:
     int runCmd(int argc, const char **argv);
     int setForwardRules(bool set, const char *intIface, const char *extIface);
     int setTetherCountingRules(bool add, const char *intIface, const char *extIface);
+
+    // For testing.
+    friend class NatControllerTest;
+    static int (*execFunction)(int, char **, int *, bool, bool);
 };
 
 #endif

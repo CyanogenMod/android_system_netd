@@ -23,18 +23,17 @@
 #include <set>
 #include <string>
 
-typedef std::list<char *> InterfaceCollection;
-typedef std::list<std::string> NetAddressCollection;
 
 class TetherController {
-    InterfaceCollection  *mInterfaces;
+private:
+    std::list<std::string> mInterfaces;
     // NetId to use for forwarded DNS queries. This may not be the default
     // network, e.g., in the case where we are tethering to a DUN APN.
-    unsigned              mDnsNetId;
-    NetAddressCollection *mDnsForwarders;
-    pid_t                 mDaemonPid;
-    int                   mDaemonFd;
-    std::set<std::string> mForwardingRequests;
+    unsigned               mDnsNetId;
+    std::list<std::string> mDnsForwarders;
+    pid_t                  mDaemonPid;
+    int                    mDaemonFd;
+    std::set<std::string>  mForwardingRequests;
 
 public:
     TetherController();
@@ -50,14 +49,14 @@ public:
 
     unsigned getDnsNetId();
     int setDnsForwarders(unsigned netId, char **servers, int numServers);
-    NetAddressCollection *getDnsForwarders();
+    const std::list<std::string> &getDnsForwarders() const;
 
     int tetherInterface(const char *interface);
     int untetherInterface(const char *interface);
-    InterfaceCollection *getTetheredInterfaceList();
+    const std::list<std::string> &getTetheredInterfaceList() const;
+    bool applyDnsInterfaces();
 
 private:
-    int applyDnsInterfaces();
     bool setIpFwdEnabled();
 };
 

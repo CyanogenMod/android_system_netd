@@ -51,11 +51,16 @@ class SockDiag {
     int sendDumpRequest(uint8_t proto, uint8_t family, const char *addrstr);
     int readDiagMsg(uint8_t proto, DumpCallback callback);
     int sockDestroy(uint8_t proto, const inet_diag_msg *);
+    // Destroys all sockets on the given IPv4 or IPv6 address.
     int destroySockets(const char *addrstr);
-    int destroySockets(uint8_t proto, uid_t uid);
-    int destroySockets(const UidRanges& uidRanges, const std::set<uid_t>& skipUids);
+    // Destroys all sockets for the given protocol and UID.
+    int destroySockets(uint8_t proto, uid_t uid, bool excludeLoopback);
+    // Destroys all "live" (CONNECTED, SYN_SENT, SYN_RECV) TCP sockets for the given UID ranges.
+    int destroySockets(const UidRanges& uidRanges, const std::set<uid_t>& skipUids,
+                       bool excludeLoopback);
 
   private:
+    friend class SockDiagTest;
     int mSock;
     int mWriteSock;
     int mSocketsDestroyed;
@@ -64,4 +69,5 @@ class SockDiag {
     int destroyLiveSockets(DumpCallback destroy);
     bool hasSocks() { return mSock != -1 && mWriteSock != -1; }
     void closeSocks() { close(mSock); close(mWriteSock); mSock = mWriteSock = -1; }
+    static bool isLoopbackSocket(const inet_diag_msg *msg);
 };
