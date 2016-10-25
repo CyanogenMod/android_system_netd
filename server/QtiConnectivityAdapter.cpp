@@ -42,10 +42,6 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "QtiConnectivityAdapter.h"
 #include "ResponseCode.h"
 
-#ifdef USE_WRAPPER
-#include "codeaurora/PropClientDispatch.h"
-#endif
-
 void *_libConnectivityHandle = NULL;
 void (*_initExtension) (SocketListener*) = NULL;
 int (*_runQtiConnectivityCmd) (SocketClient*, int, char**) = NULL;
@@ -109,38 +105,6 @@ int getV6TetherStats
 NetdCommand *QtiConnectivityCommand::asNetdCommand() {
     return static_cast<NetdCommand*>(this);
 }
-
-#ifdef USE_WRAPPER
-int connAdapterGetHostByName(const pid_t pid, const uid_t uid, const gid_t gid, const char* name) {
-    if( __propClientDispatch.propGetHostByNameForNet ) {
-        return __propClientDispatch.propGetHostByNameForNet(pid, uid, gid, name);
-    } else {
-        return -1;
-    }
-}
-
-int connAdapterGetHostByAddr(const pid_t pid, const uid_t uid, const gid_t gid, const void* addr) {
-    if( __propClientDispatch.propGetHostByAddrForNet ) {
-        return __propClientDispatch.propGetHostByAddrForNet(pid, uid, gid, addr);
-    } else {
-        return -1;
-    }
-}
-
-int connAdapterGetAddrInfo( const pid_t pid, const uid_t uid, const gid_t gid, const char* hostname, const struct addrinfo* hints) {
-    if ( __propClientDispatch.propGetAddrInfoForNet ) {
-        return __propClientDispatch.propGetAddrInfoForNet(pid, uid, gid, hostname, hints);
-    } else {
-        return -1;
-    }
-}
-
-void connAdapterSendDnsReport( const int latencyMs ) {
-    if( __propClientDispatch.propSendDnsReport ) {
-        __propClientDispatch.propSendDnsReport(latencyMs);
-    }
-}
-#endif
 
 int QtiConnectivityCommand::runCommand
 (

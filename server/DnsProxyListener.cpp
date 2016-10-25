@@ -29,9 +29,6 @@
 #include <resolv_netid.h>
 #include <net/if.h>
 
-#ifdef USE_WRAPPER
-#include <QtiConnectivityAdapter.h>
-#endif
 #define LOG_TAG "DnsProxyListener"
 #define DBG 0
 #define VDBG 0
@@ -197,10 +194,6 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
                 mNetContext.uid);
     }
 
-#ifdef USE_WRAPPER
-    int ret = connAdapterGetAddrInfo( mClient->getPid(), mClient->getUid(), mClient->getGid(), mHost, mHints);
-#endif
-
     struct addrinfo* result = NULL;
     Stopwatch s;
     uint32_t rv = android_getaddrinfofornetcontext(mHost, mService, mHints, &mNetContext, &result);
@@ -209,12 +202,6 @@ void DnsProxyListener::GetAddrInfoHandler::run() {
     if (rv) {
         // getaddrinfo failed
         mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, &rv, sizeof(rv));
-
-#ifdef USE_WRAPPER
-        if(!ret && (rv == EAI_NODATA) ) {
-            connAdapterSendDnsReport( latencyMs );
-        }
-#endif
     } else {
         bool success = !mClient->sendCode(ResponseCode::DnsProxyQueryResult);
         struct addrinfo* ai = result;
@@ -410,10 +397,6 @@ void DnsProxyListener::GetHostByNameHandler::run() {
         ALOGD("DnsProxyListener::GetHostByNameHandler::run\n");
     }
 
-#ifdef USE_WRAPPER
-    int ret = connAdapterGetHostByName( mClient->getPid(), mClient->getUid(), mClient->getGid(), mName );
-#endif
-
     Stopwatch s;
     struct hostent* hp = android_gethostbynamefornet(mName, mAf, mNetId, mMark);
     const int latencyMs = lround(s.timeTaken());
@@ -430,11 +413,6 @@ void DnsProxyListener::GetHostByNameHandler::run() {
         success = mClient->sendCode(ResponseCode::DnsProxyQueryResult) == 0;
         success &= sendhostent(mClient, hp);
     } else {
-#ifdef USE_WRAPPER
-        if( !ret ) {
-            connAdapterSendDnsReport( latencyMs );
-        }
-#endif
         success = mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, NULL, 0) == 0;
     }
 
@@ -549,24 +527,10 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
     if (DBG) {
         ALOGD("DnsProxyListener::GetHostByAddrHandler::run\n");
     }
-
-#ifdef USE_WRAPPER
-    int ret = connAdapterGetHostByAddr( mClient->getPid(), mClient->getUid(), mClient->getGid(), mAddress);
-#endif
-
     struct hostent* hp;
-#ifdef USE_WRAPPER
-    Stopwatch s;
-#endif
 
     // NOTE gethostbyaddr should take a void* but bionic thinks it should be char*
     hp = android_gethostbyaddrfornet((char*)mAddress, mAddressLen, mAddressFamily, mNetId, mMark);
-#ifdef USE_WRAPPER
-    int latencyMs;
-    if(!ret) {
-        latencyMs = lround(s.timeTaken());
-    }
-#endif
 
     if (DBG) {
         ALOGD("GetHostByAddrHandler::run gethostbyaddr errno: %s hp->h_name = %s, name_len = %zu\n",
@@ -580,11 +544,6 @@ void DnsProxyListener::GetHostByAddrHandler::run() {
         success = mClient->sendCode(ResponseCode::DnsProxyQueryResult) == 0;
         success &= sendhostent(mClient, hp);
     } else {
-#ifdef USE_WRAPPER
-        if( !ret ) {
-            connAdapterSendDnsReport( latencyMs );
-        }
-#endif
         success = mClient->sendBinaryMsg(ResponseCode::DnsProxyOperationFailed, NULL, 0) == 0;
     }
 

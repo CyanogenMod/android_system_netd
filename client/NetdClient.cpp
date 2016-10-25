@@ -27,10 +27,6 @@
 #include "FwmarkCommand.h"
 #include "resolv_netid.h"
 
-#ifdef USE_WRAPPER
-#include "codeaurora/PropClientDispatch.h"
-#endif
-
 namespace {
 
 std::atomic_uint netIdForProcess(NETID_UNSET);
@@ -40,10 +36,6 @@ typedef int (*Accept4FunctionType)(int, sockaddr*, socklen_t*, int);
 typedef int (*ConnectFunctionType)(int, const sockaddr*, socklen_t);
 typedef int (*SocketFunctionType)(int, int, int);
 typedef unsigned (*NetIdForResolvFunctionType)(unsigned);
-
-#ifdef USE_WRAPPER
-typedef void (*SetConnectFunc) (ConnectFunctionType*);
-#endif
 
 // These variables are only modified at startup (when libc.so is loaded) and never afterwards, so
 // it's okay that they are read later at runtime without a lock.
@@ -88,31 +80,11 @@ int netdClientConnect(int sockfd, const sockaddr* addr, socklen_t addrlen) {
             return -1;
         }
     }
-
-#ifdef USE_WRAPPER
-    if ( FwmarkClient::shouldSetFwmark(addr->sa_family)) {
-        if( __propClientDispatch.propConnect ) {
-            return __propClientDispatch.propConnect(sockfd, addr, addrlen);
-        } else {
-            return libcConnect(sockfd, addr, addrlen);
-        }
-    }
-#endif
     return libcConnect(sockfd, addr, addrlen);
 }
 
 int netdClientSocket(int domain, int type, int protocol) {
-
-    int socketFd;
-#ifndef USE_WRAPPER
-    socketFd = libcSocket(domain, type, protocol);
-#else
-    if( __propClientDispatch.propSocket ) {
-        socketFd = __propClientDispatch.propSocket(domain, type, protocol);
-    } else {
-        socketFd = libcSocket(domain, type, protocol);
-    }
-#endif
+    int socketFd = libcSocket(domain, type, protocol);
     if (socketFd == -1) {
         return -1;
     }

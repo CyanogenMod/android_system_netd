@@ -45,13 +45,6 @@ void natStopped(const char* tetherIface, const char* upstreamIface);
 int getV6TetherStats(SocketClient *cli, const char* tetherIface, const char* upstreamIface,
         std::string &extraProcessingInfo);
 
-#ifdef USE_WRAPPER
-int connAdapterGetHostByName(const pid_t pid, const uid_t uid, const gid_t gid, const char* mName);
-int connAdapterGetHostByAddr(const pid_t pid, const uid_t uid, const gid_t gid, const void* addr);
-int connAdapterGetAddrInfo(const pid_t pid, const uid_t uid, const gid_t gid, const char* hostname, const struct addrinfo* hints);
-void connAdapterSendDnsReport(const int latencyMs);
-#endif
-
 class QtiConnectivityCommand : NetdCommand {
 public:
    QtiConnectivityCommand() : NetdCommand("qticonnectivity") {}
