@@ -376,8 +376,7 @@ int NatController::setForwardRules(bool add, const char *intIface, const char *e
         goto err_return;
     }
 
-    // STOPSHIP: Make this an error.
-    if (runCmd(ARRAY_SIZE(cmd4), cmd4) && add && false /* STOPSHIP */) {
+    if (runCmd(ARRAY_SIZE(cmd4), cmd4) && add) {
         rc = -1;
         goto err_rpfilter;
     }

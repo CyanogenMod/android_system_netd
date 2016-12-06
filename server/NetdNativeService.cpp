@@ -29,6 +29,7 @@
 
 #include "Controllers.h"
 #include "DumpWriter.h"
+#include "InterfaceController.h"
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
 #include "RouteController.h"
@@ -231,6 +232,45 @@ binder::Status NetdNativeService::interfaceDelAddress(const std::string &ifName,
     if (err != 0) {
         return binder::Status::fromServiceSpecificError(-err,
                 String8::format("InterfaceController error: %s", strerror(-err)));
+    }
+    return binder::Status::ok();
+}
+
+binder::Status NetdNativeService::setProcSysNet(
+        int32_t family, int32_t which, const std::string &ifname, const std::string &parameter,
+        const std::string &value) {
+    ENFORCE_PERMISSION(CONNECTIVITY_INTERNAL);
+
+    const char *familyStr;
+    switch (family) {
+        case INetd::IPV4:
+            familyStr = "ipv4";
+            break;
+        case INetd::IPV6:
+            familyStr = "ipv6";
+            break;
+        default:
+            return binder::Status::fromServiceSpecificError(EAFNOSUPPORT, String8("Bad family"));
+    }
+
+    const char *whichStr;
+    switch (which) {
+        case INetd::CONF:
+            whichStr = "conf";
+            break;
+        case INetd::NEIGH:
+            whichStr = "neigh";
+            break;
+        default:
+            return binder::Status::fromServiceSpecificError(EINVAL, String8("Bad category"));
+    }
+
+    const int err = InterfaceController::setParameter(
+            familyStr, whichStr, ifname.c_str(), parameter.c_str(),
+            value.c_str());
+    if (err != 0) {
+        return binder::Status::fromServiceSpecificError(-err,
+                String8::format("ResolverController error: %s", strerror(-err)));
     }
     return binder::Status::ok();
 }

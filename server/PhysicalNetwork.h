@@ -46,6 +46,7 @@ private:
     Type getType() const override;
     int addInterface(const std::string& interface) override WARN_UNUSED_RESULT;
     int removeInterface(const std::string& interface) override WARN_UNUSED_RESULT;
+    int destroySocketsLackingPermission(Permission permission);
 
     Delegate* const mDelegate;
     Permission mPermission;

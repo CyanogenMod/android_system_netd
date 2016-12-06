@@ -170,4 +170,22 @@ interface INetd {
             int prefixLength);
     void interfaceDelAddress(in @utf8InCpp String ifName, in @utf8InCpp String addrString,
             int prefixLength);
+
+    /*
+     * Set and get /proc/sys/net interface configuration parameters.
+     *
+     * @param family One of IPV4/IPV6 integers, indicating the desired address family directory.
+     * @param which One of CONF/NEIGH integers, indicating the desired parameter category directory.
+     * @param ifname The interface name portion of the path; may also be "all" or "default".
+     * @param parameter The parameter name portion of the path.
+     * @param value The value string to be written into the assembled path.
+     */
+
+    const int IPV4  = 4;
+    const int IPV6  = 6;
+    const int CONF  = 1;
+    const int NEIGH = 2;
+    void setProcSysNet(int family, int which, in @utf8InCpp String ifname,
+            in @utf8InCpp String parameter, in @utf8InCpp String value);
+    // TODO: add corresponding getProcSysNet().
 }

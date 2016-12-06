@@ -617,3 +617,40 @@ TEST_F(BinderTest, TestInterfaceAddRemoveAddress) {
         EXPECT_FALSE(interfaceHasAddress(sTunIfName, td.addrString, -1));
     }
 }
+
+TEST_F(BinderTest, TestSetProcSysNet) {
+    static const struct TestData {
+        const int family;
+        const int which;
+        const char *ifname;
+        const char *parameter;
+        const char *value;
+        const int expectedReturnCode;
+    } kTestData[] = {
+        { INetd::IPV4, INetd::CONF, sTunIfName.c_str(), "arp_ignore", "1", 0 },
+        { -1, INetd::CONF, sTunIfName.c_str(), "arp_ignore", "1", EAFNOSUPPORT },
+        { INetd::IPV4, -1, sTunIfName.c_str(), "arp_ignore", "1", EINVAL },
+        { INetd::IPV4, INetd::CONF, "..", "conf/lo/arp_ignore", "1", EINVAL },
+        { INetd::IPV4, INetd::CONF, ".", "lo/arp_ignore", "1", EINVAL },
+        { INetd::IPV4, INetd::CONF, sTunIfName.c_str(), "../all/arp_ignore", "1", EINVAL },
+        { INetd::IPV6, INetd::NEIGH, sTunIfName.c_str(), "ucast_solicit", "7", 0 },
+    };
+
+    for (unsigned int i = 0; i < arraysize(kTestData); i++) {
+        const auto &td = kTestData[i];
+
+        const binder::Status status = mNetd->setProcSysNet(
+                    td.family, td.which, td.ifname, td.parameter,
+                    td.value);
+
+        if (td.expectedReturnCode == 0) {
+            SCOPED_TRACE(String8::format("test case %d should have passed", i));
+            EXPECT_EQ(0, status.exceptionCode());
+            EXPECT_EQ(0, status.serviceSpecificErrorCode());
+        } else {
+            SCOPED_TRACE(String8::format("test case %d should have failed", i));
+            EXPECT_EQ(binder::Status::EX_SERVICE_SPECIFIC, status.exceptionCode());
+            EXPECT_EQ(td.expectedReturnCode, status.serviceSpecificErrorCode());
+        }
+    }
+}

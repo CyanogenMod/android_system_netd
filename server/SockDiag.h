@@ -24,6 +24,7 @@
 #include <functional>
 #include <set>
 
+#include "Permission.h"
 #include "UidRanges.h"
 
 struct inet_diag_msg;
@@ -58,6 +59,10 @@ class SockDiag {
     // Destroys all "live" (CONNECTED, SYN_SENT, SYN_RECV) TCP sockets for the given UID ranges.
     int destroySockets(const UidRanges& uidRanges, const std::set<uid_t>& skipUids,
                        bool excludeLoopback);
+    // Destroys all "live" (CONNECTED, SYN_SENT, SYN_RECV) TCP sockets that no longer have
+    // the permissions required by the specified network.
+    int destroySocketsLackingPermission(unsigned netId, Permission permission,
+                                        bool excludeLoopback);
 
   private:
     friend class SockDiagTest;
@@ -66,7 +71,7 @@ class SockDiag {
     int mSocketsDestroyed;
     int sendDumpRequest(uint8_t proto, uint8_t family, uint32_t states, iovec *iov, int iovcnt);
     int destroySockets(uint8_t proto, int family, const char *addrstr);
-    int destroyLiveSockets(DumpCallback destroy);
+    int destroyLiveSockets(DumpCallback destroy, const char *what, iovec *iov, int iovcnt);
     bool hasSocks() { return mSock != -1 && mWriteSock != -1; }
     void closeSocks() { close(mSock); close(mWriteSock); mSock = mWriteSock = -1; }
     static bool isLoopbackSocket(const inet_diag_msg *msg);

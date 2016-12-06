@@ -55,6 +55,10 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
             const std::string &addrString, int prefixLength) override;
     binder::Status interfaceDelAddress(const std::string &ifName,
             const std::string &addrString, int prefixLength) override;
+
+    binder::Status setProcSysNet(
+            int32_t family, int32_t which, const std::string &ifname, const std::string &parameter,
+            const std::string &value) override;
 };
 
 }  // namespace net
